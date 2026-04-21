@@ -1,0 +1,8 @@
+{
+    "sistema": {
+        "nombre": "Sentinel",
+        "version": "2.1",
+        "primer_arranque": false,
+        "password_hash": "16eeb0dae114a670c2d105a296feae2b8072b36aef732be3fba4a479cfb1a3e0"
+    }
+}
