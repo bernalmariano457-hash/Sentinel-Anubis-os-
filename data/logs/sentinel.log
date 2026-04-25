@@ -1,0 +1,13 @@
+2026-04-24 21:25:28 [WARNING] [IMPORT] WifiAttack (WifiAtack): [WinError 5] Acceso denegado: 'C:\\Users\\mnhhh\\.cache\\scapy\\services.pickle'
+2026-04-24 21:25:35 [WARNING] [IMPORT] TacticalSniffer (TacticalSniffer): [WinError 5] Acceso denegado: 'C:\\Users\\mnhhh\\.cache\\scapy\\services.pickle'
+2026-04-24 21:25:36 [WARNING] [IMPORT] SweepModule (SweepModule): [WinError 5] Acceso denegado: 'C:\\Users\\mnhhh\\.cache\\scapy\\services.pickle'
+2026-04-24 21:25:36 [WARNING] [IMPORT] NetworkModule (Network): [WinError 5] Acceso denegado: 'C:\\Users\\mnhhh\\.cache\\scapy\\services.pickle'
+2026-04-24 21:25:36 [WARNING] [Init] PhishingModule: PhishingModule.__init__() takes 1 positional argument but 2 were given
+2026-04-24 21:25:36 [WARNING] [Init] Radar/Geomap: [WinError 5] Acceso denegado: 'C:\\Users\\mnhhh\\.cache\\scapy\\services.pickle'
+2026-04-24 21:25:54 [INFO] [Auth] Acceso concedido.
+2026-04-24 21:25:58 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-24 21:25:58 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-24 21:25:58 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-24 21:27:40 [ERROR] [Main] 'BluetoothModule' object has no attribute 'beacon_spam'
+2026-04-24 21:29:11 [ERROR] [Main] 'ApexSentinel' object has no attribute 'animar_barra'
+2026-04-24 21:30:05 [INFO] [ApexSentinel] Sesión cerrada por el operador.

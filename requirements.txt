@@ -1,0 +1,26 @@
+# AnubisOS / Apex Sentinel — Dependencias
+# Instalar con: pip install -r requirements.txt
+
+# --- Interfaz de terminal ---
+rich>=13.7.0
+
+# --- Seguridad y autenticación ---
+bcrypt>=4.1.2
+
+# --- Red y escaneo ---
+scapy>=2.5.0
+requests>=2.31.0
+
+# --- Análisis de imágenes / EXIF ---
+Pillow>=10.2.0
+piexif>=1.1.3
+
+# --- Bluetooth ---
+PyBluez>=0.23; sys_platform == "linux"
+
+# --- Análisis forense / bases de datos ---
+pycryptodome>=3.20.0
+
+# --- Utilidades generales ---
+colorama>=0.4.6        # Compatibilidad colores en Windows
+psutil>=5.9.8          # Info de sistema (CPU, RAM, red)
