@@ -1,27 +1,19 @@
 """
-╔══════════════════════════════════════════════════════════════════╗
-║          APEX SENTINEL — ANUBIS OS  v2.1                        ║
-║          Main definitivo — Arquitectura profesional completa     ║
-╠══════════════════════════════════════════════════════════════════╣
-║                                                                  ║
-║  SISTEMAS INTEGRADOS:                                            ║
-║  ├─ GestorProyectos  → Workspaces por operación                  ║
-║  ├─ MotorReportes    → Evidencia en MD/TXT/Timeline              ║
-║  ├─ PluginSystem     → Módulos en caliente desde plugins/        ║
-║  ├─ ColaTareas       → Scans en background sin bloquear prompt   ║
-║  ├─ OSINTEngine      → Reconocimiento pasivo con APIs públicas   ║
-║  └─ CVEMatcher       → Cruce automático contra NVD/CVE          ║
-║                                                                  ║
-║  ORIGINALES PRESERVADOS:                                         ║
-║  ├─ HydraModule, AuditEngine, TacticalSniffer, RadarSentinel    ║
-║  ├─ WifiAttack, EvilTwinServer, RFScanner, BluetoothModule       ║
-║  ├─ MobileSentinel, ForensicReader, DatabaseExtractor            ║
-║  ├─ ExifAnalyzer, GeoPrecise, LocatorModule, StealthModule       ║
-║  └─ DuckyModule, SweepModule, AdvancedScanner, PhishingModule    ║
-╚══════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════╗
+║         APEX SENTINEL — ANUBIS OS  v2.1              ║
+║         Main integrado con arquitectura mejorada     ║
+╚══════════════════════════════════════════════════════╝
+
+Integra:
+  - bootscreen.py     → Pantalla de arranque animada
+  - help_menu.py      → Menú de ayuda por categorías
+  - log_visual.py     → Sistema de logs estructurado
+  - validators.py     → Validaciones de entrada
+  - Command Pattern   → Cada comando es una clase limpia
+  - bcrypt            → Autenticación segura
+  - Todos los comandos originales preservados
 """
 
-# ── STDLIB ──────────────────────────────────────────────────────────
 import os
 import sys
 import json
@@ -35,11 +27,12 @@ import ipaddress
 import re
 from datetime import datetime
 
-# ── COMPATIBILIDAD WINDOWS ──────────────────────────────────────────
+# --- COMPATIBILIDAD WINDOWS ---
 if sys.platform == 'win32':
-    os.add_dll_directory(os.path.abspath(os.path.dirname(__file__)))
+    path_proyecto = os.path.abspath(os.path.dirname(__file__))
+    os.add_dll_directory(path_proyecto)
 
-# ── RICH ────────────────────────────────────────────────────────────
+# --- INTERFAZ ---
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -48,32 +41,28 @@ from rich.text import Text
 from rich.rule import Rule
 from rich.columns import Columns
 from rich.align import Align
-from rich.progress import (Progress, BarColumn,
-                           TextColumn, SpinnerColumn)
+from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
 from rich import box
 
-# ── BCRYPT (opcional, fallback seguro) ──────────────────────────────
+# --- AUTENTICACIÓN SEGURA ---
 try:
     import bcrypt
     BCRYPT_OK = True
 except ImportError:
     BCRYPT_OK = False
 
-# ── IMPORTADOR CON FALLBACK ─────────────────────────────────────────
-
-
-def _imp(modulo: str, clase: str):
-    """Importa una clase de forma segura. Retorna None si falla."""
+# --- MÓDULOS TÁCTICOS ---
+def _importar(modulo, clase):
     try:
-        return getattr(__import__(modulo, fromlist=[clase]), clase)
+        m = __import__(modulo, fromlist=[clase])
+        return getattr(m, clase)
     except Exception as e:
-        logging.warning(f"[IMPORT] {clase} ({modulo}): {e}")
+        logging.warning(f"[IMPORT] {clase} no disponible: {e}")
         return None
 
-
-# ════════════════════════════════════════════════════════════════════
-# CONSTANTES VISUALES
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
+# ARTE ASCII Y CONSTANTES VISUALES
+# ============================================================
 
 ANUBIS_ART = r"""
    ╔═══════════╗
@@ -85,24 +74,22 @@ ANUBIS_ART = r"""
    ╚═══════════╝"""
 
 MODULOS_BOOT = [
-    # Originales
-    ("HydraModule",      "Fuerza bruta / auditoría"),
-    ("TacticalSniffer",  "Captura de tráfico"),
-    ("RadarSentinel",    "Intercepción Wi-Fi RSSI"),
-    ("ExifAnalyzer",     "Metadatos EXIF / GPS"),
-    ("BluetoothModule",  "Escaneo Bluetooth"),
-    ("ForensicReader",   "Lectura forense"),
-    ("GeoPrecise",       "Triangulación GPS"),
-    ("StealthModule",    "Huella digital"),
-    ("MobileSentinel",   "Triaje móvil"),
-    ("NetworkModule",    "Análisis de red"),
-    # Nuevos profesionales
-    ("GestorProyectos",  "Workspaces de operación"),
-    ("MotorReportes",    "Reportes MD/TXT/Timeline"),
-    ("OSINTEngine",      "Reconocimiento pasivo"),
-    ("CVEMatcher",       "Base de datos CVE/NVD"),
-    ("ColaTareas",       "Ejecución asíncrona"),
-    ("GestorPlugins",    "Plugins en caliente"),
+    ("HydraModule",     "Fuerza bruta / auditoría"),
+    ("TacticalSniffer", "Captura de tráfico"),
+    ("RadarSentinel",   "Intercepción Wi-Fi"),
+    ("ExifAnalyzer",    "Metadatos EXIF"),
+    ("BluetoothModule", "Escaneo Bluetooth"),
+    ("ForensicReader",  "Lectura forense"),
+    ("GeoPrecise",      "Triangulación GPS"),
+    ("StealthModule",   "Huella digital"),
+    ("MobileSentinel",  "Triaje móvil"),
+    ("NetworkModule",   "Análisis de red"),
+    ("GestorProyectos", "Workspaces de operación"),
+    ("MotorReportes",   "Reportes MD/TXT/Timeline"),
+    ("OSINTEngine",     "Reconocimiento pasivo"),
+    ("CVEMatcher",      "Base de datos CVE/NVD"),
+    ("ColaTareas",      "Ejecución asíncrona"),
+    ("GestorPlugins",   "Plugins en caliente"),
 ]
 
 ESTILOS_LOG = {
@@ -113,18 +100,17 @@ ESTILOS_LOG = {
     "AUDIT":   ("magenta", "⚑"),
 }
 
-# Índice de ayuda completo
-HELP = {
+COMANDOS_HELP = {
     "SISTEMA": {
         "color": "cyan",
         "items": [
-            ("help",            "Índice de comandos"),
-            ("status",          "Estado del sistema y proyecto activo"),
-            ("hora",            "Hora del sistema"),
-            ("clear",           "Recarga el banner"),
-            ("logs",            "Historial de operaciones"),
-            ("files",           "Explorador de archivos local"),
-            ("exit",            "Cierre seguro del Sentinel"),
+            ("help",   "Índice de comandos"),
+            ("status", "Estado del sistema"),
+            ("hora",   "Hora actual"),
+            ("clear",  "Recarga el banner"),
+            ("logs",   "Historial de operaciones"),
+            ("files",  "Explorador de archivos"),
+            ("exit",   "Cierre seguro"),
         ]
     },
     "PROYECTOS": {
@@ -143,7 +129,7 @@ HELP = {
     "RED": {
         "color": "blue",
         "items": [
-            ("scan",     "Escaneo ARP rápido de red local"),
+            ("scan",     "Escaneo ARP rápido de red"),
             ("netscan",  "Mapeo ARP detallado"),
             ("advscan",  "Escaneo de objetivo específico"),
             ("portscan", "Auditoría de puertos + cruce CVE"),
@@ -155,167 +141,167 @@ HELP = {
     "INTEL": {
         "color": "magenta",
         "items": [
-            ("osint",    "OSINT Engine — IP y dominio"),
-            ("cve",      "CVE Matcher — búsqueda en NVD"),
-            ("locate",   "Rastreo IP / GPS"),
+            ("osint",     "OSINT Engine — IP y dominio"),
+            ("cve",       "CVE Matcher — búsqueda en NVD"),
+            ("locate",    "Rastreo IP / GPS"),
             ("locate -p", "Triangulación por redes Wi-Fi"),
-            ("geofoto",  "Metadatos GPS en fotos (EXIF)"),
-            ("stealth",  "Verificar huella digital"),
+            ("geofoto",   "Metadatos GPS en fotos (EXIF)"),
+            ("stealth",   "Verificar huella digital"),
         ]
     },
     "AUDITORÍA": {
         "color": "red",
         "items": [
             ("audit",    "Fuerza bruta con Hydra"),
-            ("vulnscan", "Escaneo de vulnerabilidades (Nmap NSE)"),
-            ("sqlcheck", "Auditoría SQL Injection (SQLmap)"),
+            ("vulnscan", "Escaneo de vulnerabilidades"),
+            ("sqlcheck", "Auditoría SQL Injection"),
         ]
     },
     "WIRELESS / RF": {
         "color": "yellow",
         "items": [
-            ("wifi",     "Beacon Spam / Deauth Attack"),
+            ("wifi",     "Beacon Spam / Deauth"),
             ("eviltwin", "Gemelo Malvado"),
             ("rfscan",   "Escaneo de radiofrecuencia"),
-            ("btjumper", "Salto de dispositivos Bluetooth"),
+            ("btjumper", "Salto Bluetooth"),
         ]
     },
     "FORENSE": {
         "color": "green",
         "items": [
-            ("mobile",       "Triaje Android / iOS y Screenshot"),
-            ("mobile-deep",  "Extracción profunda WA / Chrome"),
-            ("view",         "Visualizador táctico de bases de datos"),
+            ("mobile",      "Triaje Android / iOS"),
+            ("mobile-deep", "Extracción profunda WA/Chrome"),
+            ("view",        "Visualizador de bases de datos"),
         ]
     },
     "INGENIERÍA SOCIAL": {
         "color": "red",
         "items": [
             ("phishing", "Suite de Phishing (zphisher)"),
-            ("ducky",    "Ejecutar payload BadUSB"),
+            ("ducky",    "Payload BadUSB"),
             ("panic",    "Cifrado y borrado de rastro"),
         ]
     },
     "JOBS & PLUGINS": {
         "color": "cyan",
         "items": [
-            ("jobs",             "Lista de tareas en background"),
-            ("job resultado ID", "Ver resultado de un job"),
-            ("job cancelar ID",  "Cancelar un job activo"),
-            ("job limpiar",      "Limpiar jobs completados"),
-            ("plugins",          "Lista plugins cargados"),
-            ("plugins reload",   "Recargar plugins en caliente"),
+            ("jobs",              "Lista de tareas en background"),
+            ("job resultado ID",  "Ver resultado de un job"),
+            ("job cancelar ID",   "Cancelar un job activo"),
+            ("plugins",           "Lista plugins cargados"),
+            ("plugins reload",    "Recargar plugins en caliente"),
         ]
     },
 }
 
 
-# ════════════════════════════════════════════════════════════════════
-# VALIDADOR
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
+# VALIDADORES
+# ============================================================
 
 class Validador:
-    """Prompts seguros con validación y reintentos automáticos."""
-
-    MAX = 3
+    MAX_INTENTOS = 3
 
     @staticmethod
-    def _ip(v):
+    def es_ip(v):
         try:
             ipaddress.ip_address(v)
             return True
-        except:
+        except ValueError:
             return False
 
     @staticmethod
-    def _cidr(v):
+    def es_rango_cidr(v):
         try:
             ipaddress.ip_network(v, strict=False)
             return True
-        except:
+        except ValueError:
             return False
 
     @staticmethod
-    def _url(v):
-        return bool(re.match(r"^https?://[^\s/$.?#].[^\s]*$", v, re.I))
-
-    @staticmethod
-    def _mac(v):
+    def es_mac(v):
         return bool(re.match(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$", v))
 
     @staticmethod
-    def _mhz(v):
+    def es_url(v):
+        return bool(re.match(r"^https?://[^\s/$.?#].[^\s]*$", v, re.IGNORECASE))
+
+    @staticmethod
+    def es_frecuencia(v):
         try:
             return 1.0 <= float(v) <= 6000.0
-        except:
+        except ValueError:
             return False
 
     @classmethod
-    def pedir(cls, con, prompt, fn=None, err="Valor inválido.",
-              default=None, pw=False):
-        """Motor de input con validación y N reintentos."""
-        p = f"\n[bold cyan]{prompt}[/bold cyan]"
+    def pedir(cls, console, prompt, validador=None, error="Valor inválido.",
+              default=None, password=False, intentos=None):
+        max_i = intentos or cls.MAX_INTENTOS
+        prompt_fmt = f"\n[bold cyan]{prompt}[/bold cyan]"
         if default:
-            p += f" [dim](Enter = {default})[/dim]"
-        p += ": "
-
-        for i in range(cls.MAX):
+            prompt_fmt += f" [dim](Enter = {default})[/dim]"
+        prompt_fmt += ": "
+        for i in range(max_i):
             try:
-                val = (Prompt.ask(p, password=True) if pw
-                       else con.input(p).strip())
-                if not val and default is not None:
+                if password:
+                    valor = Prompt.ask(prompt_fmt, password=True)
+                else:
+                    valor = console.input(prompt_fmt).strip()
+                if not valor and default is not None:
                     return default
-                if fn is None or fn(val):
-                    return val
-                r = cls.MAX - i - 1
-                con.print(f"  [red][!] {err}[/red]"
-                          + (f" [dim]({r} intento{'s' if r != 1 else ''} restante)[/dim]" if r else ""))
+                if validador is None or validador(valor):
+                    return valor
+                restantes = max_i - i - 1
+                msg = f"  [red][!] {error}[/red]"
+                if restantes > 0:
+                    msg += f" [dim]({restantes} intento{'s' if restantes!=1 else ''} restante)[/dim]"
+                console.print(msg)
             except KeyboardInterrupt:
-                con.print("\n[yellow][!] Cancelado.[/yellow]")
+                console.print("\n[yellow][!] Cancelado.[/yellow]")
                 raise
         return default
 
-    # Atajos
     @classmethod
-    def ip(cls, con, p="[?] IP objetivo"):
-        return cls.pedir(con, p, cls._ip, "IP inválida. Ej: 192.168.1.1")
+    def pedir_ip(cls, console, prompt="[?] IP objetivo"):
+        return cls.pedir(console, prompt, cls.es_ip, "IP inválida. Ej: 192.168.1.1")
 
     @classmethod
-    def cidr(cls, con, p="[?] Rango de red", d="192.168.1.0/24"):
-        return cls.pedir(con, p, cls._cidr, "CIDR inválido.", default=d)
+    def pedir_rango(cls, console, prompt="[?] Rango de red", default="192.168.1.0/24"):
+        return cls.pedir(console, prompt, cls.es_rango_cidr,
+                         "CIDR inválido. Ej: 192.168.1.0/24", default=default)
 
     @classmethod
-    def url(cls, con, p="[?] URL objetivo"):
-        return cls.pedir(con, p, cls._url, "URL inválida. Use http:// o https://")
+    def pedir_url(cls, console, prompt="[?] URL objetivo"):
+        return cls.pedir(console, prompt, cls.es_url,
+                         "URL inválida. Debe empezar con http:// o https://")
 
     @classmethod
-    def mhz(cls, con):
-        v = cls.pedir(con, "[?] Frecuencia (MHz)", cls._mhz,
-                      "Rango válido: 1.0 – 6000.0 MHz")
+    def pedir_frecuencia(cls, console, prompt="[?] Frecuencia (MHz)"):
+        v = cls.pedir(console, prompt, cls.es_frecuencia,
+                      "Frecuencia inválida. Rango: 1.0 - 6000.0 MHz")
         return float(v) if v else None
 
     @classmethod
-    def segundos(cls, con, d=30):
-        def fn(v):
+    def pedir_segundos(cls, console, prompt="[?] Duración (segundos)",
+                       minimo=1, maximo=300, default=30):
+        def validar(v):
             try:
-                return 1 <= int(v) <= 300
-            except:
+                return minimo <= int(v) <= maximo
+            except ValueError:
                 return False
-        v = cls.pedir(con, "[?] Duración en segundos [1-300]",
-                      fn, "Número entre 1 y 300.", default=str(d))
-        return int(v) if v else d
+        v = cls.pedir(console, f"{prompt} [{minimo}-{maximo}]", validar,
+                      f"Número entre {minimo} y {maximo}.", default=str(default))
+        return int(v) if v else default
 
 
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
 # SISTEMA DE LOGS
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
 
 class LogSistema:
-    """Logging estructurado: visual en consola + archivo JSON + .log"""
-
-    def __init__(self, con: Console):
-        self.con = con
-        self._e = self._cargar()
+    def __init__(self, console: Console):
+        self.console = console
+        self._entradas = self._cargar()
         os.makedirs("data/logs", exist_ok=True)
         logging.basicConfig(
             filename="data/logs/sentinel.log",
@@ -338,324 +324,281 @@ class LogSistema:
         try:
             os.makedirs("data/logs", exist_ok=True)
             with open("data/logs/historial.json", "w", encoding="utf-8") as f:
-                json.dump(self._e[-500:], f, indent=2, ensure_ascii=False)
+                json.dump(self._entradas[-500:], f, indent=2, ensure_ascii=False)
         except OSError:
             pass
 
-    def _log(self, nivel: str, msg: str, mod: str = "Sistema"):
+    def _log(self, nivel, mensaje, modulo="Sistema"):
         entrada = {"timestamp": self._ts(), "nivel": nivel,
-                   "modulo": mod, "mensaje": msg}
-        self._e.append(entrada)
+                   "modulo": modulo, "mensaje": mensaje}
+        self._entradas.append(entrada)
         self._guardar()
-        col, ico = ESTILOS_LOG.get(nivel, ("white", "·"))
-        self.con.print(
+        color, icono = ESTILOS_LOG.get(nivel, ("white", "·"))
+        self.console.print(
             f"[dim]{entrada['timestamp']}[/dim] "
-            f"[{col}]{ico} {nivel:<8}[/{col}] "
-            f"[cyan]{mod:<18}[/cyan] {msg}"
+            f"[{color}]{icono} {nivel:<8}[/{color}] "
+            f"[cyan]{modulo:<18}[/cyan] {mensaje}"
         )
-        getattr(logging, nivel.lower(), logging.info)(f"[{mod}] {msg}")
+        getattr(logging, nivel.lower(), logging.info)(f"[{modulo}] {mensaje}")
 
-    def info(self, m, mod="Sistema"):    self._log("INFO",    m, mod)
-    def warning(self, m, mod="Sistema"): self._log("WARNING", m, mod)
-    def error(self, m, mod="Sistema"):   self._log("ERROR",   m, mod)
-    def success(self, m, mod="Sistema"): self._log("SUCCESS", m, mod)
-    def audit(self, m, mod="Auditoría"): self._log("AUDIT",   m, mod)
+    def info(self, msg, modulo="Sistema"):    self._log("INFO", msg, modulo)
+    def warning(self, msg, modulo="Sistema"): self._log("WARNING", msg, modulo)
+    def error(self, msg, modulo="Sistema"):   self._log("ERROR", msg, modulo)
+    def success(self, msg, modulo="Sistema"): self._log("SUCCESS", msg, modulo)
+    def audit(self, msg, modulo="Auditoría"): self._log("AUDIT", msg, modulo)
 
-    def mostrar_historial(self, ultimas: int = 50):
-        ee = self._e[-ultimas:]
-        if not ee:
-            self.con.print(Panel("[dim]Sin registros.[/dim]",
-                                 border_style="dim green"))
+    def mostrar_historial(self, ultimas=50):
+        entradas = self._entradas[-ultimas:]
+        if not entradas:
+            self.console.print(Panel("[dim]Sin registros.[/dim]",
+                                     title="HISTORIAL", border_style="dim green"))
             return
-        # Resumen
-        cnt = {}
-        for e in self._e:
-            cnt[e["nivel"]] = cnt.get(e["nivel"], 0) + 1
-        res = Table.grid(padding=(0, 3))
-        res.add_row(*[
-            f"[{ESTILOS_LOG[n][0]}]{ESTILOS_LOG[n][1]} {n}: {cnt.get(n, 0)}[/{ESTILOS_LOG[n][0]}]"
+        conteos = {}
+        for e in self._entradas:
+            conteos[e["nivel"]] = conteos.get(e["nivel"], 0) + 1
+        resumen = Table.grid(padding=(0, 3))
+        resumen.add_row(*[
+            f"[{ESTILOS_LOG.get(n,('white',''))[0]}]{ESTILOS_LOG.get(n,('white','·'))[1]} {n}: {conteos.get(n,0)}[/{ESTILOS_LOG.get(n,('white',''))[0]}]"
             for n in ESTILOS_LOG
         ])
-        self.con.print(Panel(res, title="[bold]RESUMEN[/bold]",
-                             border_style="dim green", box=box.SIMPLE))
-        # Tabla
-        t = Table(box=box.SIMPLE_HEAD, header_style="bold cyan",
-                  show_edge=False, expand=True)
-        t.add_column("Timestamp", style="dim",  min_width=19, no_wrap=True)
-        t.add_column("Nivel",     min_width=10, no_wrap=True)
-        t.add_column("Módulo",    style="cyan", min_width=16)
-        t.add_column("Mensaje",   style="white")
-        for e in ee:
-            col, ico = ESTILOS_LOG.get(e["nivel"], ("white", "·"))
-            t.add_row(e["timestamp"],
-                      Text(f"{ico} {e['nivel']}", style=col),
-                      e["modulo"], e["mensaje"])
-        self.con.print(Panel(t, title=f"[bold]HISTORIAL — {len(ee)} entradas[/bold]",
-                             border_style="green", box=box.HEAVY_EDGE))
+        self.console.print(Panel(resumen, title="[bold]RESUMEN[/bold]",
+                                  border_style="dim green", box=box.SIMPLE))
+        tabla = Table(box=box.SIMPLE_HEAD, header_style="bold cyan",
+                      show_edge=False, expand=True)
+        tabla.add_column("Timestamp", style="dim", min_width=19, no_wrap=True)
+        tabla.add_column("Nivel", min_width=10, no_wrap=True)
+        tabla.add_column("Módulo", style="cyan", min_width=16)
+        tabla.add_column("Mensaje", style="white")
+        for e in entradas:
+            color, icono = ESTILOS_LOG.get(e["nivel"], ("white", "·"))
+            tabla.add_row(e["timestamp"],
+                          Text(f"{icono} {e['nivel']}", style=color),
+                          e["modulo"], e["mensaje"])
+        self.console.print(Panel(tabla,
+                                  title=f"[bold]HISTORIAL — {len(entradas)} entradas[/bold]",
+                                  border_style="green", box=box.HEAVY_EDGE))
 
-    def verificar_y_limpiar(self, mx: int = 500):
-        if len(self._e) > mx:
-            self._e = self._e[-mx:]
+    def verificar_y_limpiar(self, max_entradas=500):
+        if len(self._entradas) > max_entradas:
+            self._entradas = self._entradas[-max_entradas:]
             self._guardar()
 
 
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
 # AUTENTICACIÓN
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
 
 class GestorAuth:
-    """Autenticación con bcrypt. Compatible con hashes SHA-256 legados."""
+    MAX_INTENTOS = 3
 
-    MAX = 3
-
-    def __init__(self, cfg: dict, con: Console, log: LogSistema):
-        self.cfg = cfg
-        self.con = con
+    def __init__(self, config: dict, console: Console, log: LogSistema):
+        self.config = config
+        self.console = console
         self.log = log
 
-    # ── hashing ──────────────────────────────────────────────────────
-    def _hash(self, pw: str) -> str:
+    def _hash(self, password: str) -> str:
         if BCRYPT_OK:
-            return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+            return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         salt = os.urandom(16).hex()
-        return f"{salt}:{hashlib.sha256((salt+pw).encode()).hexdigest()}"
+        h = hashlib.sha256((salt + password).encode()).hexdigest()
+        return f"{salt}:{h}"
 
-    def _check(self, pw: str, stored: str) -> bool:
-        # Soporte hash SHA-256 simple (legado sin salt)
-        if len(stored) == 64 and ":" not in stored:
-            return hashlib.sha256(pw.encode()).hexdigest() == stored
+    def _verificar(self, password: str, almacenado: str) -> bool:
+        if len(almacenado) == 64 and ":" not in almacenado:
+            return hashlib.sha256(password.encode()).hexdigest() == almacenado
         if BCRYPT_OK:
             try:
-                return bcrypt.checkpw(pw.encode(), stored.encode())
+                return bcrypt.checkpw(password.encode(), almacenado.encode())
             except Exception:
                 pass
         try:
-            salt, h = stored.split(":")
-            return hashlib.sha256((salt+pw).encode()).hexdigest() == h
+            salt, h = almacenado.split(":")
+            return hashlib.sha256((salt + password).encode()).hexdigest() == h
         except Exception:
             return False
 
-    def _guardar(self):
+    def _guardar_config(self):
         try:
             with open("config.json", "w") as f:
-                json.dump(self.cfg, f, indent=4)
+                json.dump(self.config, f, indent=4)
             if sys.platform != "win32":
                 os.chmod("config.json", 0o600)
         except OSError as e:
-            self.log.error(f"config.json: {e}")
+            self.log.error(f"No se pudo guardar config.json: {e}")
 
-    # ── flujo público ─────────────────────────────────────────────────
+    def configurar_primera_vez(self) -> str:
+        self.console.print(Panel(
+            "[bold cyan]ANUBIS OS: SETUP DE SEGURIDAD[/bold cyan]\n"
+            "[white]No se detectó clave de operador. Configure su acceso maestro.[/white]",
+            border_style="cyan"
+        ))
+        while True:
+            nueva = Prompt.ask("[?] Contraseña Maestra (mín. 8 caracteres)", password=True)
+            if len(nueva) < 8:
+                self.console.print("[red][!] Contraseña demasiado débil.[/red]")
+                continue
+            confirmar = Prompt.ask("[?] Confirme su Contraseña", password=True)
+            if nueva != confirmar:
+                self.console.print("[red][!] Las claves no coinciden.[/red]")
+                continue
+            h = self._hash(nueva)
+            self.console.print("[green][+] Acceso configurado. Iniciando sistema...[/green]")
+            self.log.success("Contraseña maestra configurada.", "GestorAuth")
+            time.sleep(1)
+            return h
+
     def solicitar_acceso(self) -> bool:
-        stored = self.cfg["sistema"].get("password_hash")
-
-        # Primera vez
-        if not stored or self.cfg["sistema"].get("primer_arranque", True):
-            self.con.print(Panel(
-                "[bold cyan]ANUBIS OS — SETUP DE SEGURIDAD[/bold cyan]\n"
-                "[white]No se detectó clave de operador. Configure su acceso maestro.[/white]",
-                border_style="cyan"
-            ))
-            while True:
-                pw = Prompt.ask(
-                    "[?] Contraseña Maestra (mín. 8 chars)", password=True)
-                if len(pw) < 8:
-                    self.con.print(
-                        "[red][!] Contraseña demasiado débil.[/red]")
-                    continue
-                if Prompt.ask("[?] Confirme su contraseña", password=True) != pw:
-                    self.con.print("[red][!] Las claves no coinciden.[/red]")
-                    continue
-                self.cfg["sistema"]["password_hash"] = self._hash(pw)
-                self.cfg["sistema"]["primer_arranque"] = False
-                self._guardar()
-                self.con.print(
-                    "[green][+] Acceso configurado. Iniciando...[/green]")
-                self.log.success("Contraseña maestra configurada.", "Auth")
-                time.sleep(1)
-                return True
-
-        # Login normal
-        self.con.print(
-            f"\n[bold white]{'─'*42}[/bold white]\n"
-            f"[bold green]   APEX SENTINEL — LOGIN[/bold green]\n"
-            f"[bold white]{'─'*42}[/bold white]\n"
+        hash_almacenado = self.config["sistema"].get("password_hash")
+        if not hash_almacenado or self.config["sistema"].get("primer_arranque", True):
+            nuevo_hash = self.configurar_primera_vez()
+            self.config["sistema"]["password_hash"] = nuevo_hash
+            self.config["sistema"]["primer_arranque"] = False
+            self._guardar_config()
+            return True
+        self.console.print(
+            f"\n[bold white]{'─'*40}[/bold white]\n"
+            f"[bold green]  APEX SENTINEL — LOGIN[/bold green]\n"
+            f"[bold white]{'─'*40}[/bold white]\n"
         )
-        for i in range(self.MAX, 0, -1):
+        for intento in range(self.MAX_INTENTOS, 0, -1):
             entrada = Prompt.ask(
-                f"[?] Clave de acceso ([dim]{i} intento{'s' if i > 1 else ''}[/dim])",
+                f"[?] Clave de acceso ([dim]{intento} intento{'s' if intento > 1 else ''}[/dim])",
                 password=True
             )
-            if self._check(entrada, stored):
-                self.log.success("Acceso concedido.", "Auth")
+            if self._verificar(entrada, hash_almacenado):
+                self.log.success("Acceso concedido.", "GestorAuth")
                 return True
-            self.con.print("[red][!] Clave incorrecta.[/red]")
-
-        self.log.warning("Acceso denegado — máximo de intentos.", "Auth")
+            self.console.print(f"[red][!] Clave incorrecta.[/red]")
+        self.log.warning("Acceso denegado: máximo de intentos alcanzado.", "GestorAuth")
         return False
 
 
-# ════════════════════════════════════════════════════════════════════
-# BOOTSCREEN  /  BANNER  /  AYUDA
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
+# BOOTSCREEN Y BANNER
+# ============================================================
 
-def _limpiar():
+def mostrar_bootloader(console: Console, nombre: str, version: str, iface: str):
     os.system("cls" if os.name == "nt" else "clear")
-
-
-def mostrar_bootloader(con: Console, nombre: str, version: str, iface: str):
-    """Pantalla de arranque animada completa."""
-    _limpiar()
-
     arte = Text(ANUBIS_ART, style="bold green")
-
-    inf = Table.grid(padding=(0, 2))
-    inf.add_column(style="dim cyan", justify="right")
-    inf.add_column(style="white")
-    inf.add_row(
-        "SISTEMA",    f"[bold white]APEX SENTINEL[/bold white] [dim]v{version}[/dim]")
-    inf.add_row("OPERADOR",   f"[bold green]{nombre}[/bold green]")
-    inf.add_row("ESTADO",     "[bold green]● ACTIVO[/bold green]")
-    inf.add_row("IFACE",      f"[cyan]{iface}[/cyan]")
-    inf.add_row("PLATAFORMA", f"[dim]{os.name.upper()}[/dim]")
-    inf.add_row("", "")
-    inf.add_row("AVISO",      "[bold red]⚠  AUTHORIZED USE ONLY[/bold red]")
-
-    con.print(Panel(
-        Columns([Align(arte, vertical="middle"),
-                 Align(inf,  vertical="middle")], equal=False, expand=True),
-        title="[bold green]ANUBIS OS[/bold green]",
-        subtitle="[dim]SISTEMA OPERATIVO TÁCTICO[/dim]",
-        border_style="green", box=box.DOUBLE_EDGE, padding=(1, 2)
-    ))
-    con.print()
-
-    # Barra de carga de módulos
+    info = Table.grid(padding=(0, 2))
+    info.add_column(style="dim cyan", justify="right")
+    info.add_column(style="white")
+    info.add_row("SISTEMA",    f"[bold white]APEX SENTINEL[/bold white] [dim]v{version}[/dim]")
+    info.add_row("OPERADOR",   f"[bold green]{nombre}[/bold green]")
+    info.add_row("ESTADO",     "[bold green]● ACTIVO[/bold green]")
+    info.add_row("IFACE",      f"[cyan]{iface}[/cyan]")
+    info.add_row("PLATAFORMA", f"[dim]{os.name.upper()}[/dim]")
+    info.add_row("", "")
+    info.add_row("AVISO",      "[bold red]⚠  AUTHORIZED USE ONLY[/bold red]")
+    header = Columns([Align(arte, vertical="middle"),
+                      Align(info, vertical="middle")], equal=False, expand=True)
+    console.print(Panel(header,
+                        title="[bold green]ANUBIS OS[/bold green]",
+                        subtitle="[dim]SISTEMA OPERATIVO TÁCTICO[/dim]",
+                        border_style="green", box=box.DOUBLE_EDGE, padding=(1, 2)))
+    console.print()
     with Progress(
         SpinnerColumn(spinner_name="dots", style="green"),
-        TextColumn("[cyan]{task.description:<38}[/cyan]"),
-        BarColumn(bar_width=22, style="green", complete_style="bold green"),
+        TextColumn("[cyan]{task.description:<35}[/cyan]"),
+        BarColumn(bar_width=25, style="green", complete_style="bold green"),
         TextColumn("[bold green]{task.percentage:>3.0f}%[/bold green]"),
-        console=con,
-    ) as pg:
-        tk = pg.add_task("Iniciando núcleo...", total=len(MODULOS_BOOT))
-        for nm, _ in MODULOS_BOOT:
-            pg.update(tk, description=f"Cargando [bold]{nm}[/bold]...")
-            time.sleep(0.10)
-            pg.advance(tk)
-        pg.update(
-            tk, description="[bold green]Todos los módulos en línea[/bold green]")
+        console=console,
+    ) as progress:
+        tarea = progress.add_task("Iniciando núcleo...", total=len(MODULOS_BOOT))
+        for nombre_mod, _ in MODULOS_BOOT:
+            progress.update(tarea, description=f"Cargando [bold]{nombre_mod}[/bold]...")
+            time.sleep(0.12)
+            progress.advance(tarea)
+        progress.update(tarea, description="[bold green]Todos los módulos en línea[/bold green]")
         time.sleep(0.2)
-
-    # Tabla de módulos
-    tb = Table(box=box.SIMPLE_HEAD, header_style="bold cyan",
-               show_edge=False, expand=True)
-    tb.add_column("Módulo",  style="green", min_width=20)
-    tb.add_column("Función", style="white", min_width=28)
-    tb.add_column("Estado",  justify="center")
-    for nm, desc in MODULOS_BOOT:
-        tb.add_row(nm, desc, "[bold green]● LISTO[/bold green]")
-
-    con.print(Panel(tb, title="[bold]MÓDULOS DEL SISTEMA[/bold]",
-                    border_style="dim green", padding=(0, 1)))
-    con.print()
-    con.print(Rule(style="dim green"))
-    con.print(Align.center(
-        "[dim]Escribe [bold white]help[/bold white] para ver todos los comandos disponibles[/dim]"
+    tabla_mods = Table(box=box.SIMPLE_HEAD, header_style="bold cyan",
+                       show_edge=False, expand=True)
+    tabla_mods.add_column("Módulo",  style="green", min_width=20)
+    tabla_mods.add_column("Función", style="white", min_width=25)
+    tabla_mods.add_column("Estado",  justify="center")
+    for nombre_mod, desc in MODULOS_BOOT:
+        tabla_mods.add_row(nombre_mod, desc, "[bold green]● LISTO[/bold green]")
+    console.print(Panel(tabla_mods, title="[bold]MÓDULOS DEL SISTEMA[/bold]",
+                        border_style="dim green", padding=(0, 1)))
+    console.print()
+    console.print(Rule(style="dim green"))
+    console.print(Align.center(
+        "[dim]Escribe [bold white]help[/bold white] para ver los comandos disponibles[/dim]"
     ))
-    con.print(Rule(style="dim green"))
-    con.print()
+    console.print(Rule(style="dim green"))
+    console.print()
 
 
-def mostrar_banner(con: Console, nombre: str, version: str, iface: str):
-    """Banner compacto — se usa con el comando 'clear' durante la sesión."""
-    _limpiar()
-    g = Table.grid(padding=(0, 4), expand=True)
-    g.add_column(ratio=1)
-    g.add_column(ratio=2)
-
+def mostrar_banner(console: Console, nombre: str, version: str, iface: str):
+    os.system("cls" if os.name == "nt" else "clear")
+    grid = Table.grid(padding=(0, 4), expand=True)
+    grid.add_column(ratio=1)
+    grid.add_column(ratio=2)
+    izq = Text(ANUBIS_ART, style="bold green")
     der = Table.grid(padding=(0, 1))
     der.add_column(style="dim cyan", justify="right", min_width=12)
     der.add_column(style="white")
-    der.add_row(
-        "SISTEMA",  f"[bold white]APEX SENTINEL[/bold white] [dim]v{version}[/dim]")
+    der.add_row("SISTEMA",  f"[bold white]APEX SENTINEL[/bold white] [dim]v{version}[/dim]")
     der.add_row("OPERADOR", f"[bold green]{nombre}[/bold green]")
     der.add_row("ESTADO",   "[bold green]● ACTIVO[/bold green]")
     der.add_row("IFACE",    f"[cyan]{iface}[/cyan]")
     der.add_row("AVISO",    "[red]AUTHORIZED USE ONLY[/red]")
-
-    g.add_row(Text(ANUBIS_ART, style="bold green"), der)
-    con.print(Panel(g, border_style="green",
-              box=box.HEAVY_EDGE, padding=(0, 1)))
-    con.print(Rule(style="dim green"))
-    con.print()
+    grid.add_row(izq, der)
+    console.print(Panel(grid, border_style="green", box=box.HEAVY_EDGE, padding=(0, 1)))
+    console.print(Rule(style="dim green"))
+    console.print()
 
 
-def mostrar_ayuda(con: Console, version: str):
-    """Menú de ayuda en dos columnas agrupado por categorías."""
-    con.print()
-    con.print(Rule(
+def mostrar_ayuda(console: Console, version: str):
+    console.print()
+    console.print(Rule(
         title=f"[bold white]ANUBIS OS — COMMAND INDEX[/bold white]  [dim]v{version}[/dim]",
         style="green"
     ))
-    con.print()
-
+    console.print()
     bloques = []
-    for cat, dat in HELP.items():
-        col = dat["color"]
-        tb = Table(box=box.SIMPLE, show_header=False,
-                   show_edge=False, padding=(0, 1), expand=True)
-        tb.add_column("cmd",  style=f"bold {col}", min_width=18, no_wrap=True)
-        tb.add_column("desc", style="white")
-        for cmd, desc in dat["items"]:
-            tb.add_row(cmd, desc)
-        bloques.append(Panel(
-            tb,
-            title=f"[bold {col}]{cat}[/bold {col}]",
-            border_style=col,
-            box=box.ROUNDED,
-            padding=(0, 1)
-        ))
-
+    for categoria, datos in COMANDOS_HELP.items():
+        color = datos["color"]
+        tabla = Table(box=box.SIMPLE, show_header=False, show_edge=False,
+                      padding=(0, 1), expand=True)
+        tabla.add_column("cmd",  style=f"bold {color}", min_width=16, no_wrap=True)
+        tabla.add_column("desc", style="white")
+        for cmd, desc in datos["items"]:
+            tabla.add_row(cmd, desc)
+        bloques.append(Panel(tabla,
+                             title=f"[bold {color}]{categoria}[/bold {color}]",
+                             border_style=color, box=box.ROUNDED, padding=(0, 1)))
     for i in range(0, len(bloques), 2):
         par = bloques[i:i+2]
-        con.print(Columns(par, equal=True, expand=True)
-                  if len(par) == 2 else par[0])
-        con.print()
-
-    con.print(Rule(style="dim green"))
-    con.print(
-        "  [dim]Escribe el comando y presiona[/dim] [bold white]Enter[/bold white]  ·  "
+        console.print(Columns(par, equal=True, expand=True) if len(par) == 2 else par[0])
+        console.print()
+    console.print(Rule(style="dim green"))
+    console.print(
+        "  [dim]Tip:[/dim] [dim]Escribe el comando y presiona[/dim] "
+        "[bold white]Enter[/bold white]  ·  "
         "[dim]Salir:[/dim] [bold white]exit[/bold white]  ·  "
         "[dim]Limpiar:[/dim] [bold white]clear[/bold white]"
     )
-    con.print(Rule(style="dim green"))
-    con.print()
+    console.print(Rule(style="dim green"))
+    console.print()
 
 
-# ════════════════════════════════════════════════════════════════════
-# APEX SENTINEL — CLASE PRINCIPAL
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
+# CLASE PRINCIPAL
+# ============================================================
 
 class ApexSentinel:
 
     def __init__(self):
-        # Directorios base
         for d in ["data/logs", "data/evidence", "plugins"]:
             os.makedirs(d, exist_ok=True)
-
         self.console = Console()
-        self.config = self._cargar_config()
-        self.nombre = self.config["sistema"]["nombre"]
+        self.config  = self._cargar_config()
+        self.nombre  = self.config["sistema"]["nombre"]
         self.version = self.config["sistema"]["version"]
-
-        # Subsistemas internos
-        self.log = LogSistema(self.console)
+        self.log  = LogSistema(self.console)
         self.auth = GestorAuth(self.config, self.console, self.log)
-
-        # Módulos tácticos originales + nuevos profesionales
         self._cargar_modulos()
-
-    # ── configuración ────────────────────────────────────────────────
 
     def _cargar_config(self) -> dict:
         try:
@@ -667,88 +610,70 @@ class ApexSentinel:
         except json.JSONDecodeError:
             raise SystemExit("[FATAL] config.json está dañado.")
 
-    # ── carga de módulos ─────────────────────────────────────────────
-
     def _cargar_modulos(self):
-        """
-        Carga todos los módulos con fallback graceful.
-        Si un módulo falla, el sistema sigue funcionando.
-        """
-
-        # ── Módulos tácticos originales ──────────────────────────────
-        _originales = [
-            # (atributo,       clase,               módulo_archivo)
-            ("checker",       "SystemChecker",      "SystemChecker"),
-            ("audit_engine",  "AuditEngine",        "AuditEngine"),
-            ("dict_manager",  "DictionaryManager",  "DictionaryManager"),
-            ("hydra",         "HydraModule",        "HydraModule"),
-            ("stealth",       "StealthModule",      "Stealth"),
-            ("locator",       "LocatorModule",      "LocatorModule"),
-            ("exif",          "ExifAnalyzer",       "ExifAnalyzer"),
-            ("geopreciose",   "GeoPrecise",         "GeoPrecise"),
-            ("wifi_attack",   "WifiAttack",         "WifiAtack"),
-            ("reader",        "ForensicReader",     "ForensicReader"),
-            ("rf",            "RFScanner",          "RFScanner"),
-            ("sniffer",       "TacticalSniffer",    "TacticalSniffer"),
-            ("bt",            "BluetoothModule",    "bt_module"),
-            ("sweep",         "SweepModule",        "SweepModule"),
-            ("ducky",         "DuckyModule",        "DuckyModule"),
-            ("adv_scanner",   "AdvancedScanner",    "AdvancedScanner"),
-            ("mobile",        "MobileSentinel",     "MobileSentinel"),
-            ("security",      "SecurityModule",     "Security"),
-            ("network",       "NetworkModule",      "Network"),
-            ("phishing",      "PhishingModule",     "PhishingModule"),
+        imports = [
+            ("checker",      "SystemChecker",    "SystemChecker"),
+            ("audit_engine", "AuditEngine",       "AuditEngine"),
+            ("dict_manager", "DictionaryManager", "DictionaryManager"),
+            ("hydra",        "HydraModule",       "HydraModule"),
+            ("reportes",     "ReportManager",     "ReportManager"),
+            ("stealth",      "StealthModule",     "Stealth"),
+            ("locator",      "LocatorModule",     "LocatorModule"),
+            ("exif",         "ExifAnalyzer",      "ExifAnalyzer"),
+            ("geopreciose",  "GeoPrecise",        "GeoPrecise"),
+            ("wifi_attack",  "WifiAttack",        "WifiAtack"),
+            ("reader",       "ForensicReader",    "ForensicReader"),
+            ("rf",           "RFScanner",         "RFScanner"),
+            ("sniffer",      "TacticalSniffer",   "TacticalSniffer"),
+            ("bt",           "BluetoothModule",   "bt_module"),
+            ("sweep",        "SweepModule",       "SweepModule"),
+            ("ducky",        "DuckyModule",       "DuckyModule"),
+            ("adv_scanner",  "AdvancedScanner",   "AdvancedScanner"),
+            ("mobile",       "MobileSentinel",    "MobileSentinel"),
+            ("security",     "SecurityModule",    "Security"),
+            ("network",      "NetworkModule",     "Network"),
+            ("phishing",     "PhishingModule",    "PhishingModule"),
         ]
-
-        # Clases que NO reciben self como argumento
-        _sin_self = {"SystemChecker", "DictionaryManager"}
-
-        for attr, cls_name, mod_file in _originales:
-            Cls = _imp(mod_file, cls_name)
+        for attr, clase, modulo in imports:
+            Cls = _importar(modulo, clase)
             if Cls is None:
                 setattr(self, attr, None)
                 continue
             try:
-                obj = Cls() if cls_name in _sin_self else Cls(self)
-                setattr(self, attr, obj)
+                if clase in ("SystemChecker", "ReportManager", "DictionaryManager"):
+                    setattr(self, attr, Cls())
+                else:
+                    setattr(self, attr, Cls(self))
             except Exception as e:
-                self.log.warning(f"{cls_name}: {e}", "Init")
+                self.log.warning(f"{clase} falló al iniciar: {e}", "Init")
                 setattr(self, attr, None)
 
-        # ── Radar y Geomap ───────────────────────────────────────────
         try:
-            from RadarSentinel import RadarSentinel
+            from RadarSentinel  import RadarSentinel
             from GeomapSentinel import GeomapSentinel
-            self.radar = RadarSentinel(interface="Wi-Fi")
+            self.radar  = RadarSentinel(interface="Wi-Fi")
             self.radar.start_sniffing()
             self.geomap = GeomapSentinel()
         except Exception as e:
-            self.log.warning(f"Radar/Geomap: {e}", "Init")
+            self.log.warning(f"Radar/Geomap no disponibles: {e}", "Init")
             self.radar = self.geomap = None
 
-        # ── EvilTwinServer ───────────────────────────────────────────
         try:
             from EvilTwinServer import iniciar_servidor
-            self._evs = iniciar_servidor
+            self._evil_twin_server = iniciar_servidor
         except Exception:
-            self._evs = None
+            self._evil_twin_server = None
 
-        # ── DatabaseExtractor y WADecryptor ──────────────────────────
-        self._dbc = _imp("db_extractor", "DatabaseExtractor")
-        self._wad = _imp("WADecryptor",  "WhatsAppDecryptor")
+        self._db_extractor_cls = _importar("db_extractor", "DatabaseExtractor")
+        self._wa_decryptor_cls = _importar("WADecryptor",  "WhatsAppDecryptor")
 
-        # ── Scapy ────────────────────────────────────────────────────
         try:
             from scapy.all import ARP, Ether, srp
-            self._ARP, self._Eth, self._srp = ARP, Ether, srp
+            self._ARP, self._Ether, self._srp = ARP, Ether, srp
         except Exception:
-            self._ARP = self._Eth = self._srp = None
+            self._ARP = self._Ether = self._srp = None
 
-        # ════════════════════════════════════════════════════════════
-        # MÓDULOS PROFESIONALES NUEVOS
-        # ════════════════════════════════════════════════════════════
-
-        # ── GestorProyectos ──────────────────────────────────────────
+        # ── Módulos profesionales nuevos ─────────────────────────────
         try:
             from GestorProyectos import GestorProyectos
             self.gp = GestorProyectos()
@@ -756,7 +681,6 @@ class ApexSentinel:
             self.log.warning(f"GestorProyectos: {e}", "Init")
             self.gp = None
 
-        # ── MotorReportes ────────────────────────────────────────────
         try:
             from MotorReportes import MotorReportes
             self.motor_rep = MotorReportes(self) if self.gp else None
@@ -764,7 +688,6 @@ class ApexSentinel:
             self.log.warning(f"MotorReportes: {e}", "Init")
             self.motor_rep = None
 
-        # ── OSINTEngine ──────────────────────────────────────────────
         try:
             from OSINTEngine import OSINTEngine
             self.osint = OSINTEngine(self)
@@ -772,7 +695,6 @@ class ApexSentinel:
             self.log.warning(f"OSINTEngine: {e}", "Init")
             self.osint = None
 
-        # ── CVEMatcher ───────────────────────────────────────────────
         try:
             from CVEMatcher import CVEMatcher
             self.cve = CVEMatcher(self)
@@ -780,7 +702,6 @@ class ApexSentinel:
             self.log.warning(f"CVEMatcher: {e}", "Init")
             self.cve = None
 
-        # ── ColaTareas ───────────────────────────────────────────────
         try:
             from ColaTareas import ColaTareas
             self.cola = ColaTareas()
@@ -788,7 +709,6 @@ class ApexSentinel:
             self.log.warning(f"ColaTareas: {e}", "Init")
             self.cola = None
 
-        # ── PluginSystem ─────────────────────────────────────────────
         try:
             from PluginSystem import GestorPlugins, crear_plugin_ejemplo
             self.plugins = GestorPlugins(self)
@@ -798,344 +718,274 @@ class ApexSentinel:
             self.log.warning(f"PluginSystem: {e}", "Init")
             self.plugins = None
 
-    # ── helpers internos ─────────────────────────────────────────────
+    # ── helpers ──────────────────────────────────────────────────────
 
-    def _iface(self) -> str:
+    def _iface(self):
         return getattr(getattr(self, "bt", None), "iface", "wlan0mon")
 
-    def _ok(self, attr: str) -> bool:
-        """Verifica que un módulo esté disponible. Muestra error si no."""
-        if getattr(self, attr, None) is None:
+    def _modulo_ok(self, nombre_attr: str) -> bool:
+        m = getattr(self, nombre_attr, None)
+        if m is None:
             self.console.print(
-                f"[red][!] Módulo '[bold]{attr}[/bold]' no disponible "
-                f"en este entorno.[/red]"
+                f"[red][!] Módulo '{nombre_attr}' no disponible en este entorno.[/red]"
             )
             return False
         return True
 
-    def _barra(self, tarea: str):
-        """Barra de progreso ASCII simple."""
+    def animar_barra(self, tarea: str):
         print(f"\n{tarea}")
-        for i in range(21):
-            print(f"\r[{'█'*i}{'-'*(20-i)}] {int(i/20*100)}%", end="")
+        largo = 20
+        for i in range(largo + 1):
+            pct = int((i / largo) * 100)
+            print(f"\r[{'█'*i}{'-'*(largo-i)}] {pct}%", end="")
             time.sleep(0.05)
         print("\n[OK] Tarea completada.\n")
 
-    def _fabricante(self, mac: str) -> str:
+    def obtener_fabricante(self, mac: str) -> str:
         try:
             import requests
             r = requests.get(f"https://api.macvendors.com/{mac}", timeout=1)
             return r.text if r.status_code == 200 else "Desconocido"
         except Exception:
-            return "?"
+            return "Error"
 
-    def _exito(self, ip: str, servicio: str, credencial: str):
-        """Muestra dashboard de acceso obtenido y registra hallazgo."""
-        tb = Table(title="🔓 ACCESO OBTENIDO", header_style="bold green")
-        tb.add_column("Objetivo",           style="cyan",
-                      justify="center")
-        tb.add_column("Protocolo",          style="yellow",
-                      justify="center")
-        tb.add_column("Credenciales (U:P)",
-                      style="bold white", justify="center")
-        tb.add_row(ip, servicio.upper(), credencial)
-
-        self.console.print(Panel(
-            tb,
-            title="[bold green]MISSION ACCOMPLISHED[/bold green]",
-            border_style="bright_green", expand=False
-        ))
+    def mostrar_dashboard_exito(self, ip: str, servicio: str, credencial: str):
+        tabla = Table(title="ACCESO OBTENIDO", show_header=True,
+                      header_style="bold green")
+        tabla.add_column("Objetivo",           style="cyan",       justify="center")
+        tabla.add_column("Protocolo",          style="yellow",     justify="center")
+        tabla.add_column("Credenciales (U:P)", style="bold white", justify="center")
+        tabla.add_row(ip, servicio.upper(), credencial)
+        self.console.print("\n")
+        self.console.print(Panel(tabla,
+                                  title="[bold green]MISSION ACCOMPLISHED[/bold green]",
+                                  border_style="bright_green", expand=False))
         self.console.print(
-            f"[dim]LOG: evidencia exportada → ./data/evidence/audit_{ip}.txt[/dim]\n"
+            f"[dim]LOG: Resultado exportado a ./data/evidence/audit_{ip}.txt[/dim]\n"
         )
         self.log.audit(f"Acceso obtenido en {ip} vía {servicio}", "Hydra")
-
-        # Registrar en proyecto activo si existe
         if self.gp:
             self.gp.registrar_hallazgo(
                 "CRITICO",
                 f"Credenciales obtenidas en {ip}:{servicio}",
                 f"Credenciales válidas: {credencial}",
-                "Cambiar credenciales y auditar accesos inmediatamente."
+                "Cambiar credenciales inmediatamente."
             )
 
-    # ════════════════════════════════════════════════════════════════
-    # COMANDOS — cada método maneja un comando completo
-    # ════════════════════════════════════════════════════════════════
+    def _limpiar(self):
+        os.system("cls" if os.name == "nt" else "clear")
 
-    # ── SISTEMA ──────────────────────────────────────────────────────
+    # ── COMANDOS ─────────────────────────────────────────────────────
 
-    def _status(self):
+    def _cmd_status(self):
         proy = (self.gp.proyecto_activo.nombre
                 if self.gp and self.gp.proyecto_activo else "Ninguno")
-        jobs = 0
-        if self.cola:
-            try:
-                from ColaTareas import EstadoTarea
-                jobs = sum(1 for t in self.cola._tareas.values()
-                           if t.estado == EstadoTarea.CORRIENDO)
-            except Exception:
-                pass
-
         self.console.print(Panel(
-            f"[cyan]Sistema:[/cyan]   {self.nombre}\n"
-            f"[cyan]Versión:[/cyan]   {self.version}\n"
-            f"[cyan]Estado:[/cyan]    [green]Operacional[/green]\n"
-            f"[cyan]Hora:[/cyan]      {time.strftime('%H:%M:%S')}\n"
-            f"[cyan]Iface:[/cyan]     {self._iface()}\n"
-            f"[cyan]Proyecto:[/cyan]  [green]{proy}[/green]\n"
-            f"[cyan]Jobs activos:[/cyan] {jobs}",
+            f"[cyan]Sistema:[/cyan]  {self.nombre}\n"
+            f"[cyan]Versión:[/cyan]  {self.version}\n"
+            f"[cyan]Estado:[/cyan]   [green]Operacional[/green]\n"
+            f"[cyan]Hora:[/cyan]     {time.strftime('%H:%M:%S')}\n"
+            f"[cyan]Iface:[/cyan]    {self._iface()}\n"
+            f"[cyan]Proyecto:[/cyan] [green]{proy}[/green]",
             title="STATUS", border_style="cyan"
         ))
 
-    def _files(self):
-        self._barra("EXPLORANDO DIRECTORIO LOCAL...")
-        tb = Table(box=box.SIMPLE_HEAD, header_style="bold cyan",
-                   show_edge=False, expand=True)
-        tb.add_column("Nombre", style="white")
-        tb.add_column("Tamaño", style="yellow", justify="right")
-        tb.add_column("Tipo",   style="green",  justify="center")
+    def _cmd_files(self):
+        self.animar_barra("EXPLORANDO DIRECTORIO LOCAL...")
+        tabla = Table(header_style="bold cyan", box=box.SIMPLE_HEAD, show_edge=False)
+        tabla.add_column("Nombre", style="white")
+        tabla.add_column("Tamaño", style="yellow", justify="right")
+        tabla.add_column("Tipo",   style="green",  justify="center")
         try:
             for f in sorted(os.listdir(".")):
                 try:
-                    tb.add_row(f, f"{os.path.getsize(f):,} bytes",
-                               "DIR" if os.path.isdir(f) else "FILE")
+                    tabla.add_row(f, f"{os.path.getsize(f):,} bytes",
+                                  "DIR" if os.path.isdir(f) else "FILE")
                 except OSError:
-                    tb.add_row(f, "N/A", "?")
-            self.console.print(tb)
+                    tabla.add_row(f, "N/A", "?")
+            self.console.print(tabla)
         except Exception as e:
-            self.log.error(f"files: {e}")
+            self.log.error(f"files: {e}", "Sistema")
 
-    # ── RED ───────────────────────────────────────────────────────────
-
-    def _scan(self):
+    def _cmd_scan(self):
         if self._ARP is None:
             self.console.print("[red][!] Scapy no disponible.[/red]")
             return
-        rango = Validador.cidr(self.console)
+        rango = Validador.pedir_rango(self.console)
         if not rango:
             return
-        self._barra(f"ESCANEANDO HOSTS EN {rango}...")
+        self.animar_barra(f"ESCANEANDO HOSTS EN {rango}...")
         try:
             resultado = self._srp(
-                self._Eth(dst="ff:ff:ff:ff:ff:ff") / self._ARP(pdst=rango),
-                timeout=3, verbose=False
-            )[0]
-            tb = Table(box=box.SIMPLE_HEAD, show_edge=False)
-            tb.add_column("IP",         style="cyan")
-            tb.add_column("MAC",        style="yellow")
-            tb.add_column("Fabricante", style="white")
+                self._Ether(dst="ff:ff:ff:ff:ff:ff") / self._ARP(pdst=rango),
+                timeout=3, verbose=False)[0]
+            tabla = Table(header_style="bold cyan", box=box.SIMPLE_HEAD, show_edge=False)
+            tabla.add_column("IP",         style="cyan",   min_width=15)
+            tabla.add_column("MAC",        style="yellow", min_width=18)
+            tabla.add_column("Fabricante", style="white")
             hosts = []
-            for _, r in resultado:
-                fab = self._fabricante(r.hwsrc)
-                tb.add_row(r.psrc, r.hwsrc, fab)
-                hosts.append({"ip": r.psrc, "mac": r.hwsrc, "fabricante": fab})
-            self.console.print(tb)
+            for _, reci in resultado:
+                fab = self.obtener_fabricante(reci.hwsrc)
+                tabla.add_row(reci.psrc, reci.hwsrc, fab)
+                hosts.append({"ip": reci.psrc, "mac": reci.hwsrc, "fabricante": fab})
+            self.console.print(tabla)
             if self.gp:
-                self.gp.registrar_evidencia(
-                    "arp_scan",
-                    f"Scan ARP en {rango}: {len(hosts)} hosts detectados",
-                    {"rango": rango, "hosts": hosts}
-                )
-            self.log.info(
-                f"Scan ARP {rango}: {len(hosts)} hosts", "NetworkScan")
+                self.gp.registrar_evidencia("arp_scan",
+                    f"Scan ARP en {rango}: {len(hosts)} hosts",
+                    {"rango": rango, "hosts": hosts})
+            self.log.info(f"Scan ARP en {rango}: {len(resultado)} hosts", "NetworkScan")
         except Exception:
-            self.console.print(
-                "[red][!] Error de permisos. Ejecuta como root/administrador.[/red]"
-            )
+            self.console.print("[red][!] Error de permisos. Ejecuta como root/administrador.[/red]")
 
-    def _portscan(self):
-        ip = Validador.ip(self.console, f"\n{self.nombre} [TARGET IP]")
-        if not ip:
+    def _cmd_portscan(self):
+        objetivo = Validador.pedir_ip(self.console, f"\n{self.nombre} [TARGET IP]")
+        if not objetivo:
             return
-        self._barra(f"AUDITANDO PUERTOS EN {ip}...")
-
-        PUERTOS = {
-            21: "FTP",  22: "SSH",    23: "Telnet", 25: "SMTP",
-            80: "HTTP", 443: "HTTPS", 445: "SMB",   3306: "MySQL",
-            5432: "PostgreSQL", 8080: "HTTP-Alt",   8443: "HTTPS-Alt"
-        }
-
-        tb = Table(box=box.SIMPLE_HEAD, show_edge=False)
-        tb.add_column("Puerto",   style="cyan",   justify="center")
-        tb.add_column("Servicio", style="yellow")
-        tb.add_column("Estado",   justify="center")
-
+        self.animar_barra(f"AUDITANDO PUERTOS EN {objetivo}...")
+        puertos = {21:"FTP", 22:"SSH", 23:"Telnet", 25:"SMTP",
+                   80:"HTTP", 443:"HTTPS", 445:"SMB", 3306:"MySQL",
+                   5432:"PostgreSQL", 8080:"HTTP-Alt"}
+        tabla = Table(header_style="bold red", box=box.SIMPLE_HEAD, show_edge=False)
+        tabla.add_column("Puerto",   style="cyan",   justify="center")
+        tabla.add_column("Servicio", style="yellow")
+        tabla.add_column("Estado",   justify="center")
         abiertos = []
-        for puerto, srv in PUERTOS.items():
+        for puerto, servicio in puertos.items():
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(0.5)
-                if sock.connect_ex((ip, puerto)) == 0:
-                    tb.add_row(str(puerto), srv, "[green]ABIERTO[/green]")
-                    abiertos.append({"puerto": puerto, "servicio": srv})
+                if sock.connect_ex((objetivo, puerto)) == 0:
+                    tabla.add_row(str(puerto), servicio, "[green]ABIERTO[/green]")
+                    abiertos.append({"puerto": puerto, "servicio": servicio})
                 sock.close()
             except socket.error:
                 pass
-
-        self.console.print(tb)
+        self.console.print(tabla)
         self.console.print(f"[dim]Puertos abiertos: {len(abiertos)}[/dim]")
-
-        # Registrar evidencia en proyecto
         if self.gp and abiertos:
-            self.gp.registrar_evidencia(
-                "portscan",
-                f"PortScan en {ip}: {len(abiertos)} puertos abiertos",
-                {"ip": ip, "puertos": abiertos}
-            )
-        self.log.info(f"PortScan {ip}: {len(abiertos)} abiertos", "PortScan")
-
-        # Sugerir CVE automáticamente
+            self.gp.registrar_evidencia("portscan",
+                f"PortScan en {objetivo}: {len(abiertos)} puertos",
+                {"ip": objetivo, "puertos": abiertos})
+        self.log.info(f"PortScan {objetivo}: {len(abiertos)} puertos abiertos", "PortScan")
         if abiertos and self.cve:
-            if Prompt.ask(
-                "\n[?] ¿Cruzar puertos abiertos con base de datos CVE?",
-                choices=["s", "n"], default="s"
-            ) == "s":
-                servicios = [{"nombre": a["servicio"], "version": ""}
-                             for a in abiertos]
-                self.cve.analizar_resultado_scan(servicios)
+            if Prompt.ask("\n[?] ¿Cruzar con base de datos CVE?",
+                          choices=["s", "n"], default="s") == "s":
+                self.cve.analizar_resultado_scan(
+                    [{"nombre": a["servicio"], "version": ""} for a in abiertos])
 
-    def _advscan(self):
-        if not self._ok("adv_scanner"):
+    def _cmd_sweep(self):
+        if not self._modulo_ok("sweep"):
             return
-        ip = Validador.ip(self.console, "[?] IP del objetivo")
+        rango = Validador.pedir_rango(self.console)
+        self.sweep.escanear_perimetro(rango)
+
+    def _cmd_sniff(self):
+        if not self._modulo_ok("sniffer"):
+            return
+        filtro   = self.console.input("\n[bold cyan]  [?] Filtro (Enter para ninguno)[/bold cyan]: ").strip()
+        segundos = Validador.pedir_segundos(self.console, default=30)
+        self.sniffer.iniciar_captura(filtro=filtro, duracion=segundos)
+
+    def _cmd_advscan(self):
+        if not self._modulo_ok("adv_scanner"):
+            return
+        ip = Validador.pedir_ip(self.console, "[?] IP del objetivo")
         if ip:
             self.adv_scanner.escanear_objetivo(ip)
 
-    def _sweep(self):
-        if not self._ok("sweep"):
+    def _cmd_radar(self):
+        if not self._modulo_ok("radar") or not self._modulo_ok("geomap"):
             return
-        rango = Validador.cidr(self.console)
-        self.sweep.escanear_perimetro(rango)
-
-    def _sniff(self):
-        if not self._ok("sniffer"):
-            return
-        filtro = self.console.input(
-            "\n[bold cyan]  [?] Filtro BPF (Enter = ninguno): [/bold cyan]"
-        ).strip()
-        secs = Validador.segundos(self.console)
-        self.sniffer.iniciar_captura(filtro=filtro, duracion=secs)
-
-    def _radar(self):
-        if not self._ok("radar") or not self._ok("geomap"):
-            return
-        _limpiar()
+        self._limpiar()
         self.geomap.abrir_mapa()
         try:
             while True:
-                _limpiar()
-                self.console.print(self.radar.render_radar())
+                panel_radar = self.radar.render_radar()
                 self.geomap.generar_mapa(self.radar.targets)
+                self._limpiar()
+                self.console.print(panel_radar)
                 time.sleep(2)
         except KeyboardInterrupt:
             self.console.print("\n[yellow][!] Radar detenido.[/yellow]")
 
-    # ── AUDITORÍA ────────────────────────────────────────────────────
-
-    def _audit(self):
-        if not self._ok("hydra") or not self._ok("dict_manager"):
+    def _cmd_audit(self):
+        if not self._modulo_ok("hydra") or not self._modulo_ok("dict_manager"):
             return
-        self.console.print(
-            "\n[bold magenta]⚔  MÓDULO HYDRA INICIADO[/bold magenta]")
-        target = Validador.ip(self.console, "[?] IP del objetivo")
+        self.console.print("\n[bold magenta]⚔  MÓDULO HYDRA INICIADO[/bold magenta]")
+        target = Validador.pedir_ip(self.console, "[?] IP del objetivo")
         if not target:
             return
-        servicio = Prompt.ask(
-            "[?] Servicio",
-            choices=["ssh", "ftp", "mysql", "http-get", "telnet"],
-            default="ssh"
-        )
+        servicio = Prompt.ask("[?] Servicio",
+                              choices=["ssh","ftp","mysql","http-get","telnet"],
+                              default="ssh")
         diccionario = self.dict_manager.obtener_ruta_diccionario(servicio)
-        if Prompt.ask(
-            f"¿Iniciar ataque con {diccionario}?",
-            choices=["s", "n"], default="n"
-        ) == "s":
-            resultado = self.hydra.ejecutar_ataque(
-                target, servicio, "root", diccionario
-            )
+        if Prompt.ask(f"¿Iniciar ataque con {diccionario}?",
+                      choices=["s","n"], default="n") == "s":
+            resultado = self.hydra.ejecutar_ataque(target, servicio, "root", diccionario)
             if resultado:
-                self._exito(target, servicio, resultado)
+                self.mostrar_dashboard_exito(target, servicio, resultado)
 
-    def _vulnscan(self):
-        if not self._ok("audit_engine"):
+    def _cmd_vulnscan(self):
+        if not self._modulo_ok("audit_engine"):
             return
-        target = Validador.ip(self.console, "[?] IP a analizar")
+        target = Validador.pedir_ip(self.console, "[?] IP a analizar")
         if not target:
             return
         resultado = self.audit_engine.escaneo_vulnerabilidades(target)
-        self.console.print(
-            Panel(resultado, title="RESULTADOS DE VULNERABILIDAD",
-                  border_style="red")
-        )
+        self.console.print(Panel(resultado, title="RESULTADOS DE VULNERABILIDAD",
+                                  border_style="red"))
         self.log.audit(f"Vulnscan en {target}", "AuditEngine")
-        if self.gp:
-            self.gp.registrar_evidencia(
-                "vulnscan", f"Escaneo de vulnerabilidades en {target}",
-                {"ip": target, "resultado": resultado[:500]}
-            )
 
-    def _sqlcheck(self):
-        if not self._ok("audit_engine"):
+    def _cmd_sqlcheck(self):
+        if not self._modulo_ok("audit_engine"):
             return
-        url = Validador.url(self.console, "[?] URL Objetivo")
+        url = Validador.pedir_url(self.console, "[?] URL Objetivo")
         if not url:
             return
         resultado = self.audit_engine.auditoria_sql(url)
-        self.console.print(
-            Panel(resultado, title="INFORME SQLMAP", border_style="yellow")
-        )
+        self.console.print(Panel(resultado, title="INFORME SQLMAP", border_style="yellow"))
 
-    # ── WIRELESS / RF ────────────────────────────────────────────────
-
-    def _wifi(self):
-        if not self._ok("bt"):
+    def _cmd_wifi(self):
+        if not self._modulo_ok("bt"):
             return
         self.console.print("\n[1] Beacon Spam  [2] Deauth Attack")
         opt = self.console.input("[bold cyan] > [/bold cyan]").strip()
         if opt == "1":
-            prefijo = self.console.input(
-                "[bold cyan]Prefijo SSID: [/bold cyan]"
-            ).strip()
+            prefijo = self.console.input("[bold cyan]Prefijo SSID: [/bold cyan]").strip()
             self.bt.beacon_spam(prefijo)
         elif opt == "2":
-            mac_v = Validador.pedir(self.console, "MAC Víctima",
-                                    Validador._mac, "MAC inválida. Ej: AA:BB:CC:DD:EE:FF")
-            mac_a = Validador.pedir(self.console, "MAC AP",
-                                    Validador._mac, "MAC inválida.")
-            if mac_v and mac_a:
-                self.bt.deauth(mac_v, mac_a)
+            mac_vic = Validador.pedir(self.console, "MAC Víctima",
+                                      Validador.es_mac, "MAC inválida. Ej: AA:BB:CC:DD:EE:FF")
+            mac_ap  = Validador.pedir(self.console, "MAC AP",
+                                      Validador.es_mac, "MAC inválida.")
+            if mac_vic and mac_ap:
+                self.bt.deauth(mac_vic, mac_ap)
 
-    def _eviltwin(self):
-        if not self._ok("wifi_attack"):
+    def _cmd_eviltwin(self):
+        if not self._modulo_ok("wifi_attack"):
             return
-        if self._evs is None:
+        if self._evil_twin_server is None:
             self.console.print("[red][!] EvilTwinServer no disponible.[/red]")
             return
-        ssid = self.console.input(
-            "[bold cyan] [?] SSID: [/bold cyan]"
-        ).strip()
-        if ssid:
-            self.wifi_attack.crear_gemelo_malvado(ssid, 6)
-            threading.Thread(target=self._evs, daemon=True).start()
-            input("[!] Presiona Enter para detener...")
-            self.wifi_attack.detener_ataques()
-
-    def _rfscan(self):
-        if not self._ok("rf"):
+        ssid = self.console.input("[bold cyan] [?] SSID: [/bold cyan]").strip()
+        if not ssid:
             return
-        freq = Validador.mhz(self.console)
+        self.wifi_attack.crear_gemelo_malvado(ssid, 6)
+        threading.Thread(target=self._evil_twin_server, daemon=True).start()
+        input("[!] Presiona Enter para detener...")
+        self.wifi_attack.detener_ataques()
+
+    def _cmd_rfscan(self):
+        if not self._modulo_ok("rf"):
+            return
+        freq = Validador.pedir_frecuencia(self.console)
         if freq:
             self.rf.escanear_frecuencia(freq)
 
-    # ── FORENSE ───────────────────────────────────────────────────────
-
-    def _mobile(self):
-        if not self._ok("mobile"):
+    def _cmd_mobile(self):
+        if not self._modulo_ok("mobile"):
             return
-        self.console.print(
-            "\n[1] Android Triage  [2] iOS Info  [3] Screenshot Remoto"
-        )
+        self.console.print("\n[1] Android Triage  [2] iOS Info  [3] Screenshot Remoto")
         opt = self.console.input("[bold cyan] > [/bold cyan]").strip()
         if opt == "1":
             self.mobile.triage_android()
@@ -1143,60 +993,38 @@ class ApexSentinel:
             self.mobile.triage_ios()
         elif opt == "3":
             path = self.mobile.preparar_directorio("Android_Screen")
-            self.console.print("[*] Tomando captura de pantalla...")
+            self.console.print("[*] Tomando captura...")
             try:
-                subprocess.run(
-                    ["adb", "shell", "screencap", "-p", "/sdcard/s.png"],
-                    check=True, timeout=15
-                )
-                subprocess.run(
-                    ["adb", "pull", "/sdcard/s.png", f"{path}/s.png"],
-                    check=True, timeout=15
-                )
-                self.console.print(
-                    f"[green][+] Captura guardada en {path}/s.png[/green]"
-                )
-                if self.gp:
-                    self.gp.registrar_evidencia(
-                        "screenshot", f"Captura de pantalla Android",
-                        {"ruta": f"{path}/s.png"}
-                    )
+                subprocess.run(["adb", "shell", "screencap", "-p", "/sdcard/s.png"],
+                               check=True, timeout=15)
+                subprocess.run(["adb", "pull", "/sdcard/s.png", f"{path}/s.png"],
+                               check=True, timeout=15)
+                self.console.print(f"[green][+] Captura guardada en {path}/s.png[/green]")
+                self.log.success(f"Screenshot guardado en {path}/s.png", "MobileSentinel")
             except Exception as e:
                 self.console.print(f"[red][!] Error ADB: {e}[/red]")
+                self.log.error(f"Screenshot ADB: {e}", "MobileSentinel")
 
-    def _mobile_deep(self):
+    def _cmd_mobile_deep(self):
         path = "./data/evidence/mobile/Deep_Extraction/"
         os.makedirs(path, exist_ok=True)
-
-        if self._dbc is None:
-            self.console.print(
-                "[red][!] DatabaseExtractor no disponible.[/red]"
-            )
+        if self._db_extractor_cls is None:
+            self.console.print("[red][!] DatabaseExtractor no disponible.[/red]")
             return
-
-        extractor = self._dbc()
-        self.console.print(
-            "\n[1] Extraer WhatsApp Full  [2] Extraer Chrome History"
-        )
+        extractor = self._db_extractor_cls()
+        self.console.print("\n[1] Extraer WhatsApp Full  [2] Extraer Chrome History")
         opt = self.console.input("[bold cyan] > [/bold cyan]").strip()
-
         if opt == "1":
-            self._barra("EXTRAYENDO DB Y LLAVE...")
+            self.animar_barra("EXTRAYENDO DB Y LLAVE...")
             extractor.extraer_whatsapp(path)
             extractor.extraer_whatsapp_key(path)
             self.log.audit("Extracción WhatsApp completada", "MobileDeep")
-            if self.gp:
-                self.gp.registrar_evidencia(
-                    "whatsapp_extraction",
-                    "Extracción de base de datos WhatsApp",
-                    {"ruta": path}
-                )
         elif opt == "2":
-            self._barra("EXTRAYENDO HISTORIAL CHROME...")
+            self.animar_barra("EXTRAYENDO HISTORIAL CHROME...")
             self.log.audit("Extracción Chrome completada", "MobileDeep")
 
-    def _view(self):
-        if not self._ok("reader"):
+    def _cmd_view(self):
+        if not self._modulo_ok("reader"):
             return
         ruta_base = "./data/evidence/mobile/Deep_Extraction/"
         opcion = self.console.input(
@@ -1204,86 +1032,110 @@ class ApexSentinel:
         ).strip()
         if opcion == "1":
             self.reader.leer_whatsapp_mensajes(
-                os.path.join(ruta_base, "whatsapp_messages.db")
-            )
+                os.path.join(ruta_base, "whatsapp_messages.db"))
         elif opcion == "2":
             self.reader.leer_historial_chrome(
-                os.path.join(ruta_base, "chrome_history.db")
-            )
+                os.path.join(ruta_base, "chrome_history.db"))
 
-    # ── INTEL & STEALTH ───────────────────────────────────────────────
-
-    def _locate(self):
-        if not self._ok("locator"):
+    def _cmd_locate(self):
+        if not self._modulo_ok("locator"):
             return
-        ip = Validador.ip(self.console, "IP objetivo")
+        ip = Validador.pedir_ip(self.console, "IP objetivo")
         if ip:
             self.locator.rastrear_ip(ip)
-            self.log.info(f"Locate: {ip}", "LocatorModule")
-            if self.gp:
-                self.gp.registrar_evidencia(
-                    "locate", f"Rastreo de IP {ip}", {"ip": ip}
-                )
+            self.log.info(f"Locate en {ip}", "LocatorModule")
 
-    def _locate_p(self):
-        if not self._ok("adv_scanner") or not self._ok("geopreciose"):
+    def _cmd_locate_p(self):
+        if not self._modulo_ok("adv_scanner") or not self._modulo_ok("geopreciose"):
             return
         redes = self.adv_scanner.obtener_redes_formateadas()
         self.geopreciose.triangular_posicion(redes)
 
-    def _geofoto(self):
-        if not self._ok("exif"):
+    def _cmd_geofoto(self):
+        if not self._modulo_ok("exif"):
             return
-        ruta = self.console.input(
-            "[bold cyan]Ruta de imagen: [/bold cyan]"
-        ).strip().replace("'", "").replace('"', "")
+        ruta = self.console.input("[bold cyan]Ruta de imagen: [/bold cyan]").strip()
+        ruta = ruta.replace("'", "").replace('"', "")
         if ruta:
             self.exif.analizar_foto(ruta)
 
-    def _phishing(self):
-        _limpiar()
-        self.console.print(
-            "[bold red][!][/bold red] Iniciando Suite de Phishing..."
-        )
+    # ── PHISHING CORREGIDO ── detecta OS automáticamente ─────────────
+    def _cmd_phishing(self):
+        self._limpiar()
+        self.console.print("[bold red][!][/bold red] Iniciando Suite de Phishing...")
         ruta_z = "./tools/zphisher/zphisher.sh"
-        bash_path = r"C:\Program Files\Git\bin\bash.exe"
+
+        # Verificar que zphisher existe antes de intentar ejecutarlo
+        if not os.path.exists(ruta_z):
+            self.console.print(
+                "[red][!] zphisher no encontrado en ./tools/zphisher/[/red]\n"
+                "[dim]Instálalo con:[/dim]\n"
+                "[cyan]  git clone https://github.com/htr-tech/zphisher.git "
+                "tools/zphisher[/cyan]"
+            )
+            return
+
         try:
-            subprocess.run([bash_path, ruta_z], check=True)
+            if sys.platform == "win32":
+                # Windows — usa Git Bash
+                bash_path = r"C:\Program Files\Git\bin\bash.exe"
+                if not os.path.exists(bash_path):
+                    self.console.print(
+                        "[red][!] Git Bash no encontrado.[/red]\n"
+                        "[dim]Instala Git desde https://git-scm.com[/dim]"
+                    )
+                    return
+                subprocess.run([bash_path, ruta_z], check=True)
+            else:
+                # Linux / Termux / uConsole — bash nativo
+                subprocess.run(["bash", ruta_z], check=True)
+
         except Exception as e:
             self.console.print(f"[red]Error al lanzar: {e}[/red]")
+            self.log.error(f"Phishing launch: {e}", "PhishingModule")
+
+    def _cmd_ducky(self):
+        if not self._modulo_ok("ducky"):
+            return
+        self.ducky.ejecutar_payload()
+
+    def _cmd_stealth(self):
+        if not self._modulo_ok("stealth"):
+            return
+        self.stealth.verificar_identidad()
+
+    def _cmd_panic(self):
+        if not self._modulo_ok("stealth"):
+            return
+        self.stealth.activar_panico()
+
+    def _cmd_netscan(self):
+        self._cmd_scan()
 
     # ── NUEVOS COMANDOS PROFESIONALES ────────────────────────────────
 
-    def _proyecto(self, args: list):
-        """Gestiona subcomandos de proyecto."""
-        if not self._ok("gp"):
+    def _cmd_proyecto(self, args: list):
+        if not self._modulo_ok("gp"):
             return
         sub = args[0] if args else ""
         acciones = {
-            "nuevo":   self.gp.crear_proyecto,
-            "cargar":  self.gp.cargar_proyecto,
-            "lista":   self.gp.listar_proyectos,
-            "list":    self.gp.listar_proyectos,
-            "estado":  self.gp.mostrar_resumen,
-            "status":  self.gp.mostrar_resumen,
-            "cerrar":  self.gp.cerrar_proyecto,
+            "nuevo":  self.gp.crear_proyecto,
+            "cargar": self.gp.cargar_proyecto,
+            "lista":  self.gp.listar_proyectos,
+            "list":   self.gp.listar_proyectos,
+            "estado": self.gp.mostrar_resumen,
+            "cerrar": self.gp.cerrar_proyecto,
         }
         accion = acciones.get(sub)
         if accion:
             accion()
         else:
             self.console.print(
-                "[dim]Subcomandos: "
-                "[bold white]nuevo | cargar | lista | estado | cerrar[/bold white][/dim]"
+                "[dim]Subcomandos: [bold white]nuevo | cargar | lista | estado | cerrar[/bold white][/dim]"
             )
 
-    def _reporte(self, args: list):
-        """Genera reportes del proyecto activo."""
-        if not self._ok("motor_rep"):
-            self.console.print(
-                "[red][!] MotorReportes no disponible. "
-                "¿Existe el archivo MotorReportes.py?[/red]"
-            )
+    def _cmd_reporte(self, args: list):
+        if not self._modulo_ok("motor_rep"):
             return
         sub = args[0] if args else ""
         if sub == "resumen":
@@ -1293,21 +1145,18 @@ class ApexSentinel:
         else:
             self.motor_rep.generar_reporte_completo()
 
-    def _osint(self):
-        """Lanza el motor OSINT interactivo."""
-        if not self._ok("osint"):
+    def _cmd_osint(self):
+        if not self._modulo_ok("osint"):
             return
         self.osint.menu()
 
-    def _cve(self):
-        """Búsqueda manual de CVEs en NVD."""
-        if not self._ok("cve"):
+    def _cmd_cve(self):
+        if not self._modulo_ok("cve"):
             return
         self.cve.busqueda_libre()
 
-    def _jobs(self, args: list):
-        """Gestiona la cola de tareas asíncronas."""
-        if not self._ok("cola"):
+    def _cmd_jobs(self, args: list):
+        if not self._modulo_ok("cola"):
             return
         sub = args[0] if args else ""
         if sub == "resultado" and len(args) > 1:
@@ -1319,9 +1168,8 @@ class ApexSentinel:
         else:
             self.cola.listar()
 
-    def _plugins_cmd(self, args: list):
-        """Administra el sistema de plugins."""
-        if not self._ok("plugins"):
+    def _cmd_plugins(self, args: list):
+        if not self._modulo_ok("plugins"):
             return
         sub = args[0] if args else ""
         if sub == "reload":
@@ -1331,217 +1179,140 @@ class ApexSentinel:
             if p:
                 self.console.print(Panel(p.ayuda(), border_style="green"))
             else:
-                self.console.print(
-                    f"[red][!] Plugin '{args[1]}' no encontrado.[/red]"
-                )
+                self.console.print(f"[red][!] Plugin '{args[1]}' no encontrado.[/red]")
         else:
             self.plugins.listar()
 
-    # ════════════════════════════════════════════════════════════════
-    # DESPACHADOR CENTRAL
-    # ════════════════════════════════════════════════════════════════
+    # ── DESPACHADOR ───────────────────────────────────────────────────
 
     def _despachar(self, entrada: str) -> bool:
-        """
-        Parsea la entrada del operador y ejecuta el comando.
-        Retorna True si fue reconocido, False si no.
-        """
-        partes = entrada.strip().lower().split()
+        partes  = entrada.strip().lower().split()
         if not partes:
             return True
-        cmd = partes[0]
+        cmd  = partes[0]
         args = partes[1:]
 
-        # ── Comandos con subcomandos ──────────────────────────────────
+        # Subcomandos con argumentos
         if cmd == "proyecto":
-            self._proyecto(args)
-            return True
+            self._cmd_proyecto(args); return True
         if cmd == "reporte":
-            self._reporte(args)
-            return True
+            self._cmd_reporte(args); return True
         if cmd in ("job", "jobs"):
-            self._jobs(args)
-            return True
+            self._cmd_jobs(args); return True
         if cmd in ("plugin", "plugins"):
-            self._plugins_cmd(args)
-            return True
-
-        # Caso especial: "locate -p" (dos palabras)
+            self._cmd_plugins(args); return True
         if entrada.strip().lower() == "locate -p":
-            self._locate_p()
-            return True
+            self._cmd_locate_p(); return True
 
-        # ── Tabla principal de comandos ───────────────────────────────
-        TABLA = {
-            # Sistema
-            "help": lambda: mostrar_ayuda(self.console, self.version),
-            "?": lambda: mostrar_ayuda(self.console, self.version),
-            "status":      self._status,
-            "hora": lambda: self.console.print(
-                f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"
-            ),
-            "clear": lambda: mostrar_banner(
-                self.console, self.nombre, self.version, self._iface()
-            ),
-            "cls": lambda: mostrar_banner(
-                self.console, self.nombre, self.version, self._iface()
-            ),
+        # Tabla principal
+        tabla = {
+            "help":        lambda: mostrar_ayuda(self.console, self.version),
+            "?":           lambda: mostrar_ayuda(self.console, self.version),
+            "status":      self._cmd_status,
+            "hora":        lambda: self.console.print(f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
+            "clear":       lambda: mostrar_banner(self.console, self.nombre, self.version, self._iface()),
+            "cls":         lambda: mostrar_banner(self.console, self.nombre, self.version, self._iface()),
             "logs":        self.log.mostrar_historial,
-            "files":       self._files,
-
-            # Red
-            "scan":        self._scan,
-            "netscan":     self._scan,
-            "advscan":     self._advscan,
-            "portscan":    self._portscan,
-            "sweep":       self._sweep,
-            "sniff":       self._sniff,
-            "radar":       self._radar,
-
-            # Auditoría
-            "audit":       self._audit,
-            "vulnscan":    self._vulnscan,
-            "sqlcheck":    self._sqlcheck,
-
-            # Wireless / RF
-            "wifi":        self._wifi,
-            "eviltwin":    self._eviltwin,
-            "rfscan":      self._rfscan,
-            "btjumper": lambda: (self.bt.iniciar_jumper()
-                                 if self._ok("bt") else None),
-
-            # Forense
-            "mobile":      self._mobile,
-            "mobile-deep": self._mobile_deep,
-            "view":        self._view,
-
-            # Intel & Stealth
-            "locate":      self._locate,
-            "geofoto":     self._geofoto,
-            "stealth": lambda: (self.stealth.verificar_identidad()
-                                if self._ok("stealth") else None),
-            "panic": lambda: (self.stealth.activar_panico()
-                              if self._ok("stealth") else None),
-
-            # Ingeniería social
-            "phishing":    self._phishing,
-            "ducky": lambda: (self.ducky.ejecutar_payload()
-                              if self._ok("ducky") else None),
-
-            # Nuevos profesionales
-            "osint":       self._osint,
-            "cve":         self._cve,
+            "files":       self._cmd_files,
+            "scan":        self._cmd_scan,
+            "netscan":     self._cmd_netscan,
+            "advscan":     self._cmd_advscan,
+            "portscan":    self._cmd_portscan,
+            "sweep":       self._cmd_sweep,
+            "sniff":       self._cmd_sniff,
+            "radar":       self._cmd_radar,
+            "audit":       self._cmd_audit,
+            "vulnscan":    self._cmd_vulnscan,
+            "sqlcheck":    self._cmd_sqlcheck,
+            "wifi":        self._cmd_wifi,
+            "eviltwin":    self._cmd_eviltwin,
+            "rfscan":      self._cmd_rfscan,
+            "btjumper":    lambda: self.bt.iniciar_jumper() if self._modulo_ok("bt") else None,
+            "mobile":      self._cmd_mobile,
+            "mobile-deep": self._cmd_mobile_deep,
+            "view":        self._cmd_view,
+            "locate":      self._cmd_locate,
+            "geofoto":     self._cmd_geofoto,
+            "phishing":    self._cmd_phishing,
+            "ducky":       self._cmd_ducky,
+            "stealth":     self._cmd_stealth,
+            "panic":       self._cmd_panic,
+            "osint":       self._cmd_osint,
+            "cve":         self._cmd_cve,
         }
 
-        if cmd in TABLA:
-            TABLA[cmd]()
+        if cmd in tabla:
+            tabla[cmd]()
             return True
 
-        # ── Delegar a plugins ─────────────────────────────────────────
         if self.plugins and self.plugins.tiene_comando(cmd):
             self.plugins.ejecutar_comando(cmd, args)
             return True
 
         return False
 
-    # ════════════════════════════════════════════════════════════════
-    # BUCLE PRINCIPAL
-    # ════════════════════════════════════════════════════════════════
+    # ── BUCLE PRINCIPAL ───────────────────────────────────────────────
 
     def ejecutar(self):
-        """Punto de entrada principal del sistema."""
-
-        # 1. Autenticación
         if not self.auth.solicitar_acceso():
-            self.console.print(
-                "[red][!] Acceso denegado. Sistema bloqueado.[/red]"
-            )
-            self.log.warning("Sistema bloqueado — intentos fallidos.", "Auth")
+            self.console.print("[red][!] Acceso denegado. Sistema bloqueado.[/red]")
+            self.log.warning("Sistema bloqueado por intentos fallidos.", "GestorAuth")
             return
 
-        # 2. Bootscreen animado
-        mostrar_bootloader(
-            self.console, self.nombre, self.version, self._iface()
-        )
+        mostrar_bootloader(self.console, self.nombre, self.version, self._iface())
 
-        # 3. Diagnóstico de dependencias
-        self.console.print(
-            "[bold blue][*] Diagnosticando dependencias del sistema...[/bold blue]"
-        )
+        self.console.print("[bold blue][*] Diagnosticando dependencias...[/bold blue]")
         if self.checker:
             self.checker.verificar_dependencias()
 
-        # 4. Limpieza de logs
         self.log.verificar_y_limpiar()
 
-        # 5. Verificación de identidad stealth
         if self.stealth:
             self.stealth.verificar_identidad()
 
-        # 6. Log de inicio
         self.log.info("Sistema iniciado correctamente.", "ApexSentinel")
 
-        # 7. Sugerencia de proyecto si no hay uno activo
         if self.gp and not self.gp.proyecto_activo:
             self.console.print(
-                "\n[dim][tip] No hay proyecto activo. "
-                "Usa [bold white]proyecto nuevo[/bold white] para crear "
-                "un workspace de operación con trazabilidad completa.[/dim]\n"
+                "\n[dim][tip] Usa [bold white]proyecto nuevo[/bold white] "
+                "para crear un workspace de operación.[/dim]\n"
             )
 
-        # 8. Bucle de comandos
         while True:
             try:
-                # Prompt con nombre de proyecto activo visible
                 plab = ""
                 if self.gp and self.gp.proyecto_activo:
                     plab = f"[{self.gp.proyecto_activo.nombre}]"
-
-                entrada = input(
-                    f"AnubisOS@Sentinel:{plab}~# "
-                ).strip()
-
+                entrada = input(f"AnubisOS@Sentinel:{plab}~# ").strip()
                 if not entrada:
                     continue
-
-                # Salida segura
                 if entrada.lower() == "exit":
-                    self.console.print(
-                        "[yellow][!] Desconectando Sentinel...[/yellow]"
-                    )
-                    self.log.info(
-                        "Sesión cerrada por el operador.", "ApexSentinel")
+                    self.console.print("[yellow][!] Desconectando Sentinel...[/yellow]")
+                    self.log.info("Sesión cerrada por el operador.", "ApexSentinel")
                     time.sleep(0.5)
                     break
-
-                # Despacho
                 if not self._despachar(entrada):
                     self.console.print(
                         f"[yellow][?] Comando '[bold]{entrada}[/bold]' no reconocido. "
                         f"Escribe [bold white]help[/bold white] para ver opciones.[/yellow]"
                     )
-
             except KeyboardInterrupt:
                 self.console.print(
-                    "\n[yellow][!] Operación interrumpida. "
-                    "Usa '[bold white]exit[/bold white]' para cerrar el sistema.[/yellow]"
+                    "\n[yellow][!] Usa 'exit' para cerrar el sistema de forma segura.[/yellow]"
                 )
             except EOFError:
-                # Ctrl+D — cierre limpio
                 break
             except Exception as e:
                 self.console.print(f"[red][!] Error inesperado: {e}[/red]")
-                self.log.error(str(e), "Main")
+                self.log.error(str(e), "Bucle principal")
 
 
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
 # PUNTO DE ENTRADA
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
 
 if __name__ == "__main__":
-    # Crear directorios base si no existen
-    for directorio in ["data/logs", "data/evidence", "plugins"]:
-        os.makedirs(directorio, exist_ok=True)
-
+    for d in ["data/logs", "data/evidence", "plugins"]:
+        os.makedirs(d, exist_ok=True)
     sentinel = ApexSentinel()
     sentinel.ejecutar()
