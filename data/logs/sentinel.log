@@ -11,3 +11,59 @@
 2026-04-24 21:27:40 [ERROR] [Main] 'BluetoothModule' object has no attribute 'beacon_spam'
 2026-04-24 21:29:11 [ERROR] [Main] 'ApexSentinel' object has no attribute 'animar_barra'
 2026-04-24 21:30:05 [INFO] [ApexSentinel] Sesión cerrada por el operador.
+2026-04-28 14:24:25 [WARNING] [Init] PhishingModule falló al iniciar: PhishingModule.__init__() takes 1 positional argument but 2 were given
+2026-04-28 14:24:27 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-28 14:24:30 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 200 None
+2026-04-28 14:25:05 [INFO] [GestorAuth] Acceso concedido.
+2026-04-28 14:25:07 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-28 14:25:07 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-28 14:25:07 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-28 14:25:39 [INFO] [ApexSentinel] Sesión cerrada por el operador.
+2026-04-28 14:59:27 [WARNING] [Init] PhishingModule falló al iniciar: PhishingModule() takes no arguments
+2026-04-28 14:59:28 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-28 14:59:30 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 429 116
+2026-04-28 14:59:42 [INFO] [GestorAuth] Acceso concedido.
+2026-04-28 14:59:44 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-28 14:59:45 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-28 14:59:45 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-28 15:02:20 [WARNING] [Init] PhishingModule falló al iniciar: PhishingModule() takes no arguments
+2026-04-28 15:02:21 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-28 15:02:23 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 429 116
+2026-04-28 15:02:36 [INFO] [GestorAuth] Acceso concedido.
+2026-04-28 15:02:39 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-28 15:02:39 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-28 15:02:39 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-28 15:14:18 [WARNING] [Init] PhishingModule falló al iniciar: PhishingModule() takes no arguments
+2026-04-28 15:14:19 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-28 15:14:22 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 200 None
+2026-04-28 15:14:29 [INFO] [GestorAuth] Acceso concedido.
+2026-04-28 15:14:33 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-28 15:14:33 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-28 15:14:33 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-28 15:26:41 [WARNING] [Init] PhishingModule falló al iniciar: PhishingModule() takes no arguments
+2026-04-28 15:26:42 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-28 15:26:45 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 200 None
+2026-04-28 15:26:57 [INFO] [GestorAuth] Acceso concedido.
+2026-04-28 15:27:01 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-28 15:27:02 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-28 15:27:02 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-28 15:27:10 [ERROR] [Bucle principal] name 'COMANDOS_HELP' is not defined
+2026-04-28 15:27:54 [ERROR] [Bucle principal] name 'COMANDOS_HELP' is not defined
+2026-04-28 15:28:04 [INFO] [NetworkScan] Scan ARP en 192.168.1.0/24: 0 hosts
+2026-04-28 15:33:30 [WARNING] [Init] PhishingModule falló al iniciar: PhishingModule() takes no arguments
+2026-04-28 15:33:31 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-28 15:33:34 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 429 116
+2026-04-28 15:33:40 [INFO] [GestorAuth] Acceso concedido.
+2026-04-28 15:33:44 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-28 15:33:44 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-28 15:33:44 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-28 15:33:47 [ERROR] [Bucle principal] string indices must be integers, not 'str'
+2026-04-28 15:48:02 [WARNING] [Init] PhishingModule falló al iniciar: PhishingModule() takes no arguments
+2026-04-28 15:48:12 [WARNING] [Init] PhishingModule falló al iniciar: PhishingModule() takes no arguments
+2026-04-28 15:48:12 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-28 15:48:15 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 429 116
+2026-04-28 15:48:22 [INFO] [GestorAuth] Acceso concedido.
+2026-04-28 15:48:26 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-28 15:48:26 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-28 15:48:26 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-28 15:48:29 [ERROR] [Despachador] Error al ejecutar help: mostrar_ayuda() got an unexpected keyword argument 'ayuda'
