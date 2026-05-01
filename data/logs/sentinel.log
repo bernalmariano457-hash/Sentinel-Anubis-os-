@@ -67,3 +67,53 @@
 2026-04-28 15:48:26 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
 2026-04-28 15:48:26 [INFO] [ApexSentinel] Sistema iniciado correctamente.
 2026-04-28 15:48:29 [ERROR] [Despachador] Error al ejecutar help: mostrar_ayuda() got an unexpected keyword argument 'ayuda'
+2026-04-30 20:23:33 [WARNING] [Init] PhishingModule falló al iniciar: PhishingModule() takes no arguments
+2026-04-30 20:23:38 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-30 20:23:43 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 429 116
+2026-04-30 20:23:53 [INFO] [GestorAuth] Acceso concedido.
+2026-04-30 20:23:57 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-30 20:23:57 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-30 20:23:58 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-30 20:24:03 [INFO] [ApexSentinel] Sesión terminada por señal del sistema.
+2026-04-30 20:34:57 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-30 20:35:00 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 200 None
+2026-04-30 20:39:52 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-30 20:39:55 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 200 None
+2026-04-30 20:40:16 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-30 20:40:19 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 200 None
+2026-04-30 20:49:14 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-30 20:49:16 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 429 116
+2026-04-30 21:02:31 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-30 21:02:34 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 429 116
+2026-04-30 21:02:43 [INFO] [GestorAuth] Acceso concedido.
+2026-04-30 21:02:47 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-30 21:02:48 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-30 21:02:48 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-30 21:03:24 [ERROR] [Bucle principal] module 'bootscreen' has no attribute 'mostrar_ayuda'
+2026-04-30 21:03:49 [INFO] [NetworkScan] Scan ARP en 192.168.1.0/24: 0 hosts
+2026-04-30 21:04:04 [INFO] [NetworkScan] Scan ARP en 192.168.1.0/24: 0 hosts
+2026-04-30 21:04:32 [INFO] [ApexSentinel] Sesión cerrada por el operador.
+2026-04-30 21:04:32 [INFO] [ApexSentinel] Sesión terminada por señal del sistema.
+2026-04-30 21:30:49 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-30 21:30:52 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 200 None
+2026-04-30 21:31:23 [INFO] [GestorAuth] Acceso concedido.
+2026-04-30 21:31:27 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-30 21:31:27 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-30 21:31:27 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-30 21:35:52 [INFO] [PortScan] PortScan 192.168.1.27: 0 puertos abiertos
+2026-04-30 21:35:57 [INFO] [ApexSentinel] Sesión cerrada por el operador.
+2026-04-30 21:35:57 [INFO] [ApexSentinel] Sesión terminada por señal del sistema.
+2026-04-30 21:42:38 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-30 21:42:41 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 200 None
+2026-04-30 21:44:18 [INFO] [GestorAuth] Acceso concedido.
+2026-04-30 21:44:22 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-30 21:44:22 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-30 21:44:22 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-30 21:46:21 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-04-30 21:46:25 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 200 None
+2026-04-30 21:47:13 [INFO] [GestorAuth] Acceso concedido.
+2026-04-30 21:47:18 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-04-30 21:47:18 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-04-30 21:47:18 [INFO] [ApexSentinel] Sistema iniciado correctamente.
+2026-04-30 21:52:01 [INFO] [ApexSentinel] Sesión cerrada por el operador.
+2026-04-30 21:52:01 [INFO] [ApexSentinel] Sesión terminada por señal del sistema.

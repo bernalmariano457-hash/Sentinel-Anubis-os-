@@ -1,7 +1,6 @@
 """
 AnubisOS — PhishingModule
 Lanzador de zphisher compatible con Windows, Linux y Termux.
-Detecta el sistema operativo automáticamente.
 """
 
 import os
@@ -11,145 +10,124 @@ import subprocess
 
 class PhishingModule:
     """
-    Módulo de lanzamiento de zphisher.
-    Compatible con Windows (Git Bash), Linux y Termux/Android.
-    Acepta sentinel como argumento opcional para integrarse con ApexSentinel.
+    Compatible con Windows (Git Bash), Linux, Termux y uConsole.
+    Detecta el sistema operativo automáticamente.
     """
 
     ZPHISHER_REPO = "https://github.com/htr-tech/zphisher.git"
 
-    def _init_(self, sentinel=None):
-        self.sentinel = sentinel
+    def __init__(self, sentinel=None):
+        self.sentinel  = sentinel
+        self.console   = getattr(sentinel, "console", None)
+        self.log       = getattr(sentinel, "log",     None)
 
-        # Ruta del script
         self.script_path = os.path.join(
             os.getcwd(), "tools", "zphisher", "zphisher.sh"
         )
 
-        # Ruta de bash según el sistema operativo
+        # Bash según plataforma
         if sys.platform == "win32":
-            # Windows — buscar Git Bash en rutas comunes
             posibles = [
                 r"C:\Program Files\Git\bin\bash.exe",
                 r"C:\Program Files (x86)\Git\bin\bash.exe",
-                os.path.expanduser(
-                    r"~\AppData\Local\Programs\Git\bin\bash.exe"),
+                os.path.expandvars(r"%LOCALAPPDATA%\Programs\Git\bin\bash.exe"),
             ]
             self.bash_path = next(
                 (p for p in posibles if os.path.exists(p)), None
             )
         else:
-            # Linux / Termux / uConsole — bash nativo
             self.bash_path = "bash"
 
-    # ------------------------------------------------------------------
-    # API pública
-    # ------------------------------------------------------------------
+    # ── helpers ──────────────────────────────────────────────────────
+
+    def _print(self, msg: str):
+        if self.console:
+            self.console.print(msg)
+        else:
+            import re
+            print(re.sub(r"\[.*?\]", "", msg))
+
+    def _log_error(self, msg: str):
+        if self.log:
+            self.log.error(msg, "PhishingModule")
+
+    def _log_audit(self, msg: str):
+        if self.log:
+            self.log.audit(msg, "PhishingModule")
+
+    def _zphisher_instalado(self) -> bool:
+        return os.path.exists(self.script_path)
+
+    def _instalar_zphisher(self) -> bool:
+        destino = os.path.join(os.getcwd(), "tools", "zphisher")
+        self._print("[yellow][!] zphisher no encontrado. Clonando desde GitHub...[/yellow]")
+        try:
+            os.makedirs(os.path.join(os.getcwd(), "tools"), exist_ok=True)
+            subprocess.run(
+                ["git", "clone", self.ZPHISHER_REPO, destino],
+                check=True, timeout=60
+            )
+            if sys.platform != "win32":
+                subprocess.run(["chmod", "+x", self.script_path], check=True)
+            self._print("[green][+] zphisher instalado correctamente.[/green]")
+            return True
+        except subprocess.TimeoutExpired:
+            self._print("[red][!] Timeout. Verifica tu conexión.[/red]")
+        except Exception as e:
+            self._print(f"[red][!] Error al instalar zphisher: {e}[/red]")
+            self._log_error(f"Install: {e}")
+        return False
+
+    def _verificar_bash_windows(self) -> bool:
+        if self.bash_path is None:
+            self._print(
+                "[red][!] Git Bash no encontrado en Windows.[/red]\n"
+                "[dim]Instala Git desde:[/dim] [cyan]https://git-scm.com[/cyan]"
+            )
+            return False
+        return True
+
+    # ── API pública ───────────────────────────────────────────────────
 
     def lanzar(self):
-        """Lanza zphisher con detección automática de entorno."""
-        self._verificar_instalacion()
+        """Lanza zphisher detectando el OS automáticamente."""
+        if not self._zphisher_instalado():
+            if not self._instalar_zphisher():
+                return
 
-        if not os.path.exists(self.script_path):
-            self._mostrar_error_instalacion()
-            return False
+        if sys.platform == "win32" and not self._verificar_bash_windows():
+            return
 
-        if sys.platform == "win32" and not self.bash_path:
-            self._mostrar_error_bash()
-            return False
+        self._print("\n[bold red][!][/bold red] Iniciando Suite de Phishing...")
+        self._log_audit("Suite de phishing iniciada")
 
         try:
-            self._log("[!] Iniciando Suite de Phishing...")
-            subprocess.run([self.bash_path, self.script_path], check=True)
-            return True
-
-        except subprocess.CalledProcessError as e:
-            self._log(f"[!] zphisher terminó con error: {e}")
-            return False
-
-        except FileNotFoundError:
-            self._log("[!] No se encontró el intérprete bash.")
             if sys.platform == "win32":
-                self._mostrar_error_bash()
-            return False
+                subprocess.run([self.bash_path, self.script_path], check=True)
+            else:
+                subprocess.run(["bash", self.script_path], check=True)
 
-        except Exception as e:
-            self._log(f"[!] Error inesperado al lanzar phishing: {e}")
-            return False
-
-    def instalar(self):
-        """Clona zphisher si no está instalado."""
-        ruta_tools = os.path.join(os.getcwd(), "tools")
-        ruta_dest = os.path.join(ruta_tools, "zphisher")
-
-        if os.path.exists(self.script_path):
-            self._log("[+] zphisher ya está instalado.")
-            return True
-
-        os.makedirs(ruta_tools, exist_ok=True)
-        self._log("[*] Descargando zphisher...")
-
-        try:
-            subprocess.run(
-                ["git", "clone", self.ZPHISHER_REPO, ruta_dest],
-                check=True
-            )
-            # Dar permisos de ejecución en Linux/Termux
-            if sys.platform != "win32":
-                subprocess.run(
-                    ["chmod", "+x", self.script_path], check=True
-                )
-            self._log("[+] zphisher instalado correctamente.")
-            return True
-
-        except subprocess.CalledProcessError as e:
-            self._log(f"[!] Error al clonar zphisher: {e}")
-            return False
-
+        except KeyboardInterrupt:
+            self._print("\n[yellow][!] Phishing detenido por el operador.[/yellow]")
         except FileNotFoundError:
-            self._log("[!] Git no está instalado. Instálalo primero.")
-            return False
-
-    def estado(self) -> dict:
-        """Retorna el estado actual del módulo."""
-        return {
-            "instalado":   os.path.exists(self.script_path),
-            "script_path": self.script_path,
-            "bash_path":   self.bash_path,
-            "plataforma":  sys.platform,
-        }
-
-    # ------------------------------------------------------------------
-    # Internos
-    # ------------------------------------------------------------------
-
-    def _verificar_instalacion(self):
-        """Ofrece instalar zphisher si no está presente."""
-        if not os.path.exists(self.script_path):
-            self._log(
-                f"[!] zphisher no encontrado en: {self.script_path}\n"
-                f"    Ejecuta: git clone {self.ZPHISHER_REPO} tools/zphisher"
+            self._print(
+                "[red][!] bash no encontrado.[/red]\n"
+                "[dim]En Termux: pkg install bash[/dim]"
             )
+            self._log_error("bash no encontrado")
+        except subprocess.CalledProcessError as e:
+            self._print(f"[red][!] zphisher terminó con error: {e}[/red]")
+            self._log_error(f"zphisher: {e}")
+        except Exception as e:
+            self._print(f"[red][!] Error inesperado: {e}[/red]")
+            self._log_error(f"Launch: {e}")
 
-    def _mostrar_error_instalacion(self):
-        self._log(
-            "[!] zphisher no está instalado.\n"
-            "    Instálalo con:\n"
-            f"    git clone {self.ZPHISHER_REPO} tools/zphisher"
+    def estado(self):
+        """Muestra el estado del módulo."""
+        instalado = self._zphisher_instalado()
+        self._print(
+            f"[cyan]zphisher:[/cyan]   {'[green]Instalado[/green]' if instalado else '[red]No instalado[/red]'}\n"
+            f"[cyan]Script:[/cyan]     {self.script_path}\n"
+            f"[cyan]Bash:[/cyan]       {self.bash_path or 'No encontrado'}\n"
+            f"[cyan]Plataforma:[/cyan] {sys.platform}"
         )
-
-    def _mostrar_error_bash(self):
-        self._log(
-            "[!] Git Bash no encontrado en Windows.\n"
-            "    Descárgalo desde: https://git-scm.com/download/win\n"
-            "    O instala WSL para usar bash nativo."
-        )
-
-    def _log(self, mensaje: str):
-        """Usa el logger del sentinel si está disponible, sino print."""
-        if self.sentinel and hasattr(self.sentinel, "log"):
-            self.sentinel.log.info(mensaje, "PhishingModule")
-        elif self.sentinel and hasattr(self.sentinel, "console"):
-            self.sentinel.console.print(f"[red]{mensaje}[/red]")
-        else:
-            print(mensaje)
