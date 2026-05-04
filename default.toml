@@ -1,0 +1,91 @@
+# ══════════════════════════════════════════════════════════════════
+# RFScanner — Configuración principal
+# Edita este archivo y copia a config/local.toml para personalizar.
+# Los valores de local.toml sobreescriben este archivo.
+# ══════════════════════════════════════════════════════════════════
+
+[hardware]
+# Índice del dispositivo RTL-SDR (0 = primero detectado)
+device_index        = 0
+# Corrección de frecuencia en PPM (calibrar con señal conocida)
+ppm_correction      = 0
+# Ganancia en dB. "auto" para AGC automático, o valor 0-49.6
+gain                = 40
+# Bias-T (alimentación 4.5V por el conector SMA) — solo RTL-SDR Blog v3/v4
+bias_tee            = false
+# Timeout para detección de hardware al arranque (segundos)
+detect_timeout_s    = 5
+# Intentos de reconexión USB antes de abortar
+reconnect_attempts  = 5
+# Segundos entre intentos de reconexión
+reconnect_delay_s   = 2.0
+
+[dsp]
+# Frecuencia de muestreo en Hz. Valores válidos RTL-SDR:
+# 250000, 1024000, 1536000, 1792000, 1920000, 2048000, 2160000,
+# 2560000, 2880000, 3200000
+sample_rate         = 2048000
+# Tamaño de la FFT en puntos (potencia de 2: 512, 1024, 2048, 4096)
+fft_size            = 2048
+# Número de muestras por lectura del hardware
+samples_per_read    = 524288
+# Ventana DSP: "blackman", "hann", "hamming", "flattop"
+window              = "blackman"
+# Umbral SNR mínimo sobre piso de ruido para declarar señal (dB)
+snr_threshold_db    = 8.0
+# Celdas de guarda CFAR (bins a cada lado del pico a ignorar)
+cfar_guard_cells    = 4
+# Celdas de referencia CFAR para estimar piso de ruido
+cfar_ref_cells      = 16
+# Eliminar spike DC central del RTL-SDR
+dc_spike_removal    = true
+# Número de bloques Welch para promediar (más = más estable, más lento)
+welch_blocks        = 8
+
+[scan]
+# Duración por defecto de escaneo continuo (segundos)
+default_duration_s  = 10
+# Tiempo de permanencia por frecuencia en barrido (ms)
+default_dwell_ms    = 100
+# Paso por defecto en barrido de espectro (MHz)
+default_step_mhz    = 0.5
+# Frecuencia de referencia para calibración (MHz)
+cal_reference_mhz   = 433.92
+# Pausa de estabilización del sintonizador tras cambio de frecuencia (ms)
+tune_settle_ms      = 50
+
+[storage]
+# Directorio raíz para evidencias y grabaciones
+evidence_dir        = "data/evidence/rf"
+# Base de datos SQLite para historial de señales
+database_path       = "data/rfscanner.db"
+# Formato de archivos IQ: "cf32" (float32 complejo, compatible GNU Radio)
+iq_format           = "cf32"
+# Escribir metadatos SigMF junto a cada grabación IQ
+sigmf_metadata      = true
+# Comprimir CSV exportados con gzip
+compress_csv        = false
+# Máximo de señales a mantener en memoria por sesión
+session_max_signals = 10000
+
+[display]
+# Ancho del gráfico de espectro ASCII en caracteres
+spectrum_width      = 64
+# Alto del gráfico de espectro ASCII en líneas
+spectrum_height     = 14
+# Número de filas del waterfall
+waterfall_rows      = 16
+# Rango dinámico mínimo del eje Y en dBm
+dbm_floor           = -110.0
+# Rango dinámico máximo del eje Y en dBm
+dbm_ceil            = -10.0
+
+[logging]
+# Nivel: "DEBUG", "INFO", "WARNING", "ERROR"
+level               = "INFO"
+# Archivo de log (vacío = solo consola)
+log_file            = "data/rfscanner.log"
+# Rotar log al alcanzar este tamaño (bytes). 0 = sin rotación
+log_max_bytes       = 5242880
+# Número de archivos de backup en rotación
+log_backup_count    = 3

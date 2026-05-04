@@ -1,0 +1,73 @@
+# ═══════════════════════════════════════════════════════════
+# RFScanner — Configuración persistente
+# uConsole (Kali Linux ARM) + RTL-SDR / HackRF
+# ═══════════════════════════════════════════════════════════
+
+[hardware]
+# Índice del dispositivo SDR (0 = primero detectado)
+device_index    = 0
+# Corrección de frecuencia en partes por millón
+# Calibrar con: python -m rfscanner calibrate --ref 433.92
+ppm_correction  = 0
+# Ganancia en dB. RTL-SDR: 0-49.6. "auto" para AGC.
+gain_db         = 40
+# Sample rate en Hz. RTL-SDR soporta: 0.25M, 1.024M, 2.048M, 2.56M
+sample_rate     = 2048000
+# Bias-T para alimentar LNA externo (RTL-SDR Blog V3/V4 solamente)
+bias_tee        = false
+
+[dsp]
+# Tamaño FFT — potencia de 2. Mayor = mejor resolución frecuencial
+fft_size        = 2048
+# Ventana: blackman | hann | hamming | flattop
+window          = "blackman"
+# SNR mínimo sobre piso de ruido local para considerar señal (dB)
+snr_threshold   = 8.0
+# Muestras por bloque de lectura
+samples_per_read = 524288
+# Celdas de guarda CFAR (bins a ignorar alrededor del pico)
+cfar_guard      = 4
+# Ventana de referencia CFAR (bins para estimar piso de ruido)
+cfar_ref        = 16
+# Suprimir spike DC central (siempre recomendado con RTL-SDR)
+dc_spike_remove = true
+
+[demod]
+# Modo por defecto: none | wfm | nfm | am | usb | lsb
+mode            = "none"
+# Sample rate de audio de salida (Hz)
+audio_rate      = 48000
+# Volumen 0.0-1.0
+volume          = 0.8
+# Guardar audio demodulado en disco
+save_audio      = false
+
+[storage]
+# Directorio raíz para evidencias y bases de datos
+data_dir        = "data/rf"
+# Días que conservar registros en SQLite (0 = indefinido)
+db_retention_days = 0
+# Comprimir archivos IQ tras grabación
+compress_iq     = false
+
+[display]
+# Filas del waterfall
+waterfall_rows  = 16
+# Ancho en caracteres del espectro ASCII
+spectrum_width  = 64
+# Alto en filas del espectro ASCII
+spectrum_height = 14
+# Rango dBm mínimo del eje Y
+dbm_floor       = -110.0
+# Rango dBm máximo del eje Y
+dbm_ceil        = -10.0
+
+[logging]
+# Nivel: DEBUG | INFO | WARNING | ERROR
+level           = "INFO"
+# Archivo de log (vacío = solo consola)
+file            = "data/rf/rfscanner.log"
+# Rotación: tamaño máximo en MB antes de rotar
+max_mb          = 10
+# Número de backups a conservar
+backup_count    = 3

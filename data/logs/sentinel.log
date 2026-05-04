@@ -117,3 +117,9 @@
 2026-04-30 21:47:18 [INFO] [ApexSentinel] Sistema iniciado correctamente.
 2026-04-30 21:52:01 [INFO] [ApexSentinel] Sesión cerrada por el operador.
 2026-04-30 21:52:01 [INFO] [ApexSentinel] Sesión terminada por señal del sistema.
+2026-05-03 21:09:13 [DEBUG] Starting new HTTPS connection (1): ipapi.co:443
+2026-05-03 21:09:16 [DEBUG] https://ipapi.co:443 "GET /json/ HTTP/1.1" 429 116
+2026-05-03 21:09:31 [INFO] [GestorAuth] Acceso concedido.
+2026-05-03 21:09:35 [DEBUG] Starting new HTTP connection (1): ip-api.com:80
+2026-05-03 21:09:35 [DEBUG] http://ip-api.com:80 "GET /json/?fields=status,country,city,isp,query,as HTTP/1.1" 200 159
+2026-05-03 21:09:35 [INFO] [ApexSentinel] Sistema iniciado correctamente.
