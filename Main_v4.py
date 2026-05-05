@@ -1,21 +1,22 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║         APEX SENTINEL — ANUBIS OS  v2.2                         ║
-║         Main integrado · Arquitectura profesional completa      ║
+║         APEX SENTINEL — ANUBIS OS  v2.2                          ║
+║         Main integrado · Arquitectura profesional completa       ║
 ║                                                                  ║
-║  Módulos RF integrados:                                          ║
-║    RFScanner   — scanner principal con hardware real             ║
-║    DSPEngine   — motor FFT/CFAR (dsp.py)                        ║
-║    Demodulator — AM/NFM/WFM/USB/LSB (rf_demod.py)               ║
-║    MockSDR     — tests sin hardware (rf_mock.py)                 ║
-║    RFDatabase  — persistencia SQLite (rf_database.py)            ║
-║    bands       — base de datos de bandas (bands.py)              ║
-║    Config      — configuración TOML (config.py)                  ║
-║    Logger      — logging estructurado (logger.py)                ║
+║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
-
 from __future__ import annotations
+from rich.text import Text
+from rich.table import Table
+from rich.rule import Rule
+from rich.prompt import Prompt
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.panel import Panel
+from rich.console import Console
+from rich.columns import Columns
+from rich.align import Align
+from rich import box
 
 import csv
 import ipaddress
@@ -45,16 +46,6 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 # ── Rich ─────────────────────────────────────────────────────────────
-from rich import box
-from rich.align import Align
-from rich.columns import Columns
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
-from rich.prompt import Prompt
-from rich.rule import Rule
-from rich.table import Table
-from rich.text import Text
 
 # ── Autenticación ────────────────────────────────────────────────────
 try:
@@ -64,13 +55,16 @@ except ImportError:
     _BCRYPT_OK = False
 
 # ── Importaciones opcionales del sistema Sentinel ───────────────────
+
+
 def _importar(modulo: str, clase: str):
     """Importa una clase de forma segura; retorna None si falla."""
     try:
         m = __import__(modulo, fromlist=[clase])
         return getattr(m, clase)
     except Exception as exc:
-        logging.getLogger("sentinel").debug(f"[IMPORT] {clase} ({modulo}): {exc}")
+        logging.getLogger("sentinel").debug(
+            f"[IMPORT] {clase} ({modulo}): {exc}")
         return None
 
 
@@ -91,12 +85,12 @@ except ImportError:
         "WARNING": ("yellow", "⚠"),
         "ERROR":   ("red",    "✖"),
         "SUCCESS": ("green",  "✔"),
-        "AUDIT":   ("magenta","🔍"),
+        "AUDIT":   ("magenta", "🔍"),
         "DEBUG":   ("dim",    "·"),
     }
-    MODULOS_BOOT   = []
-    ANUBIS_ART     = ""
-    COMANDOS_HELP  = {}
+    MODULOS_BOOT = []
+    ANUBIS_ART = ""
+    COMANDOS_HELP = {}
 
     def mostrar_bootloader(console, nombre, version, iface):
         console.print(Panel(f"[bold green]{nombre} v{version}[/bold green]",
@@ -149,8 +143,10 @@ try:
     _RF_LOGGER_OK = True
 except ImportError:
     _RF_LOGGER_OK = False
+
     def _rf_get_logger(name):  # type: ignore
         return logging.getLogger(name)
+
     def _rf_setup_logger(**kw):  # type: ignore
         return logging.getLogger("rfscanner")
 
@@ -166,27 +162,27 @@ try:
     _BANDS_OK = True
 except ImportError:
     _BANDS_OK = False
-    BANDAS_RF     = []
-    COLORES_TIPO  = {}
+    BANDAS_RF = []
+    COLORES_TIPO = {}
     def identify_band(freq_mhz): return None  # type: ignore
-    def bands_in_range(a, b):    return []  # type: ignore
-    def tactical_bands():        return []  # type: ignore
+    def bands_in_range(a, b): return []  # type: ignore
+    def tactical_bands(): return []  # type: ignore
 
 # ── dsp.py ───────────────────────────────────────────────────────────
 try:
     from dsp import DSPEngine, Signal as RFSignal
     _DSP_OK = True
 except ImportError:
-    _DSP_OK     = False
-    DSPEngine   = None  # type: ignore
-    RFSignal    = None  # type: ignore
+    _DSP_OK = False
+    DSPEngine = None  # type: ignore
+    RFSignal = None  # type: ignore
 
 # ── rf_demod.py ──────────────────────────────────────────────────────
 try:
     from rf_demod import Demodulator
     _DEMOD_OK = True
 except ImportError:
-    _DEMOD_OK   = False
+    _DEMOD_OK = False
     Demodulator = None  # type: ignore
 
 # ── rf_mock.py ───────────────────────────────────────────────────────
@@ -194,9 +190,9 @@ try:
     from rf_mock import MockSDRManager, SyntheticSignal, generate_fixture
     _MOCK_OK = True
 except ImportError:
-    _MOCK_OK         = False
-    MockSDRManager   = None  # type: ignore
-    SyntheticSignal  = None  # type: ignore
+    _MOCK_OK = False
+    MockSDRManager = None  # type: ignore
+    SyntheticSignal = None  # type: ignore
     generate_fixture = None  # type: ignore
 
 # ── rf_database.py ───────────────────────────────────────────────────
@@ -204,7 +200,7 @@ try:
     from rf_database import RFDatabase
     _RFDB_OK = True
 except ImportError:
-    _RFDB_OK   = False
+    _RFDB_OK = False
     RFDatabase = None  # type: ignore
 
 # ── RFScanner hardware real ──────────────────────────────────────────
@@ -213,11 +209,11 @@ try:
     _RFSCANNER_OK = True
 except ImportError:
     _RFSCANNER_OK = False
-    RFScanner     = None  # type: ignore
-    MotorDSP      = None  # type: ignore
-    Renderizador  = None  # type: ignore
-    ConfigSDR     = None  # type: ignore
-    BANDAS        = []
+    RFScanner = None  # type: ignore
+    MotorDSP = None  # type: ignore
+    Renderizador = None  # type: ignore
+    ConfigSDR = None  # type: ignore
+    BANDAS = []
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -243,24 +239,24 @@ class RFModuleIntegrado:
     """
 
     # ── Constantes de visualización ───────────────────────────────────
-    WATERFALL_CHARS  = " ·░▒▓█"
-    DB_MIN           = -110.0
-    DB_MAX           = -20.0
-    WATERFALL_ANCHO  = 64
-    WATERFALL_ALTO   = 14
+    WATERFALL_CHARS = " ·░▒▓█"
+    DB_MIN = -110.0
+    DB_MAX = -20.0
+    WATERFALL_ANCHO = 64
+    WATERFALL_ALTO = 14
     UMBRAL_MARGEN_DB = 12.0
-    UMBRAL_ABS_DBM   = -85.0
-    PICOS_MAX        = 20
-    PROMEDIO_N       = 3
-    WATERFALL_ROWS   = 15
-    SAMPLES_N        = 512 * 1024
-    EXPORT_PATH      = Path("data/evidence/rf")
+    UMBRAL_ABS_DBM = -85.0
+    PICOS_MAX = 20
+    PROMEDIO_N = 3
+    WATERFALL_ROWS = 15
+    SAMPLES_N = 512 * 1024
+    EXPORT_PATH = Path("data/evidence/rf")
 
     def __init__(self, sentinel):
         self.sentinel = sentinel
-        self.console  = getattr(sentinel, "console", Console())
-        self.log_s    = getattr(sentinel, "log",     None)
-        self.gp       = getattr(sentinel, "gp",      None)
+        self.console = getattr(sentinel, "console", Console())
+        self.log_s = getattr(sentinel, "log",     None)
+        self.gp = getattr(sentinel, "gp",      None)
 
         # ── Logger RF propio ─────────────────────────────────────────
         self._log = _rf_get_logger("rfscanner.main")
@@ -289,7 +285,7 @@ class RFModuleIntegrado:
         )
 
         # ── Hardware SDR (real o mock) ───────────────────────────────
-        self._scanner: Optional[RFScanner]     = None  # scanner original
+        self._scanner: Optional[RFScanner] = None  # scanner original
         self._mock:    Optional[MockSDRManager] = None
         self.hw_nombre = "Sin inicializar"
         self.hw_disponible = False
@@ -310,10 +306,10 @@ class RFModuleIntegrado:
         self._render: Optional[Renderizador] = None
 
         # ── Estado de sesión ─────────────────────────────────────────
-        self._waterfall       = deque(maxlen=self.WATERFALL_ROWS)
+        self._waterfall = deque(maxlen=self.WATERFALL_ROWS)
         self._senales_sesion: list = []
         self._capturas_sesion = 0
-        self._lock            = threading.Lock()
+        self._lock = threading.Lock()
 
         # ── Inicializar todos los subsistemas ────────────────────────
         self._inicializar_subsistemas()
@@ -365,7 +361,8 @@ class RFModuleIntegrado:
                 from config import DemodConfig as _DemodC
                 demod_cfg = self.cfg.demod if self.cfg else _DemodC()
                 self._demod = Demodulator(demod_cfg, self.sample_rate)
-                self._log.debug(f"Demodulator inicializado — modo={demod_cfg.mode}")
+                self._log.debug(
+                    f"Demodulator inicializado — modo={demod_cfg.mode}")
             except Exception as e:
                 self._log.warning(f"Demodulator: {e}")
 
@@ -398,7 +395,7 @@ class RFModuleIntegrado:
             try:
                 self._scanner = RFScanner(self.sentinel)
                 if self._scanner.sdr is not None:
-                    self.hw_nombre     = self._scanner.hw_nombre
+                    self.hw_nombre = self._scanner.hw_nombre
                     self.hw_disponible = True
                     self._print(
                         f"[green][+] RF Hardware real — {self.hw_nombre}[/green]"
@@ -421,15 +418,18 @@ class RFModuleIntegrado:
                 # Añadir señales de demo
                 if SyntheticSignal:
                     self._mock.add_signal(
-                        SyntheticSignal(freq_offset=0,     power_dbm=-60, mode="nfm")
+                        SyntheticSignal(freq_offset=0,
+                                        power_dbm=-60, mode="nfm")
                     )
                     self._mock.add_signal(
-                        SyntheticSignal(freq_offset=50e3,  power_dbm=-70, mode="wfm")
+                        SyntheticSignal(freq_offset=50e3,
+                                        power_dbm=-70, mode="wfm")
                     )
                     self._mock.add_signal(
-                        SyntheticSignal(freq_offset=-30e3, power_dbm=-75, mode="am")
+                        SyntheticSignal(freq_offset=-30e3,
+                                        power_dbm=-75, mode="am")
                     )
-                self.hw_nombre     = "MockSDR (sin hardware real)"
+                self.hw_nombre = "MockSDR (sin hardware real)"
                 self.hw_disponible = True
                 self._print(
                     "[yellow][!] Sin hardware SDR real — usando MockSDR "
@@ -440,7 +440,7 @@ class RFModuleIntegrado:
             except Exception as e:
                 self._log.warning(f"MockSDR: {e}")
 
-        self.hw_nombre     = "SIN HARDWARE"
+        self.hw_nombre = "SIN HARDWARE"
         self.hw_disponible = False
         self._print(
             "[red][!] No se pudo inicializar ningún backend RF.\n"
@@ -450,7 +450,7 @@ class RFModuleIntegrado:
     # ── Captura de muestras ──────────────────────────────────────────
 
     def _capturar(self, freq_hz: float,
-                   n_samples: Optional[int] = None) -> Optional["np.ndarray"]:
+                  n_samples: Optional[int] = None) -> Optional["np.ndarray"]:
         """
         Captura muestras IQ desde hardware real o mock.
         Siempre retorna complex64 o None.
@@ -518,7 +518,7 @@ class RFModuleIntegrado:
         if self._dsp_avanzado is not None:
             try:
                 freqs, psd = self._dsp_avanzado.compute_psd(muestras)
-                signals    = self._dsp_avanzado.detect_peaks(
+                signals = self._dsp_avanzado.detect_peaks(
                     freqs, psd, freq_hz
                 )
                 # Convertir Signal dataclass a dict
@@ -537,7 +537,8 @@ class RFModuleIntegrado:
                     })
                 return freqs, psd, picos
             except Exception as e:
-                self._log.warning(f"DSPEngine avanzado: {e} — usando MotorDSP básico")
+                self._log.warning(
+                    f"DSPEngine avanzado: {e} — usando MotorDSP básico")
 
         # Fallback: MotorDSP básico (RFScanner.py)
         if self._dsp_basico is not None:
@@ -551,11 +552,16 @@ class RFModuleIntegrado:
                 # Añadir mod_hint al formato dict básico
                 for p in picos:
                     bw = p.get("bw_khz", 0)
-                    if bw < 5:       p["mod_hint"] = "NFM/CW"
-                    elif bw < 12:    p["mod_hint"] = "NFM"
-                    elif bw < 20:    p["mod_hint"] = "AM"
-                    elif bw < 35:    p["mod_hint"] = "WFM"
-                    else:            p["mod_hint"] = "WFM/DATA"
+                    if bw < 5:
+                        p["mod_hint"] = "NFM/CW"
+                    elif bw < 12:
+                        p["mod_hint"] = "NFM"
+                    elif bw < 20:
+                        p["mod_hint"] = "AM"
+                    elif bw < 35:
+                        p["mod_hint"] = "WFM"
+                    else:
+                        p["mod_hint"] = "WFM/DATA"
                 return freqs, psd, picos
             except Exception as e:
                 self._log.error(f"MotorDSP básico: {e}")
@@ -576,8 +582,8 @@ class RFModuleIntegrado:
     def _exportar_csv(self, picos: list, freq_mhz: float):
         """Exporta picos a CSV en data/evidence/rf/."""
         self.EXPORT_PATH.mkdir(parents=True, exist_ok=True)
-        ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fn  = self.EXPORT_PATH / f"scan_{freq_mhz:.3f}MHz_{ts}.csv"
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fn = self.EXPORT_PATH / f"scan_{freq_mhz:.3f}MHz_{ts}.csv"
         try:
             with open(fn, "w", newline="", encoding="utf-8") as f:
                 campos = ["freq_mhz", "potencia", "snr_db", "bw_khz",
@@ -594,11 +600,12 @@ class RFModuleIntegrado:
             self._log.error(f"CSV export: {e}")
 
     def _exportar_csv_barrido(self, resultados: list,
-                               freq_ini: float, freq_fin: float):
+                              freq_ini: float, freq_fin: float):
         """Exporta resultados de barrido a CSV."""
         self.EXPORT_PATH.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fn = self.EXPORT_PATH / f"sweep_{freq_ini:.0f}-{freq_fin:.0f}MHz_{ts}.csv"
+        fn = self.EXPORT_PATH / \
+            f"sweep_{freq_ini:.0f}-{freq_fin:.0f}MHz_{ts}.csv"
         try:
             with open(fn, "w", newline="", encoding="utf-8") as f:
                 w = csv.DictWriter(f, fieldnames=[
@@ -619,7 +626,7 @@ class RFModuleIntegrado:
             self._log.error(f"CSV barrido: {e}")
 
     def _registrar_en_proyecto(self, freq_mhz: float,
-                                picos: list, duracion: float):
+                               picos: list, duracion: float):
         """Registra evidencia y hallazgos en el GestorProyectos."""
         if not self.gp or not picos:
             return
@@ -662,9 +669,9 @@ class RFModuleIntegrado:
     # ── Renderizado ──────────────────────────────────────────────────
 
     def _render_espectro(self, freqs_hz: "np.ndarray",
-                          psd_dbm: "np.ndarray",
-                          freq_centro_mhz: float,
-                          picos: list) -> Panel:
+                         psd_dbm: "np.ndarray",
+                         freq_centro_mhz: float,
+                         picos: list) -> Panel:
         """Delega al Renderizador de RFScanner si disponible."""
         if self._render is not None:
             try:
@@ -706,9 +713,9 @@ class RFModuleIntegrado:
         tb.add_column("Mod. est.",   min_width=10)
         tb.add_column("Banda",       min_width=18)
         for p in picos:
-            banda  = p.get("banda")
-            b_str  = f"[{banda['color']}]{banda['nombre']}[/{banda['color']}]" \
-                     if banda else "—"
+            banda = p.get("banda")
+            b_str = f"[{banda['color']}]{banda['nombre']}[/{banda['color']}]" \
+                if banda else "—"
             potencia_txt = Text(f"{p['potencia']:.1f} dBm",
                                 style="bold red" if p["potencia"] > -50
                                 else "yellow" if p["potencia"] > -70
@@ -727,7 +734,7 @@ class RFModuleIntegrado:
                      box=box.HEAVY_HEAD)
 
     def _render_resumen(self, freq_mhz: float, picos: list,
-                         duracion: float, iteraciones: int) -> Panel:
+                        duracion: float, iteraciones: int) -> Panel:
         if self._render is not None and hasattr(self._render, "resumen_escaneo"):
             try:
                 return self._render.resumen_escaneo(
@@ -774,14 +781,15 @@ class RFModuleIntegrado:
           8. Exporta CSV y registra en proyecto
         """
         if not self.hw_disponible:
-            self._print("[red][!] RF no disponible. Verifica hardware o instalación.[/red]")
+            self._print(
+                "[red][!] RF no disponible. Verifica hardware o instalación.[/red]")
             return
         if not _NP_OK:
             self._print("[red][!] numpy no instalado: pip install numpy[/red]")
             return
 
         freq_hz = freq_mhz * 1e6
-        banda   = self._identificar_banda(freq_mhz)
+        banda = self._identificar_banda(freq_mhz)
 
         self._print()
         if banda:
@@ -816,8 +824,8 @@ class RFModuleIntegrado:
             except Exception:
                 pass
 
-        inicio     = time.time()
-        iteracion  = 0
+        inicio = time.time()
+        iteracion = 0
         todos_picos: list = []
 
         try:
@@ -908,7 +916,8 @@ class RFModuleIntegrado:
         # ── Resumen ─────────────────────────────────────────────────
         self.console.print()
         self.console.print(
-            self._render_resumen(freq_mhz, todos_picos, duracion_real, iteracion)
+            self._render_resumen(freq_mhz, todos_picos,
+                                 duracion_real, iteracion)
         )
 
         # ── Persistencia ─────────────────────────────────────────────
@@ -935,8 +944,8 @@ class RFModuleIntegrado:
             )
 
     def barrido_espectro(self, freq_ini_mhz: float,
-                          freq_fin_mhz: float,
-                          paso_mhz: float = 1.0):
+                         freq_fin_mhz: float,
+                         paso_mhz: float = 1.0):
         """
         Barre un rango de frecuencias y genera mapa de actividad RF.
         Captura una muestra por frecuencia y reporta potencia máxima y SNR.
@@ -959,18 +968,19 @@ class RFModuleIntegrado:
                 if muestras is None:
                     break
 
-                _, psd, _ = self._calcular_psd_y_picos(muestras, float(freq) * 1e6)
+                _, psd, _ = self._calcular_psd_y_picos(
+                    muestras, float(freq) * 1e6)
                 if psd is None:
                     continue
 
                 if self._dsp_basico:
-                    piso    = self._dsp_basico.estimar_piso_ruido(psd)
+                    piso = self._dsp_basico.estimar_piso_ruido(psd)
                 else:
                     piso = float(np.median(psd))
 
                 pot_max = float(np.max(psd))
-                snr     = pot_max - piso
-                banda   = self._identificar_banda(float(freq))
+                snr = pot_max - piso
+                banda = self._identificar_banda(float(freq))
 
                 resultados.append({
                     "freq_mhz": round(float(freq), 3),
@@ -980,7 +990,7 @@ class RFModuleIntegrado:
                     "banda":    banda,
                 })
 
-                pct   = int((i + 1) / len(freqs) * 50)
+                pct = int((i + 1) / len(freqs) * 50)
                 barra = "█" * pct + "─" * (50 - pct)
                 banda_n = banda["nombre"] if banda else "—"
                 print(
@@ -1038,11 +1048,11 @@ class RFModuleIntegrado:
         tb.add_column("Banda",       min_width=18)
 
         for r in sorted(resultados, key=lambda x: x["snr"], reverse=True)[:25]:
-            nivel  = int(min(r["snr"] / 35 * 16, 16))
-            barra  = "█" * nivel + "·" * (16 - nivel)
-            sty    = ("bold red" if r["snr"] > 25 else
-                      "yellow" if r["snr"] > 15 else
-                      "green"  if r["snr"] > 8  else "dim")
+            nivel = int(min(r["snr"] / 35 * 16, 16))
+            barra = "█" * nivel + "·" * (16 - nivel)
+            sty = ("bold red" if r["snr"] > 25 else
+                   "yellow" if r["snr"] > 15 else
+                   "green" if r["snr"] > 8 else "dim")
             banda_n = "—"
             if r.get("banda"):
                 col = r["banda"].get("color", "white")
@@ -1055,9 +1065,9 @@ class RFModuleIntegrado:
                 banda_n,
             )
         self.console.print(Panel(tb,
-                                  title="[bold green]MAPA DE ACTIVIDAD RF[/bold green]",
-                                  border_style="green",
-                                  box=box.HEAVY_HEAD))
+                                 title="[bold green]MAPA DE ACTIVIDAD RF[/bold green]",
+                                 border_style="green",
+                                 box=box.HEAVY_HEAD))
 
     def escaneo_bandas_conocidas(self):
         """Escanea rápidamente cada banda conocida y muestra actividad global."""
@@ -1069,7 +1079,8 @@ class RFModuleIntegrado:
         bandas_a_escanear = []
         if _BANDS_OK and BANDAS_RF:
             for fmin, fmax, nombre, tipo, desc, peligro in BANDAS_RF:
-                bandas_a_escanear.append((fmin, fmax, nombre, tipo, desc, "white"))
+                bandas_a_escanear.append(
+                    (fmin, fmax, nombre, tipo, desc, "white"))
         else:
             bandas_a_escanear = list(BANDAS)
 
@@ -1091,9 +1102,9 @@ class RFModuleIntegrado:
             if psd is None:
                 continue
 
-            piso    = float(np.median(psd))
+            piso = float(np.median(psd))
             pot_max = float(np.max(psd))
-            snr     = pot_max - piso
+            snr = pot_max - piso
 
             resultados.append({
                 "freq_mhz": round(freq, 3),
@@ -1147,20 +1158,20 @@ class RFModuleIntegrado:
         g.add_row("Señales sesión",       str(len(self._senales_sesion)))
         g.add_row("Capturas totales",     str(self._capturas_sesion))
         g.add_row("Bandas tácticas",      str(len(tactical_bands())) if _BANDS_OK
-                                          else "—")
+                  else "—")
         g.add_row("numpy",                "[green]OK[/green]" if _NP_OK
                                           else "[red]NO[/red]")
         g.add_row("Config TOML",          "[green]OK[/green]" if _RF_CONFIG_OK
                                           else "[yellow]Sin TOML (defaults)[/yellow]")
 
         self.console.print(Panel(g,
-                                  title="[bold green]ESTADO RF SCANNER[/bold green]",
-                                  border_style="green"))
+                                 title="[bold green]ESTADO RF SCANNER[/bold green]",
+                                 border_style="green"))
 
     def db_consultar(self, freq_min: Optional[float] = None,
-                      freq_max: Optional[float] = None,
-                      snr_min: Optional[float] = None,
-                      horas: Optional[int] = None):
+                     freq_max: Optional[float] = None,
+                     snr_min: Optional[float] = None,
+                     horas: Optional[int] = None):
         """Consulta la base de datos RF y muestra resultados."""
         if not self._db:
             self._print("[red][!] Base de datos RF no disponible.[/red]")
@@ -1171,7 +1182,8 @@ class RFModuleIntegrado:
                 snr_min=snr_min, horas=horas
             )
             if not resultados:
-                self._print("[dim]Sin señales almacenadas con esos criterios.[/dim]")
+                self._print(
+                    "[dim]Sin señales almacenadas con esos criterios.[/dim]")
                 return
             tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
                        show_edge=False, expand=True)
@@ -1191,8 +1203,8 @@ class RFModuleIntegrado:
                     r.get("banda") or "—",
                 )
             self.console.print(Panel(tb,
-                                      title=f"[bold green]DB RF — {len(resultados)} señales[/bold green]",
-                                      border_style="green"))
+                                     title=f"[bold green]DB RF — {len(resultados)} señales[/bold green]",
+                                     border_style="green"))
         except Exception as e:
             self._print(f"[red][!] Error en consulta DB: {e}[/red]")
 
@@ -1207,10 +1219,11 @@ class RFModuleIntegrado:
             g.add_column(style="dim green", justify="right", min_width=22)
             g.add_column(style="white")
             for k, v in stats.items():
-                g.add_row(k.replace("_", " ").title(), str(v) if v is not None else "—")
+                g.add_row(k.replace("_", " ").title(),
+                          str(v) if v is not None else "—")
             self.console.print(Panel(g,
-                                      title="[bold green]ESTADÍSTICAS DB RF[/bold green]",
-                                      border_style="green"))
+                                     title="[bold green]ESTADÍSTICAS DB RF[/bold green]",
+                                     border_style="green"))
         except Exception as e:
             self._print(f"[red][!] Error estadísticas: {e}[/red]")
 
@@ -1232,11 +1245,14 @@ class RFModuleIntegrado:
             title="[bold green]RF SCANNER v2.2[/bold green]",
         ))
 
-        opt = self.console.input("[bold green][?] Opción: [/bold green]").strip()
+        opt = self.console.input(
+            "[bold green][?] Opción: [/bold green]").strip()
 
         if opt == "1":
-            freq_s = self.console.input("[bold cyan][?] Frecuencia (MHz): [/bold cyan]").strip()
-            dur_s  = self.console.input("[bold cyan][?] Duración segundos [10]: [/bold cyan]").strip()
+            freq_s = self.console.input(
+                "[bold cyan][?] Frecuencia (MHz): [/bold cyan]").strip()
+            dur_s = self.console.input(
+                "[bold cyan][?] Duración segundos [10]: [/bold cyan]").strip()
             try:
                 self.escanear_frecuencia(
                     float(freq_s), int(dur_s) if dur_s else 10
@@ -1245,9 +1261,12 @@ class RFModuleIntegrado:
                 self._print("[red][!] Valor inválido.[/red]")
 
         elif opt == "2":
-            ini_s  = self.console.input("[bold cyan][?] Freq. inicial (MHz): [/bold cyan]").strip()
-            fin_s  = self.console.input("[bold cyan][?] Freq. final (MHz): [/bold cyan]").strip()
-            paso_s = self.console.input("[bold cyan][?] Paso MHz [1.0]: [/bold cyan]").strip()
+            ini_s = self.console.input(
+                "[bold cyan][?] Freq. inicial (MHz): [/bold cyan]").strip()
+            fin_s = self.console.input(
+                "[bold cyan][?] Freq. final (MHz): [/bold cyan]").strip()
+            paso_s = self.console.input(
+                "[bold cyan][?] Paso MHz [1.0]: [/bold cyan]").strip()
             try:
                 self.barrido_espectro(
                     float(ini_s), float(fin_s),
@@ -1286,10 +1305,10 @@ class RFModuleIntegrado:
             freq_s = self.console.input(
                 "[bold cyan][?] Frecuencia mínima MHz (Enter=todas): [/bold cyan]"
             ).strip()
-            snr_s  = self.console.input(
+            snr_s = self.console.input(
                 "[bold cyan][?] SNR mínimo dB [0]: [/bold cyan]"
             ).strip()
-            hs_s   = self.console.input(
+            hs_s = self.console.input(
                 "[bold cyan][?] Últimas N horas (Enter=todas): [/bold cyan]"
             ).strip()
             self.db_consultar(
@@ -1323,8 +1342,8 @@ class RFModuleIntegrado:
                     b.get("desc", ""),
                 )
             self.console.print(Panel(tb,
-                                      title="[bold red]BANDAS TÁCTICAS[/bold red]",
-                                      border_style="red"))
+                                     title="[bold red]BANDAS TÁCTICAS[/bold red]",
+                                     border_style="red"))
 
     def cerrar(self):
         """Libera todos los recursos del módulo RF."""
@@ -1402,7 +1421,7 @@ class Validador:
     def pedir(cls, console, prompt: str, validador=None,
               error: str = "Valor inválido.", default=None,
               password: bool = False, intentos: Optional[int] = None):
-        max_i      = intentos or cls.MAX_INTENTOS
+        max_i = intentos or cls.MAX_INTENTOS
         prompt_fmt = f"\n[bold cyan]{prompt}[/bold cyan]"
         if default is not None:
             prompt_fmt += f" [dim](Enter = {default})[/dim]"
@@ -1494,7 +1513,8 @@ class LogSistema:
         try:
             os.makedirs("data/logs", exist_ok=True)
             with open("data/logs/historial.json", "w", encoding="utf-8") as f:
-                json.dump(self._entradas[-500:], f, indent=2, ensure_ascii=False)
+                json.dump(self._entradas[-500:], f,
+                          indent=2, ensure_ascii=False)
         except OSError:
             pass
 
@@ -1532,7 +1552,7 @@ class LogSistema:
             conteos[e["nivel"]] = conteos.get(e["nivel"], 0) + 1
 
         resumen = Table.grid(padding=(0, 3))
-        celdas  = []
+        celdas = []
         for n, (c, ico) in ESTILOS_LOG.items():
             t = Text()
             t.append(f"{ico} {n}: {conteos.get(n, 0)}", style=c)
@@ -1543,8 +1563,10 @@ class LogSistema:
 
         tabla = Table(box=box.SIMPLE_HEAD, header_style="bold cyan",
                       show_edge=False, expand=True)
-        tabla.add_column("Timestamp", style="dim",   min_width=19, no_wrap=True)
-        tabla.add_column("Nivel",                    min_width=10, no_wrap=True)
+        tabla.add_column("Timestamp", style="dim",
+                         min_width=19, no_wrap=True)
+        tabla.add_column("Nivel",
+                         min_width=10, no_wrap=True)
         tabla.add_column("Módulo",    style="cyan",  min_width=16)
         tabla.add_column("Mensaje",   style="white")
         for e in entradas:
@@ -1570,7 +1592,7 @@ class LogSistema:
 class ApexSentinel:
 
     VERSION = "2.2"
-    NOMBRE  = "ApexSentinel"
+    NOMBRE = "ApexSentinel"
 
     def __init__(self):
         for d in ["data/logs", "data/evidence", "data/evidence/rf",
@@ -1578,11 +1600,12 @@ class ApexSentinel:
             os.makedirs(d, exist_ok=True)
 
         self.console = Console()
-        self.config  = self._cargar_config()
-        self.nombre  = self.config.get("sistema", {}).get("nombre", self.NOMBRE)
-        self.version = self.config.get("sistema", {}).get("version", self.VERSION)
-        self.log     = LogSistema(self.console)
-        self.auth    = GestorAuth(self.config, self.console, self.log)
+        self.config = self._cargar_config()
+        self.nombre = self.config.get("sistema", {}).get("nombre", self.NOMBRE)
+        self.version = self.config.get(
+            "sistema", {}).get("version", self.VERSION)
+        self.log = LogSistema(self.console)
+        self.auth = GestorAuth(self.config, self.console, self.log)
 
         self._registrar_senales()
         self._cargar_modulos()
@@ -1681,7 +1704,7 @@ class ApexSentinel:
         try:
             from RadarSentinel import RadarSentinel
             from GeomapSentinel import GeomapSentinel
-            self.radar  = RadarSentinel(interface="Wi-Fi")
+            self.radar = RadarSentinel(interface="Wi-Fi")
             self.radar.start_sniffing()
             self.geomap = GeomapSentinel()
         except Exception as e:
@@ -1698,6 +1721,16 @@ class ApexSentinel:
         # ── Extractor DB / WhatsApp ───────────────────────────────────
         self._db_extractor_cls = _importar("db_extractor", "DatabaseExtractor")
         self._wa_decryptor_cls = _importar("WADecryptor",  "WhatsAppDecryptor")
+
+        # ── ForensicReader mejorado (instancia directa) ───────────────
+        # El módulo ya está en self.reader vía _cargar_modulos(), pero
+        # guardamos la clase para instanciar si el import genérico falló.
+        _ForensicReader = _importar("ForensicReader", "ForensicReader")
+        if _ForensicReader is not None and self.reader is None:
+            try:
+                self.reader = _ForensicReader(self)
+            except Exception as e:
+                self.log.warning(f"ForensicReader directo: {e}", "Init")
 
         # ── Scapy ────────────────────────────────────────────────────
         try:
@@ -1798,9 +1831,12 @@ class ApexSentinel:
     def mostrar_dashboard_exito(self, ip: str, servicio: str, credencial: str):
         tabla = Table(title="ACCESO OBTENIDO", show_header=True,
                       header_style="bold green")
-        tabla.add_column("Objetivo",          style="cyan",       justify="center")
-        tabla.add_column("Protocolo",         style="yellow",     justify="center")
-        tabla.add_column("Credenciales (U:P)", style="bold white", justify="center")
+        tabla.add_column("Objetivo",          style="cyan",
+                         justify="center")
+        tabla.add_column("Protocolo",         style="yellow",
+                         justify="center")
+        tabla.add_column("Credenciales (U:P)",
+                         style="bold white", justify="center")
         tabla.add_row(ip, servicio.upper(), credencial)
         self.console.print("\n")
         self.console.print(Panel(tabla,
@@ -1828,7 +1864,8 @@ class ApexSentinel:
     def _cmd_status(self):
         proy = (self.gp.proyecto_activo.nombre
                 if self.gp and self.gp.proyecto_activo else "Ninguno")
-        rf_estado = getattr(self.rf, "hw_nombre", "No disponible") if self.rf else "No disponible"
+        rf_estado = getattr(self.rf, "hw_nombre",
+                            "No disponible") if self.rf else "No disponible"
         self.console.print(Panel(
             f"[cyan]Sistema:[/cyan]  {self.nombre}\n"
             f"[cyan]Versión:[/cyan]  {self.version}\n"
@@ -1871,7 +1908,8 @@ class ApexSentinel:
                 self._Ether(dst="ff:ff:ff:ff:ff:ff") / self._ARP(pdst=rango),
                 timeout=3, verbose=False
             )[0]
-            tabla = Table(header_style="bold cyan", box=box.SIMPLE_HEAD, show_edge=False)
+            tabla = Table(header_style="bold cyan",
+                          box=box.SIMPLE_HEAD, show_edge=False)
             tabla.add_column("IP",         style="cyan",   min_width=15)
             tabla.add_column("MAC",        style="yellow", min_width=18)
             tabla.add_column("Fabricante", style="white")
@@ -1879,7 +1917,8 @@ class ApexSentinel:
             for _, reci in resultado:
                 fab = self.obtener_fabricante(reci.hwsrc)
                 tabla.add_row(reci.psrc, reci.hwsrc, fab)
-                hosts.append({"ip": reci.psrc, "mac": reci.hwsrc, "fabricante": fab})
+                hosts.append(
+                    {"ip": reci.psrc, "mac": reci.hwsrc, "fabricante": fab})
             self.console.print(tabla)
             if self.gp:
                 self.gp.registrar_evidencia(
@@ -1887,21 +1926,24 @@ class ApexSentinel:
                     f"Scan ARP en {rango}: {len(hosts)} hosts",
                     {"rango": rango, "hosts": hosts}
                 )
-            self.log.info(f"Scan ARP en {rango}: {len(resultado)} hosts", "NetworkScan")
+            self.log.info(
+                f"Scan ARP en {rango}: {len(resultado)} hosts", "NetworkScan")
         except Exception:
             self.console.print(
                 "[red][!] Error de permisos. Ejecuta como root/administrador.[/red]"
             )
 
     def _cmd_portscan(self):
-        objetivo = Validador.pedir_ip(self.console, f"\n{self.nombre} [TARGET IP]")
+        objetivo = Validador.pedir_ip(
+            self.console, f"\n{self.nombre} [TARGET IP]")
         if not objetivo:
             return
         self.animar_barra(f"AUDITANDO PUERTOS EN {objetivo}...")
         puertos = {21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP",
                    80: "HTTP", 443: "HTTPS", 445: "SMB", 3306: "MySQL",
                    5432: "PostgreSQL", 8080: "HTTP-Alt"}
-        tabla = Table(header_style="bold red", box=box.SIMPLE_HEAD, show_edge=False)
+        tabla = Table(header_style="bold red",
+                      box=box.SIMPLE_HEAD, show_edge=False)
         tabla.add_column("Puerto",   style="cyan",   justify="center")
         tabla.add_column("Servicio", style="yellow")
         tabla.add_column("Estado",   justify="center")
@@ -1911,7 +1953,8 @@ class ApexSentinel:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(0.5)
                 if sock.connect_ex((objetivo, puerto)) == 0:
-                    tabla.add_row(str(puerto), servicio, "[green]ABIERTO[/green]")
+                    tabla.add_row(str(puerto), servicio,
+                                  "[green]ABIERTO[/green]")
                     abiertos.append({"puerto": puerto, "servicio": servicio})
                 sock.close()
             except socket.error:
@@ -1924,11 +1967,13 @@ class ApexSentinel:
                 f"PortScan en {objetivo}: {len(abiertos)} puertos",
                 {"ip": objetivo, "puertos": abiertos}
             )
-        self.log.info(f"PortScan {objetivo}: {len(abiertos)} puertos abiertos", "PortScan")
+        self.log.info(
+            f"PortScan {objetivo}: {len(abiertos)} puertos abiertos", "PortScan")
         if abiertos and self.cve:
             if Prompt.ask("\n[?] ¿Cruzar con CVE?", choices=["s", "n"], default="s") == "s":
                 self.cve.analizar_resultado_scan(
-                    [{"nombre": a["servicio"], "version": ""} for a in abiertos]
+                    [{"nombre": a["servicio"], "version": ""}
+                        for a in abiertos]
                 )
 
     def _cmd_sweep(self):
@@ -1940,7 +1985,7 @@ class ApexSentinel:
     def _cmd_sniff(self):
         if not self._modulo_ok("sniffer"):
             return
-        filtro   = self.console.input(
+        filtro = self.console.input(
             "\n[bold cyan]  [?] Filtro (Enter para ninguno)[/bold cyan]: "
         ).strip()
         segundos = Validador.pedir_segundos(self.console, default=30)
@@ -1971,17 +2016,20 @@ class ApexSentinel:
     def _cmd_audit(self):
         if not self._modulo_ok("hydra") or not self._modulo_ok("dict_manager"):
             return
-        self.console.print("\n[bold magenta]⚔  MÓDULO HYDRA INICIADO[/bold magenta]")
+        self.console.print(
+            "\n[bold magenta]⚔  MÓDULO HYDRA INICIADO[/bold magenta]")
         target = Validador.pedir_ip(self.console, "[?] IP del objetivo")
         if not target:
             return
         servicio = Prompt.ask("[?] Servicio",
-                              choices=["ssh", "ftp", "mysql", "http-get", "telnet"],
+                              choices=["ssh", "ftp", "mysql",
+                                       "http-get", "telnet"],
                               default="ssh")
         diccionario = self.dict_manager.obtener_ruta_diccionario(servicio)
         if Prompt.ask(f"¿Iniciar ataque con {diccionario}?",
                       choices=["s", "n"], default="n") == "s":
-            resultado = self.hydra.ejecutar_ataque(target, servicio, "root", diccionario)
+            resultado = self.hydra.ejecutar_ataque(
+                target, servicio, "root", diccionario)
             if resultado:
                 self.mostrar_dashboard_exito(target, servicio, resultado)
 
@@ -2003,7 +2051,8 @@ class ApexSentinel:
         if not url:
             return
         resultado = self.audit_engine.auditoria_sql(url)
-        self.console.print(Panel(resultado, title="INFORME SQLMAP", border_style="yellow"))
+        self.console.print(
+            Panel(resultado, title="INFORME SQLMAP", border_style="yellow"))
 
     def _cmd_wifi(self):
         if not self._modulo_ok("bt"):
@@ -2011,12 +2060,14 @@ class ApexSentinel:
         self.console.print("\n[1] Beacon Spam  [2] Deauth Attack")
         opt = self.console.input("[bold cyan] > [/bold cyan]").strip()
         if opt == "1":
-            prefijo = self.console.input("[bold cyan]Prefijo SSID: [/bold cyan]").strip()
+            prefijo = self.console.input(
+                "[bold cyan]Prefijo SSID: [/bold cyan]").strip()
             self.bt.beacon_spam(prefijo)
         elif opt == "2":
             mac_vic = Validador.pedir(self.console, "MAC Víctima",
                                       Validador.es_mac, "MAC inválida. Ej: AA:BB:CC:DD:EE:FF")
-            mac_ap  = Validador.pedir(self.console, "MAC AP", Validador.es_mac, "MAC inválida.")
+            mac_ap = Validador.pedir(
+                self.console, "MAC AP", Validador.es_mac, "MAC inválida.")
             if mac_vic and mac_ap:
                 self.bt.deauth(mac_vic, mac_ap)
 
@@ -2061,8 +2112,10 @@ class ApexSentinel:
         """Barrido de espectro interactivo."""
         if not self._modulo_ok("rf"):
             return
-        ini  = Validador.pedir_frecuencia(self.console, "[?] Frecuencia inicial (MHz)")
-        fin  = Validador.pedir_frecuencia(self.console, "[?] Frecuencia final (MHz)")
+        ini = Validador.pedir_frecuencia(
+            self.console, "[?] Frecuencia inicial (MHz)")
+        fin = Validador.pedir_frecuencia(
+            self.console, "[?] Frecuencia final (MHz)")
         if ini is None or fin is None or ini >= fin:
             self.console.print("[red][!] Rango de frecuencias inválido.[/red]")
             return
@@ -2104,7 +2157,8 @@ class ApexSentinel:
     def _cmd_mobile(self):
         if not self._modulo_ok("mobile"):
             return
-        self.console.print("\n[1] Android Triage  [2] iOS Info  [3] Screenshot")
+        self.console.print(
+            "\n[1] Android Triage  [2] iOS Info  [3] Screenshot")
         opt = self.console.input("[bold cyan] > [/bold cyan]").strip()
         if opt == "1":
             self.mobile.triage_android()
@@ -2114,15 +2168,21 @@ class ApexSentinel:
             path = self.mobile.preparar_directorio("Android_Screen")
             self.console.print("[*] Tomando captura...")
             try:
-                self._run(["adb", "shell", "screencap", "-p", "/sdcard/s.png"], timeout=15)
-                self._run(["adb", "pull", "/sdcard/s.png", f"{path}/s.png"], timeout=15)
-                self.console.print(f"[green][+] Captura guardada en {path}/s.png[/green]")
-                self.log.success(f"Screenshot guardado en {path}/s.png", "MobileSentinel")
+                self._run(["adb", "shell", "screencap",
+                          "-p", "/sdcard/s.png"], timeout=15)
+                self._run(["adb", "pull", "/sdcard/s.png",
+                          f"{path}/s.png"], timeout=15)
+                self.console.print(
+                    f"[green][+] Captura guardada en {path}/s.png[/green]")
+                self.log.success(
+                    f"Screenshot guardado en {path}/s.png", "MobileSentinel")
             except subprocess.TimeoutExpired:
-                self.console.print("[red][!] ADB timeout. Verifica conexión.[/red]")
+                self.console.print(
+                    "[red][!] ADB timeout. Verifica conexión.[/red]")
                 self.log.error("ADB timeout screenshot", "MobileSentinel")
             except subprocess.CalledProcessError as e:
-                self.console.print(f"[red][!] Error ADB ({e.returncode}): {e}[/red]")
+                self.console.print(
+                    f"[red][!] Error ADB ({e.returncode}): {e}[/red]")
                 self.log.error(f"Screenshot ADB: {e}", "MobileSentinel")
             except Exception as e:
                 self.console.print(f"[red][!] Error inesperado ADB: {e}[/red]")
@@ -2130,34 +2190,196 @@ class ApexSentinel:
     def _cmd_mobile_deep(self):
         path = "./data/evidence/mobile/Deep_Extraction/"
         os.makedirs(path, exist_ok=True)
-        if self._db_extractor_cls is None:
-            self.console.print("[red][!] DatabaseExtractor no disponible.[/red]")
-            return
-        extractor = self._db_extractor_cls()
-        self.console.print("\n[1] Extraer WhatsApp Full  [2] Extraer Chrome History")
+
+        self.console.print(
+            "\n[1] Extraer WhatsApp Full  "
+            "[2] Extraer Chrome History  "
+            "[3] Descifrar crypt (WADecryptor)"
+        )
         opt = self.console.input("[bold cyan] > [/bold cyan]").strip()
+
         if opt == "1":
+            if self._db_extractor_cls is None:
+                self.console.print(
+                    "[red][!] DatabaseExtractor no disponible.[/red]")
+                return
+            extractor = self._db_extractor_cls()
             self.animar_barra("EXTRAYENDO DB Y LLAVE...")
             extractor.extraer_whatsapp(path)
             extractor.extraer_whatsapp_key(path)
             self.log.audit("Extracción WhatsApp completada", "MobileDeep")
+
         elif opt == "2":
+            if self._db_extractor_cls is None:
+                self.console.print(
+                    "[red][!] DatabaseExtractor no disponible.[/red]")
+                return
+            extractor = self._db_extractor_cls()
             self.animar_barra("EXTRAYENDO HISTORIAL CHROME...")
             self.log.audit("Extracción Chrome completada", "MobileDeep")
+
+        elif opt == "3":
+            # ── Descifrado WADecryptor mejorado ───────────────────────
+            if self._wa_decryptor_cls is None:
+                self.console.print("[red][!] WADecryptor no disponible.[/red]")
+                return
+
+            crypt_file = self.console.input(
+                "[bold cyan][?] Ruta archivo .crypt12/.crypt14/.crypt15: [/bold cyan]"
+            ).strip().strip("'\"")
+            key_file = self.console.input(
+                "[bold cyan][?] Ruta archivo key: [/bold cyan]"
+            ).strip().strip("'\"")
+
+            if not crypt_file or not key_file:
+                self.console.print("[red][!] Rutas inválidas.[/red]")
+                return
+
+            output_file = os.path.join(path, "whatsapp_decrypted.db")
+
+            try:
+                decryptor = self._wa_decryptor_cls(verbose=False)
+                ok = decryptor.descifrar(crypt_file, key_file, output_file)
+                if ok:
+                    self.log.audit(
+                        f"WA descifrado OK → {output_file}", "MobileDeep"
+                    )
+                    self.console.print(
+                        f"[green][+] DB lista en: {output_file}[/green]\n"
+                        "[dim]Usa el comando [bold white]view[/bold white] "
+                        "para leerla.[/dim]"
+                    )
+                else:
+                    self.log.error(
+                        "WADecryptor: descifrado fallido", "MobileDeep")
+            except Exception as e:
+                self.console.print(f"[red][!] Error en descifrado: {e}[/red]")
+                self.log.error(f"WADecryptor: {e}", "MobileDeep")
 
     def _cmd_view(self):
         if not self._modulo_ok("reader"):
             return
         ruta_base = "./data/evidence/mobile/Deep_Extraction/"
-        opcion = self.console.input(
-            "[bold cyan] [1] Leer WhatsApp  [2] Leer Chrome: [/bold cyan]"
-        ).strip()
+
+        self.console.print(
+            "\n[bold cyan]VIEW — Lector Forense[/bold cyan]\n"
+            "[1] WhatsApp (Android/iOS auto)\n"
+            "[2] Chrome History\n"
+            "[3] Firefox places.sqlite\n"
+            "[4] Safari History.db\n"
+            "[5] Registro de llamadas WA\n"
+            "[6] Buscar mensajes eliminados\n"
+            "[7] Top contactos + timeline de actividad\n"
+            "[8] Buscar palabras clave en mensajes\n"
+            "[9] Exportar reporte HTML completo"
+        )
+        opcion = self.console.input("[bold cyan] > [/bold cyan]").strip()
+
         if opcion == "1":
-            self.reader.leer_whatsapp_mensajes(
-                os.path.join(ruta_base, "whatsapp_messages.db"))
+            db = self.console.input(
+                f"[dim][Enter] = {ruta_base}whatsapp_decrypted.db > [/dim]"
+            ).strip() or os.path.join(ruta_base, "whatsapp_decrypted.db")
+            self.reader.leer_whatsapp_mensajes(db)
+
         elif opcion == "2":
-            self.reader.leer_historial_chrome(
-                os.path.join(ruta_base, "chrome_history.db"))
+            db = self.console.input(
+                f"[dim][Enter] = {ruta_base}chrome_history.db > [/dim]"
+            ).strip() or os.path.join(ruta_base, "chrome_history.db")
+            self.reader.leer_historial_chrome(db)
+
+        elif opcion == "3":
+            db = self.console.input(
+                f"[dim][Enter] = {ruta_base}places.sqlite > [/dim]"
+            ).strip() or os.path.join(ruta_base, "places.sqlite")
+            self.reader.leer_historial_firefox(db)
+
+        elif opcion == "4":
+            db = self.console.input(
+                f"[dim][Enter] = {ruta_base}History.db > [/dim]"
+            ).strip() or os.path.join(ruta_base, "History.db")
+            self.reader.leer_historial_safari(db)
+
+        elif opcion == "5":
+            db = self.console.input(
+                f"[dim][Enter] = {ruta_base}whatsapp_decrypted.db > [/dim]"
+            ).strip() or os.path.join(ruta_base, "whatsapp_decrypted.db")
+            llamadas = self.reader.leer_llamadas_android(db)
+            self.reader.mostrar_llamadas(llamadas)
+
+        elif opcion == "6":
+            db = self.console.input(
+                f"[dim][Enter] = {ruta_base}whatsapp_decrypted.db > [/dim]"
+            ).strip() or os.path.join(ruta_base, "whatsapp_decrypted.db")
+            eliminados = self.reader.leer_mensajes_eliminados(db)
+            if eliminados:
+                self.console.print(
+                    f"[yellow][!] {len(eliminados)} registros potencialmente eliminados:[/yellow]"
+                )
+                for e in eliminados:
+                    self.console.print(
+                        f"  [{e['fecha_display']}] "
+                        f"[bold]{e['contacto']}[/bold]: {e['texto_recuperado']}"
+                    )
+            else:
+                self.console.print(
+                    "[dim]Sin registros eliminados detectados.[/dim]")
+
+        elif opcion == "7":
+            db = self.console.input(
+                f"[dim][Enter] = {ruta_base}whatsapp_decrypted.db > [/dim]"
+            ).strip() or os.path.join(ruta_base, "whatsapp_decrypted.db")
+            mensajes, _ = self.reader.leer_whatsapp_mensajes(db)
+            if mensajes:
+                stats = self.reader.analizar_frecuencia_contactos(mensajes)
+                self.reader.mostrar_frecuencia_contactos(stats)
+                tl = self.reader.analizar_timeline_horas(mensajes)
+                self.reader.mostrar_timeline_horas(tl)
+
+        elif opcion == "8":
+            db = self.console.input(
+                f"[dim][Enter] = {ruta_base}whatsapp_decrypted.db > [/dim]"
+            ).strip() or os.path.join(ruta_base, "whatsapp_decrypted.db")
+            kw_raw = self.console.input(
+                "[bold cyan][?] Palabras clave (separadas por espacio): [/bold cyan]"
+            ).strip()
+            if not kw_raw:
+                return
+            keywords = kw_raw.split()
+            mensajes, _ = self.reader.leer_whatsapp_mensajes(db)
+            encontrados = self.reader.buscar_palabras_clave(mensajes, keywords)
+            self.console.print(
+                f"[yellow]{len(encontrados)} mensajes con: {keywords}[/yellow]"
+            )
+            for m in encontrados:
+                self.console.print(
+                    f"  [{m.fecha_iso}] [bold]{m.contacto}[/bold]: {m.texto}"
+                )
+
+        elif opcion == "9":
+            db = self.console.input(
+                f"[dim][Enter] = {ruta_base}whatsapp_decrypted.db > [/dim]"
+            ).strip() or os.path.join(ruta_base, "whatsapp_decrypted.db")
+            out_html = os.path.join(ruta_base, "reporte_forense.html")
+
+            mensajes, resumen = self.reader.leer_whatsapp_mensajes(db)
+            llamadas = self.reader.leer_llamadas_android(db)
+            eliminados = self.reader.leer_mensajes_eliminados(db)
+            frecuencia = self.reader.analizar_frecuencia_contactos(
+                mensajes) if mensajes else None
+            timeline = self.reader.analizar_timeline_horas(
+                mensajes) if mensajes else None
+
+            self.reader.exportar_html(
+                out_html,
+                mensajes=mensajes or None,
+                resumen=resumen,
+                llamadas=llamadas or None,
+                eliminados=eliminados or None,
+                frecuencia=frecuencia,
+                timeline=timeline,
+            )
+            self.log.audit(
+                f"Reporte HTML generado → {out_html}", "ForensicReader")
 
     def _cmd_locate(self):
         if not self._modulo_ok("locator"):
@@ -2176,14 +2398,16 @@ class ApexSentinel:
     def _cmd_geofoto(self):
         if not self._modulo_ok("exif"):
             return
-        ruta = self.console.input("[bold cyan]Ruta de imagen: [/bold cyan]").strip()
+        ruta = self.console.input(
+            "[bold cyan]Ruta de imagen: [/bold cyan]").strip()
         ruta = ruta.replace("'", "").replace('"', "")
         if ruta:
             self.exif.analizar_foto(ruta)
 
     def _cmd_phishing(self):
         self._limpiar()
-        self.console.print("[bold red][!][/bold red] Iniciando Suite de Phishing...")
+        self.console.print(
+            "[bold red][!][/bold red] Iniciando Suite de Phishing...")
         ruta_z = "./tools/zphisher/zphisher.sh"
         if not os.path.exists(ruta_z):
             self.console.print(
@@ -2195,7 +2419,8 @@ class ApexSentinel:
             if sys.platform == "win32":
                 bash_path = r"C:\Program Files\Git\bin\bash.exe"
                 if not os.path.exists(bash_path):
-                    self.console.print("[red][!] Git Bash no encontrado.[/red]")
+                    self.console.print(
+                        "[red][!] Git Bash no encontrado.[/red]")
                     return
                 subprocess.run([bash_path, ruta_z], check=True)
             else:
@@ -2287,7 +2512,8 @@ class ApexSentinel:
             if p:
                 self.console.print(Panel(p.ayuda(), border_style="green"))
             else:
-                self.console.print(f"[red][!] Plugin '{args[1]}' no encontrado.[/red]")
+                self.console.print(
+                    f"[red][!] Plugin '{args[1]}' no encontrado.[/red]")
         else:
             self.plugins.listar()
 
@@ -2297,31 +2523,36 @@ class ApexSentinel:
         partes = entrada.strip().lower().split()
         if not partes:
             return True
-        cmd  = partes[0]
+        cmd = partes[0]
         args = partes[1:]
 
         # Subcomandos con args
         if cmd == "proyecto":
-            self._cmd_proyecto(args); return True
+            self._cmd_proyecto(args)
+            return True
         if cmd == "reporte":
-            self._cmd_reporte(args); return True
+            self._cmd_reporte(args)
+            return True
         if cmd in ("job", "jobs"):
-            self._cmd_jobs(args); return True
+            self._cmd_jobs(args)
+            return True
         if cmd in ("plugin", "plugins"):
-            self._cmd_plugins(args); return True
+            self._cmd_plugins(args)
+            return True
         if cmd == "locate":
-            (self._cmd_locate_p if "-p" in args else self._cmd_locate)(); return True
+            (self._cmd_locate_p if "-p" in args else self._cmd_locate)()
+            return True
 
         tabla = {
             # ── Generales ───────────────────────────────────────────
-            "help":   lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
-            "?":      lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
+            "help": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
+            "?": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
             "status":       self._cmd_status,
-            "hora":   lambda: self.console.print(
+            "hora": lambda: self.console.print(
                 f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
-            "clear":  lambda: mostrar_banner(
+            "clear": lambda: mostrar_banner(
                 self.console, self.nombre, self.version, self._iface()),
-            "cls":    lambda: mostrar_banner(
+            "cls": lambda: mostrar_banner(
                 self.console, self.nombre, self.version, self._iface()),
             "logs":         self.log.mostrar_historial,
             "files":        self._cmd_files,
@@ -2380,13 +2611,17 @@ class ApexSentinel:
 
     def ejecutar(self):
         if not self.auth.solicitar_acceso():
-            self.console.print("[red][!] Acceso denegado. Sistema bloqueado.[/red]")
-            self.log.warning("Sistema bloqueado por intentos fallidos.", "GestorAuth")
+            self.console.print(
+                "[red][!] Acceso denegado. Sistema bloqueado.[/red]")
+            self.log.warning(
+                "Sistema bloqueado por intentos fallidos.", "GestorAuth")
             return
 
-        mostrar_bootloader(self.console, self.nombre, self.version, self._iface())
+        mostrar_bootloader(self.console, self.nombre,
+                           self.version, self._iface())
 
-        self.console.print("[bold blue][*] Diagnosticando dependencias...[/bold blue]")
+        self.console.print(
+            "[bold blue][*] Diagnosticando dependencias...[/bold blue]")
         if self.checker:
             self.checker.verificar_dependencias()
 
@@ -2431,8 +2666,10 @@ class ApexSentinel:
                 if not entrada:
                     continue
                 if entrada.lower() == "exit":
-                    self.console.print("[yellow][!] Desconectando Sentinel...[/yellow]")
-                    self.log.info("Sesión cerrada por el operador.", "ApexSentinel")
+                    self.console.print(
+                        "[yellow][!] Desconectando Sentinel...[/yellow]")
+                    self.log.info(
+                        "Sesión cerrada por el operador.", "ApexSentinel")
                     self._cleanup()
                     time.sleep(0.5)
                     break

@@ -129,7 +129,7 @@ class SDRManager:
 
         # Cargar sample_rate desde config global
         try:
-            from rfscanner.config import cfg as global_cfg
+            from rf_config import cfg as global_cfg
             self._sample_rate = float(global_cfg.dsp.sample_rate)
         except Exception:
             self._sample_rate = 2_048_000.0

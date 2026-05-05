@@ -1,11 +1,3 @@
-"""
-rf_config.py — Gestión de configuración para RFScanner.
-
-Carga config.toml con validación de tipos y rangos.
-Si el archivo no existe lo crea con valores por defecto.
-Soporta override por variables de entorno: RF_GAIN_DB, RF_PPM, etc.
-"""
-
 import os
 import logging
 from dataclasses import dataclass, field, asdict
@@ -17,12 +9,14 @@ log = logging.getLogger(__name__)
 # ── tomllib disponible en Python 3.11+, fallback a tomli ────────────
 try:
     import tomllib  # Python 3.11+
+
     def _load_toml(path: Path) -> dict:
         with open(path, "rb") as f:
             return tomllib.load(f)
 except ImportError:
     try:
-        import tomli as tomllib  # pip install tomli
+        import tomllib as tomllib  # pip install tomli
+
         def _load_toml(path: Path) -> dict:
             with open(path, "rb") as f:
                 return tomllib.load(f)
@@ -46,13 +40,18 @@ except ImportError:
                         k, _, v = line.partition("=")
                         k = k.strip()
                         v = v.strip().strip('"').strip("'")
-                        if v.lower() == "true":   v = True
-                        elif v.lower() == "false": v = False
+                        if v.lower() == "true":
+                            v = True
+                        elif v.lower() == "false":
+                            v = False
                         else:
-                            try:   v = int(v)
+                            try:
+                                v = int(v)
                             except ValueError:
-                                try: v = float(v)
-                                except ValueError: pass
+                                try:
+                                    v = float(v)
+                                except ValueError:
+                                    pass
                         section[k] = v
             return result
 
@@ -63,11 +62,11 @@ except ImportError:
 
 @dataclass
 class HardwareConfig:
-    device_index:   int   = 0
-    ppm_correction: int   = 0
+    device_index:   int = 0
+    ppm_correction: int = 0
     gain_db:        float = 40.0
-    sample_rate:    int   = 2_048_000
-    bias_tee:       bool  = False
+    sample_rate:    int = 2_048_000
+    bias_tee:       bool = False
 
     def validate(self):
         assert 0 <= self.device_index <= 7,         "device_index fuera de rango"
@@ -82,13 +81,13 @@ class HardwareConfig:
 
 @dataclass
 class DspConfig:
-    fft_size:        int   = 2048
-    window:          str   = "blackman"
+    fft_size:        int = 2048
+    window:          str = "blackman"
     snr_threshold:   float = 8.0
-    samples_per_read: int  = 524_288
-    cfar_guard:      int   = 4
-    cfar_ref:        int   = 16
-    dc_spike_remove: bool  = True
+    samples_per_read: int = 524_288
+    cfar_guard:      int = 4
+    cfar_ref:        int = 16
+    dc_spike_remove: bool = True
 
     def validate(self):
         assert self.fft_size in (256, 512, 1024, 2048, 4096, 8192), \
@@ -100,10 +99,10 @@ class DspConfig:
 
 @dataclass
 class DemodConfig:
-    mode:       str   = "none"
-    audio_rate: int   = 48_000
+    mode:       str = "none"
+    audio_rate: int = 48_000
     volume:     float = 0.8
-    save_audio: bool  = False
+    save_audio: bool = False
 
     def validate(self):
         assert self.mode in ("none", "wfm", "nfm", "am", "usb", "lsb"), \
@@ -140,9 +139,9 @@ class StorageConfig:
 
 @dataclass
 class DisplayConfig:
-    waterfall_rows:  int   = 16
-    spectrum_width:  int   = 64
-    spectrum_height: int   = 14
+    waterfall_rows:  int = 16
+    spectrum_width:  int = 64
+    spectrum_height: int = 14
     dbm_floor:       float = -110.0
     dbm_ceil:        float = -10.0
 
@@ -158,11 +157,11 @@ class LoggingConfig:
 @dataclass
 class RFConfig:
     hardware: HardwareConfig = field(default_factory=HardwareConfig)
-    dsp:      DspConfig      = field(default_factory=DspConfig)
-    demod:    DemodConfig    = field(default_factory=DemodConfig)
-    storage:  StorageConfig  = field(default_factory=StorageConfig)
-    display:  DisplayConfig  = field(default_factory=DisplayConfig)
-    logging:  LoggingConfig  = field(default_factory=LoggingConfig)
+    dsp:      DspConfig = field(default_factory=DspConfig)
+    demod:    DemodConfig = field(default_factory=DemodConfig)
+    storage:  StorageConfig = field(default_factory=StorageConfig)
+    display:  DisplayConfig = field(default_factory=DisplayConfig)
+    logging:  LoggingConfig = field(default_factory=LoggingConfig)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -170,6 +169,7 @@ class RFConfig:
 # ════════════════════════════════════════════════════════════════════
 
 _DEFAULT_CONFIG_CONTENT = Path(__file__).parent / "config.toml"
+
 
 def load_config(path: Optional[str] = None) -> RFConfig:
     """
@@ -192,52 +192,57 @@ def load_config(path: Optional[str] = None) -> RFConfig:
         return raw.get(section, {}).get(key, default)
 
     hw = HardwareConfig(
-        device_index   = int(_get("hardware", "device_index",   0)),
-        ppm_correction = int(_get("hardware", "ppm_correction", 0)),
-        gain_db        = float(_get("hardware", "gain_db",      40.0)),
-        sample_rate    = int(_get("hardware", "sample_rate",    2_048_000)),
-        bias_tee       = bool(_get("hardware", "bias_tee",      False)),
+        device_index=int(_get("hardware", "device_index",   0)),
+        ppm_correction=int(_get("hardware", "ppm_correction", 0)),
+        gain_db=float(_get("hardware", "gain_db",      40.0)),
+        sample_rate=int(_get("hardware", "sample_rate",    2_048_000)),
+        bias_tee=bool(_get("hardware", "bias_tee",      False)),
     )
     dsp = DspConfig(
-        fft_size         = int(_get("dsp", "fft_size",         2048)),
-        window           = str(_get("dsp", "window",           "blackman")),
-        snr_threshold    = float(_get("dsp", "snr_threshold",  8.0)),
-        samples_per_read = int(_get("dsp", "samples_per_read", 524_288)),
-        cfar_guard       = int(_get("dsp", "cfar_guard",       4)),
-        cfar_ref         = int(_get("dsp", "cfar_ref",         16)),
-        dc_spike_remove  = bool(_get("dsp", "dc_spike_remove", True)),
+        fft_size=int(_get("dsp", "fft_size",         2048)),
+        window=str(_get("dsp", "window",           "blackman")),
+        snr_threshold=float(_get("dsp", "snr_threshold",  8.0)),
+        samples_per_read=int(_get("dsp", "samples_per_read", 524_288)),
+        cfar_guard=int(_get("dsp", "cfar_guard",       4)),
+        cfar_ref=int(_get("dsp", "cfar_ref",         16)),
+        dc_spike_remove=bool(_get("dsp", "dc_spike_remove", True)),
     )
     demod = DemodConfig(
-        mode       = str(_get("demod", "mode",       "none")),
-        audio_rate = int(_get("demod", "audio_rate", 48_000)),
-        volume     = float(_get("demod", "volume",   0.8)),
-        save_audio = bool(_get("demod", "save_audio", False)),
+        mode=str(_get("demod", "mode",       "none")),
+        audio_rate=int(_get("demod", "audio_rate", 48_000)),
+        volume=float(_get("demod", "volume",   0.8)),
+        save_audio=bool(_get("demod", "save_audio", False)),
     )
     storage = StorageConfig(
-        data_dir          = str(_get("storage", "data_dir",          "data/rf")),
-        db_retention_days = int(_get("storage", "db_retention_days", 0)),
-        compress_iq       = bool(_get("storage", "compress_iq",      False)),
+        data_dir=str(_get("storage", "data_dir",          "data/rf")),
+        db_retention_days=int(_get("storage", "db_retention_days", 0)),
+        compress_iq=bool(_get("storage", "compress_iq",      False)),
     )
     display = DisplayConfig(
-        waterfall_rows  = int(_get("display", "waterfall_rows",  16)),
-        spectrum_width  = int(_get("display", "spectrum_width",  64)),
-        spectrum_height = int(_get("display", "spectrum_height", 14)),
-        dbm_floor       = float(_get("display", "dbm_floor",     -110.0)),
-        dbm_ceil        = float(_get("display", "dbm_ceil",      -10.0)),
+        waterfall_rows=int(_get("display", "waterfall_rows",  16)),
+        spectrum_width=int(_get("display", "spectrum_width",  64)),
+        spectrum_height=int(_get("display", "spectrum_height", 14)),
+        dbm_floor=float(_get("display", "dbm_floor",     -110.0)),
+        dbm_ceil=float(_get("display", "dbm_ceil",      -10.0)),
     )
     logging_cfg = LoggingConfig(
-        level        = str(_get("logging", "level",        "INFO")),
-        file         = str(_get("logging", "file",         "data/rf/rfscanner.log")),
-        max_mb       = int(_get("logging", "max_mb",       10)),
-        backup_count = int(_get("logging", "backup_count", 3)),
+        level=str(_get("logging", "level",        "INFO")),
+        file=str(_get("logging", "file",         "data/rf/rfscanner.log")),
+        max_mb=int(_get("logging", "max_mb",       10)),
+        backup_count=int(_get("logging", "backup_count", 3)),
     )
 
     # ── Overrides por variables de entorno ───────────────────────────
-    if (v := os.environ.get("RF_GAIN_DB")):    hw.gain_db        = float(v)
-    if (v := os.environ.get("RF_PPM")):        hw.ppm_correction = int(v)
-    if (v := os.environ.get("RF_DEVICE")):     hw.device_index   = int(v)
-    if (v := os.environ.get("RF_SAMPLE_RATE")): hw.sample_rate   = int(v)
-    if (v := os.environ.get("RF_DATA_DIR")):   storage.data_dir  = v
+    if (v := os.environ.get("RF_GAIN_DB")):
+        hw.gain_db = float(v)
+    if (v := os.environ.get("RF_PPM")):
+        hw.ppm_correction = int(v)
+    if (v := os.environ.get("RF_DEVICE")):
+        hw.device_index = int(v)
+    if (v := os.environ.get("RF_SAMPLE_RATE")):
+        hw.sample_rate = int(v)
+    if (v := os.environ.get("RF_DATA_DIR")):
+        storage.data_dir = v
 
     cfg = RFConfig(
         hardware=hw, dsp=dsp, demod=demod,

@@ -1,21 +1,3 @@
-"""
-rfscanner/config.py — Gestión de configuración persistente.
-
-Búsqueda de config en orden:
-  1. Ruta explícita pasada al constructor
-  2. ~/.config/rfscanner/config.toml
-  3. ./config.toml (directorio de trabajo)
-  4. Defaults internos (sin archivo)
-
-Uso:
-    from rfscanner.config import Config
-    cfg = Config()           # busca automáticamente
-    cfg = Config("/ruta/mi_config.toml")
-    print(cfg.hardware.gain)
-    cfg.hardware.gain = 35.0
-    cfg.save()
-"""
-
 import os
 import copy
 import logging
@@ -32,14 +14,14 @@ try:
     _TOML_WRITE = None
 except ImportError:
     try:
-        import tomli as _TOML_READ      # pip install tomli
+        import tomllib as _TOML_READ      # pip install tomli
         _TOML_WRITE = None
     except ImportError:
         _TOML_READ = None
         _TOML_WRITE = None
 
 try:
-    import tomli_w as _TOML_WRITE       # pip install tomli-w
+    import tomllib as _TOML_WRITE       # pip install tomli-w
 except ImportError:
     pass
 
@@ -50,47 +32,47 @@ except ImportError:
 
 @dataclass
 class HardwareConfig:
-    device_index:        int   = 0
+    device_index:        int = 0
     gain:                float = 40.0
-    ppm_correction:      int   = 0
-    sample_rate:         int   = 2_048_000
+    ppm_correction:      int = 0
+    sample_rate:         int = 2_048_000
     reconnect_timeout:   float = 5.0
-    reconnect_attempts:  int   = 3
+    reconnect_attempts:  int = 3
 
 
 @dataclass
 class DspConfig:
-    fft_size:          int   = 2048
-    window:            str   = "blackman"
+    fft_size:          int = 2048
+    window:            str = "blackman"
     snr_threshold:     float = 8.0
-    samples_per_read:  int   = 524_288
-    waterfall_rows:    int   = 16
-    remove_dc_spike:   bool  = True
+    samples_per_read:  int = 524_288
+    waterfall_rows:    int = 16
+    remove_dc_spike:   bool = True
 
 
 @dataclass
 class DemodConfig:
-    mode:         str   = "nfm"
-    audio_rate:   int   = 48_000
-    audio_device: int   = -1
+    mode:         str = "nfm"
+    audio_rate:   int = 48_000
+    audio_device: int = -1
     volume:       float = 0.8
     squelch_db:   float = 5.0
 
 
 @dataclass
 class StorageConfig:
-    evidence_dir:  str  = "data/evidence/rf"
-    iq_dir:        str  = "data/evidence/rf/iq"
-    db_path:       str  = "data/evidence/rf/signals.db"
+    evidence_dir:  str = "data/evidence/rf"
+    iq_dir:        str = "data/evidence/rf/iq"
+    db_path:       str = "data/evidence/rf/signals.db"
     sigmf_format:  bool = True
-    session_max:   int  = 10_000
+    session_max:   int = 10_000
 
 
 @dataclass
 class UiConfig:
-    spectrum_width:  int  = 64
-    spectrum_height: int  = 14
-    display_every:   int  = 1
+    spectrum_width:  int = 64
+    spectrum_height: int = 14
+    display_every:   int = 1
     clear_screen:    bool = True
 
 
@@ -120,11 +102,11 @@ class Config:
 
     def __init__(self, path: Optional[str] = None):
         self.hardware = HardwareConfig()
-        self.dsp      = DspConfig()
-        self.demod    = DemodConfig()
-        self.storage  = StorageConfig()
-        self.ui       = UiConfig()
-        self.logging  = LoggingConfig()
+        self.dsp = DspConfig()
+        self.demod = DemodConfig()
+        self.storage = StorageConfig()
+        self.ui = UiConfig()
+        self.logging = LoggingConfig()
         self._path: Optional[Path] = None
 
         if path:
@@ -143,7 +125,8 @@ class Config:
 
     def _load(self, path: Path):
         if _TOML_READ is None:
-            log.warning("tomllib/tomli no disponible — install: pip install tomli tomli-w")
+            log.warning(
+                "tomllib/tomli no disponible — install: pip install tomli tomli-w")
             return
         try:
             raw = path.read_bytes()
@@ -161,12 +144,18 @@ class Config:
             for k, v in section.items():
                 if hasattr(dc, k):
                     setattr(dc, k, v)
-        if "hardware" in data: merge(self.hardware, data["hardware"])
-        if "dsp"      in data: merge(self.dsp,      data["dsp"])
-        if "demod"    in data: merge(self.demod,     data["demod"])
-        if "storage"  in data: merge(self.storage,   data["storage"])
-        if "ui"       in data: merge(self.ui,        data["ui"])
-        if "logging"  in data: merge(self.logging,   data["logging"])
+        if "hardware" in data:
+            merge(self.hardware, data["hardware"])
+        if "dsp" in data:
+            merge(self.dsp,      data["dsp"])
+        if "demod" in data:
+            merge(self.demod,     data["demod"])
+        if "storage" in data:
+            merge(self.storage,   data["storage"])
+        if "ui" in data:
+            merge(self.ui,        data["ui"])
+        if "logging" in data:
+            merge(self.logging,   data["logging"])
 
     # ── Guardado ────────────────────────────────────────────────────
 
@@ -201,6 +190,7 @@ class Config:
     def _save_manual(self, target: Path):
         """Escritura TOML manual sin dependencias (solo tipos básicos)."""
         lines = []
+
         def section(name, dc):
             lines.append(f"\n[{name}]")
             for k, v in asdict(dc).items():
