@@ -1,68 +1,43 @@
-# AnubisOS / Apex Sentinel — Dependencias completas
+# AnubisOS / Apex Sentinel — Dependencias
 # Instalar con: pip install -r requirements.txt
-#
-# Python mínimo recomendado: 3.11
-# En uConsole/ARM: pip install --break-system-packages -r requirements.txt
+# En Termux:    pip install -r requirements.txt --break-system-packages
 
-# ── RF / SDR — REQUERIDO por dsp.py, rf_demod.py, rf_mock.py, rf_storage.py ──
-numpy>=1.24.0                  # Cálculos FFT, PSD, CFAR — núcleo de todos los módulos RF
-pyrtlsdr>=0.2.91               # Driver RTL-SDR (hardware real); sin esto sólo funciona MockSDR
-pyaudio>=0.2.14                # Reproducción de audio demodulado (rf_demod.py → demod.play())
-                               # En Debian/Ubuntu: apt install python3-pyaudio portaudio19-dev
+# --- Interfaz de terminal ---
+rich>=13.7.0
 
-# ── Configuración TOML (config.py) ────────────────────────────────────────────
-# tomllib es stdlib en Python 3.11+; tomli es el backport para versiones anteriores
-tomli>=2.0.1                   # Lectura TOML en Python < 3.11 (config.py)
-tomli-w>=1.0.0                 # Escritura TOML: cfg.save() — no hay equivalente stdlib
+# --- Seguridad y autenticación ---
+bcrypt>=4.1.2
+cryptography>=42.0.0        # Fernet (Security.py)
+pycryptodome>=3.20.0        # AES-256-GCM (WADecryptor.py)
 
-# ── Interfaz de terminal ───────────────────────────────────────────────────────
-rich>=13.7.0                   # Tablas, paneles, waterfall, progress bars (Main_v4.py, logger.py)
+# --- Red y escaneo ---
+scapy>=2.5.0
+requests>=2.31.0
+flask>=3.0.0                # EvilTwinServer.py, PhishingModule.py
 
-# ── Autenticación ─────────────────────────────────────────────────────────────
-bcrypt>=4.1.2                  # Hash de contraseñas para GestorAuth
+# --- Procesamiento de señales (RF) ---
+numpy>=1.26.0               # RFScanner.py, dsp.py
 
-# ── Red y escaneo ─────────────────────────────────────────────────────────────
-scapy>=2.5.0                   # ARP scan, Ether/srp (_cmd_scan en Main_v4.py)
-requests>=2.31.0               # Consulta fabricante MAC (api.macvendors.com)
+# --- Análisis de imágenes / EXIF ---
+Pillow>=10.2.0
+piexif>=1.1.3
 
-# ── Análisis de imágenes / EXIF ────────────────────────────────────────────────
-Pillow>=10.2.0                 # Análisis de imágenes (ExifAnalyzer)
-piexif>=1.1.3                  # Extracción de metadatos EXIF GPS
+# --- Bluetooth BLE ---
+bleak>=0.21.1               # BLE moderno (reemplaza PyBluez abandonado)
 
-# ── Bluetooth ──────────────────────────────────────────────────────────────────
-PyBluez>=0.23; sys_platform == "linux"   # BluetoothModule (sólo Linux)
+# --- Generación de reportes ---
+fpdf2>=2.7.9                # MotorReportes.py (PDFs)
 
-# ── Análisis forense / cifrado ─────────────────────────────────────────────────
-pycryptodome>=3.20.0           # DatabaseExtractor / WADecryptor
+# --- Mapas y geolocalización ---
+folium>=0.16.0              # GeomapSentinel.py (mapas HTML interactivos)
 
-# ── Utilidades generales ───────────────────────────────────────────────────────
-colorama>=0.4.6                # Colores ANSI en Windows
-psutil>=5.9.8                  # Info de sistema: CPU, RAM, interfaces de red
+# --- Utilidades generales ---
+colorama>=0.4.6             # Compatibilidad colores en Windows
+psutil>=5.9.8               # Info de sistema (CPU, RAM, red)
 
-# ── Testing ────────────────────────────────────────────────────────────────────
-pytest>=7.4.0                  # Runner de tests unitarios (test_rfscanner.py)
-pytest-cov>=4.1.0              # Cobertura de código: pytest --cov=..
+# --- Testing ---
+pytest>=8.0.0
 
-# ──────────────────────────────────────────────────────────────────────────────
-# NOTAS DE INSTALACIÓN
-# ──────────────────────────────────────────────────────────────────────────────
-#
-# RTL-SDR en Linux (además de pyrtlsdr):
-#   sudo apt install rtl-sdr librtlsdr-dev
-#   sudo usermod -aG plugdev $USER   # permisos USB sin root
-#
-# PyAudio en Linux:
-#   sudo apt install python3-pyaudio portaudio19-dev
-#
-# PyBluez en Linux:
-#   sudo apt install python3-dev libbluetooth-dev
-#
-# SQLite — NO requiere instalación: está incluido en la stdlib de Python.
-#
-# tomllib — NO requiere instalación si usas Python 3.11+.
-#   Sólo instala tomli si tu Python es 3.10 o anterior.
-#
-# Para instalar TODO de una vez en Debian/uConsole:
-#   sudo apt install rtl-sdr librtlsdr-dev python3-pyaudio portaudio19-dev \
-#                    python3-dev libbluetooth-dev
-#   pip install -r requirements.txt --break-system-packages
+# --- Opcionales (hardware SDR) ---
+# pyrtlsdr>=0.3.0           # RTL-SDR (descomentar si tienes el hardware)
+# SoapySDR                  # HackRF y otros SDR (instalar desde sistema)

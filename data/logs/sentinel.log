@@ -198,3 +198,13 @@
 2026-05-04 20:30:46 [DEBUG] Starting new HTTPS connection (1): api.macvendors.com:443
 2026-05-04 20:30:49 [DEBUG] https://api.macvendors.com:443 "GET /ca:e4:1f:d1:89:ee HTTP/1.1" 404 33
 2026-05-04 20:30:49 [INFO] [NetworkScan] Scan ARP en 192.168.0.1/24: 6 hosts
+2026-05-05T22:28:13 [WARNING ] [sentinel] [Init] Radar/Geomap: 'RadarSentinel' object has no attribute 'start_sniffing'
+2026-05-05T22:28:15 [WARNING ] [sentinel] [Init] GestorProyectos: GestorProyectos.__init__() takes 1 positional argument but 2 were given
+2026-05-05T22:28:15 [WARNING ] [sentinel] [Init] ColaTareas: ColaTareas.__init__() takes 1 positional argument but 2 were given
+2026-05-05T22:28:16 [INFO    ] [sentinel] [Init] RF Module cargado — MockSDR (sin hardware real)
+2026-05-05T22:28:25 [INFO    ] [sentinel] [GestorAuth] Acceso concedido.
+2026-05-05T22:28:30 [INFO    ] [sentinel] [ApexSentinel] Sistema iniciado correctamente.
+2026-05-05T22:29:12 [WARNING ] [sentinel] [Init] Radar/Geomap: 'RadarSentinel' object has no attribute 'start_sniffing'
+2026-05-05T22:29:12 [WARNING ] [sentinel] [Init] GestorProyectos: GestorProyectos.__init__() takes 1 positional argument but 2 were given
+2026-05-05T22:29:12 [WARNING ] [sentinel] [Init] ColaTareas: ColaTareas.__init__() takes 1 positional argument but 2 were given
+2026-05-05T22:29:12 [INFO    ] [sentinel] [Init] RF Module cargado — MockSDR (sin hardware real)
