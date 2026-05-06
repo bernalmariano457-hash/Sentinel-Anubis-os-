@@ -22,3 +22,4 @@
 20:28:48 [WARNING] rfscanner.main — DSPEngine avanzado: 'DspConfig' object has no attribute 'dc_spike_remove' — usando MotorDSP básico
 20:28:52 [WARNING] rfscanner.main — DSPEngine avanzado: 'DspConfig' object has no attribute 'dc_spike_remove' — usando MotorDSP básico
 20:28:55 [WARNING] rfscanner.main — DSPEngine avanzado: 'DspConfig' object has no attribute 'dc_spike_remove' — usando MotorDSP básico
+23:31:00 [INFO] rfscanner.main — Módulo RF cerrado correctamente

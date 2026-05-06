@@ -1,0 +1,46 @@
+# ══════════════════════════════════════════════════════════════════
+#  APEX SENTINEL — .gitignore
+#  Archivos de seguridad que NUNCA deben subirse al repositorio
+# ══════════════════════════════════════════════════════════════════
+
+# ── Claves y credenciales ────────────────────────────────────────
+data/security/
+*.key
+*.pem
+*.p12
+encriptado.txt
+panic.key
+Anubis_master.key
+
+# ── Variables de entorno ─────────────────────────────────────────
+.env
+.env.local
+.env.production
+
+# ── Datos y evidencias (pueden contener info sensible) ───────────
+data/logs/
+data/evidence/
+data/proyectos/
+sentinel_activity.log
+sentinel_auth.log
+reportes.txt
+capturas.pcap
+
+# ── Python ───────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# ── DLLs nativas (no versionar binarios) ─────────────────────────
+*.dll
+*.so
+*.dylib
+
+# ── Sistema operativo ────────────────────────────────────────────
+.DS_Store
+Thumbs.db

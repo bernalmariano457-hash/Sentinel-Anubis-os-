@@ -208,3 +208,15 @@
 2026-05-05T22:29:12 [WARNING ] [sentinel] [Init] GestorProyectos: GestorProyectos.__init__() takes 1 positional argument but 2 were given
 2026-05-05T22:29:12 [WARNING ] [sentinel] [Init] ColaTareas: ColaTareas.__init__() takes 1 positional argument but 2 were given
 2026-05-05T22:29:12 [INFO    ] [sentinel] [Init] RF Module cargado — MockSDR (sin hardware real)
+2026-05-05T23:24:57 [INFO    ] [sentinel.security] Nueva clave maestra generada: C:\Users\mnhhh\Desktop\Apex_Sentinel\data\security\anubis_master.key
+2026-05-05T23:24:59 [WARNING ] [sentinel] [Init] Radar/Geomap: 'RadarSentinel' object has no attribute 'start_sniffing'
+2026-05-05T23:25:01 [WARNING ] [sentinel] [Init] GestorProyectos: GestorProyectos.__init__() takes 1 positional argument but 2 were given
+2026-05-05T23:25:01 [WARNING ] [sentinel] [Init] ColaTareas: ColaTareas.__init__() takes 1 positional argument but 2 were given
+2026-05-05T23:25:01 [INFO    ] [sentinel] [Init] RF Module cargado — MockSDR (sin hardware real)
+2026-05-05T23:25:47 [INFO    ] [sentinel.auth] Credenciales guardadas en C:\Users\mnhhh\Desktop\Apex_Sentinel\data\security\.credentials
+2026-05-05T23:25:47 [INFO    ] [sentinel] [GestorAuth] Contraseña maestra configurada.
+2026-05-05T23:25:52 [INFO    ] [sentinel] [ApexSentinel] Sistema iniciado correctamente.
+2026-05-05T23:29:48 [INFO    ] [sentinel] [NetworkScan] Scan ARP en 177.229.202.188/24: 0 hosts
+2026-05-05T23:30:48 [ERROR   ] [sentinel] [Bucle principal] 'BluetoothModule' object has no attribute 'beacon_spam'
+2026-05-05T23:30:59 [INFO    ] [sentinel] [ApexSentinel] Sesión cerrada por el operador.
+2026-05-05T23:30:59 [INFO    ] [sentinel] [ApexSentinel] Sesión terminada.
