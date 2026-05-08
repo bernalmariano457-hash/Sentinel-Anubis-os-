@@ -1,10 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════╗
-║  APEX SENTINEL — sentinel_setup.py                               ║
-║  Utilidad de configuración inicial de credenciales               ║
-╠══════════════════════════════════════════════════════════════════╣
-╚══════════════════════════════════════════════════════════════════╝
-"""
 import argparse
 import getpass
 import json

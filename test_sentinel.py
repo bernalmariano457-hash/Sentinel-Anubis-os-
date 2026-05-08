@@ -1,15 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════╗
-║  APEX SENTINEL — tests/test_sentinel.py                          ║
-║  Suite de tests unitarios del sistema completo                   ║
-║                                                                  ║
-║  Ejecutar:                                                       ║
-║    pytest tests/test_sentinel.py -v                              ║
-║    pytest tests/test_sentinel.py -v --tb=short                   ║
-║    pytest tests/test_sentinel.py -v -k "auth"  (filtrar)        ║
-║    pytest tests/test_sentinel.py -v --hardware (con SDR real)   ║
-╚══════════════════════════════════════════════════════════════════╝
-"""
 from __future__ import annotations
 
 import hashlib
@@ -45,11 +33,11 @@ def console():
 def mock_log():
     """Log falso que no escribe nada en disco."""
     log = MagicMock()
-    log.info    = MagicMock()
+    log.info = MagicMock()
     log.warning = MagicMock()
-    log.error   = MagicMock()
+    log.error = MagicMock()
     log.success = MagicMock()
-    log.audit   = MagicMock()
+    log.audit = MagicMock()
     return log
 
 
@@ -283,11 +271,11 @@ class TestLogSistema:
         log.info("test", "ModX")
         entrada = log._entradas[-1]
         assert "timestamp" in entrada
-        assert "nivel"     in entrada
-        assert "modulo"    in entrada
-        assert "mensaje"   in entrada
-        assert entrada["nivel"]   == "INFO"
-        assert entrada["modulo"]  == "ModX"
+        assert "nivel" in entrada
+        assert "modulo" in entrada
+        assert "mensaje" in entrada
+        assert entrada["nivel"] == "INFO"
+        assert entrada["modulo"] == "ModX"
         assert entrada["mensaje"] == "test"
 
     def test_historial_json_se_crea(self, log, tmp_dir):
@@ -305,7 +293,7 @@ class TestLogSistema:
     def test_verificar_y_limpiar(self, log):
         for i in range(600):
             log._entradas.append({"timestamp": "", "nivel": "INFO",
-                                   "modulo": "T", "mensaje": str(i)})
+                                  "modulo": "T", "mensaje": str(i)})
         log.verificar_y_limpiar(max_entradas=500)
         assert len(log._entradas) <= 500
 
@@ -401,7 +389,8 @@ class TestGestorProyectos:
     @pytest.fixture
     def proyecto_activo(self, gp):
         from GestorProyectos import Proyecto
-        p = Proyecto("TestOp", "Objetivo de prueba", "192.168.1.0/24", "red-interna")
+        p = Proyecto("TestOp", "Objetivo de prueba",
+                     "192.168.1.0/24", "red-interna")
         gp.proyecto_activo = p
         os.makedirs(p.ruta, exist_ok=True)
         gp._guardar_proyecto()
@@ -410,10 +399,10 @@ class TestGestorProyectos:
     def test_crear_proyecto_objeto(self, tmp_dir):
         from GestorProyectos import Proyecto
         p = Proyecto("Op1", "Objetivo", "10.0.0.0/8", "web")
-        assert p.nombre   == "Op1"
+        assert p.nombre == "Op1"
         assert p.objetivo == "Objetivo"
-        assert p.scope    == "10.0.0.0/8"
-        assert p.estado   == "activo"
+        assert p.scope == "10.0.0.0/8"
+        assert p.estado == "activo"
         assert isinstance(p.evidencias, list)
         assert isinstance(p.hallazgos, list)
 
@@ -430,19 +419,19 @@ class TestGestorProyectos:
         p = Proyecto("RoundTrip", "Objetivo", "192.168.0.0/16", "forense")
         d = p.to_dict()
         p2 = Proyecto.from_dict(d)
-        assert p2.nombre   == p.nombre
+        assert p2.nombre == p.nombre
         assert p2.objetivo == p.objetivo
-        assert p2.scope    == p.scope
-        assert p2.tipo     == p.tipo
+        assert p2.scope == p.scope
+        assert p2.tipo == p.tipo
 
     def test_registrar_evidencia(self, gp, proyecto_activo):
         gp.registrar_evidencia("arp_scan", "Scan de red local",
                                {"hosts": 5, "rango": "192.168.1.0/24"})
         assert len(proyecto_activo.evidencias) == 1
         ev = proyecto_activo.evidencias[0]
-        assert ev["tipo"]        == "arp_scan"
+        assert ev["tipo"] == "arp_scan"
         assert ev["descripcion"] == "Scan de red local"
-        assert "timestamp"       in ev
+        assert "timestamp" in ev
 
     def test_registrar_hallazgo(self, gp, proyecto_activo):
         gp.registrar_hallazgo("ALTO", "Puerto 22 abierto",
@@ -450,8 +439,8 @@ class TestGestorProyectos:
                               "Cambiar puerto o restringir acceso.")
         assert len(proyecto_activo.hallazgos) == 1
         h = proyecto_activo.hallazgos[0]
-        assert h["severidad"]   == "ALTO"
-        assert h["titulo"]      == "Puerto 22 abierto"
+        assert h["severidad"] == "ALTO"
+        assert h["titulo"] == "Puerto 22 abierto"
 
     def test_guardar_y_cargar_proyecto(self, gp, proyecto_activo, tmp_dir):
         gp.registrar_evidencia("test", "evidencia", {})
@@ -526,21 +515,21 @@ class PluginTest(PluginBase):
         from PluginSystem import PluginBase
 
         class MiPlugin(PluginBase):
-            NOMBRE     = "mi_plugin"
-            VERSION    = "2.0"
+            NOMBRE = "mi_plugin"
+            VERSION = "2.0"
             DESCRIPCION = "Plugin de prueba"
-            AUTOR      = "AutorTest"
-            COMANDOS   = ["cmd1"]
+            AUTOR = "AutorTest"
+            COMANDOS = ["cmd1"]
 
             def ejecutar(self, comando, args=None):
                 pass
 
         p = MiPlugin(sentinel_mock)
         ayuda = p.ayuda()
-        assert "mi_plugin"  in ayuda
-        assert "2.0"        in ayuda
-        assert "AutorTest"  in ayuda
-        assert "cmd1"       in ayuda
+        assert "mi_plugin" in ayuda
+        assert "2.0" in ayuda
+        assert "AutorTest" in ayuda
+        assert "cmd1" in ayuda
 
     def test_plugin_base_sin_ejecutar_lanza(self, sentinel_mock):
         from PluginSystem import PluginBase
@@ -700,7 +689,8 @@ class TestCVEMatcher:
             mock_get.return_value.status_code = 200
             mock_get.return_value.json.return_value = respuesta_mock
             # No debe lanzar
-            cve.analizar_resultado_scan([{"nombre": "OpenSSH", "version": "7.4"}])
+            cve.analizar_resultado_scan(
+                [{"nombre": "OpenSSH", "version": "7.4"}])
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -714,8 +704,8 @@ class TestRFModuleIntegrado:
     def sentinel_mock(self, console, mock_log):
         s = MagicMock()
         s.console = console
-        s.log     = mock_log
-        s.gp      = None
+        s.log = mock_log
+        s.gp = None
         return s
 
     @pytest.fixture
@@ -775,7 +765,7 @@ class TestRFModuleIntegrado:
         assert len(archivos) == 1
         contenido = archivos[0].read_text()
         assert "freq_mhz" in contenido
-        assert "100.0"    in contenido
+        assert "100.0" in contenido
 
     def test_db_consultar_sin_db_no_lanza(self, rf):
         rf._db = None
@@ -809,9 +799,9 @@ class TestMotorDSP:
     def iq_tono(self):
         import numpy as np
         sr = 2_048_000
-        n  = 8192
-        t  = np.arange(n) / sr
-        f  = 200_000
+        n = 8192
+        t = np.arange(n) / sr
+        f = 200_000
         señal = (0.1 * np.exp(2j * np.pi * f * t)).astype(np.complex64)
         ruido = (0.001 * (np.random.randn(n) + 1j * np.random.randn(n))
                  ).astype(np.complex64)
@@ -821,7 +811,7 @@ class TestMotorDSP:
         import numpy as np
         freqs, psd = dsp.calcular_psd(iq_ruido, 2_048_000)
         assert len(freqs) == 2048
-        assert len(psd)   == 2048
+        assert len(psd) == 2048
 
     def test_psd_es_finita(self, dsp, iq_ruido):
         import numpy as np

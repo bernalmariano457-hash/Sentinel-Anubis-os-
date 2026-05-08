@@ -1,11 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════╗
-║  APEX SENTINEL — log_sistema.py                                  ║
-║  Sistema de logging centralizado · Grado profesional             ║
-╚══════════════════════════════════════════════════════════════════╝
-
-"""
-
 from __future__ import annotations
 
 import atexit

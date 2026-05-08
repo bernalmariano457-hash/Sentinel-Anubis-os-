@@ -1,8 +1,3 @@
-"""
-AnubisOS — PhishingModule
-Lanzador de zphisher compatible con Windows, Linux y Termux.
-"""
-
 import os
 import sys
 import subprocess
@@ -17,9 +12,9 @@ class PhishingModule:
     ZPHISHER_REPO = "https://github.com/htr-tech/zphisher.git"
 
     def __init__(self, sentinel=None):
-        self.sentinel  = sentinel
-        self.console   = getattr(sentinel, "console", None)
-        self.log       = getattr(sentinel, "log",     None)
+        self.sentinel = sentinel
+        self.console = getattr(sentinel, "console", None)
+        self.log = getattr(sentinel, "log",     None)
 
         self.script_path = os.path.join(
             os.getcwd(), "tools", "zphisher", "zphisher.sh"
@@ -30,7 +25,8 @@ class PhishingModule:
             posibles = [
                 r"C:\Program Files\Git\bin\bash.exe",
                 r"C:\Program Files (x86)\Git\bin\bash.exe",
-                os.path.expandvars(r"%LOCALAPPDATA%\Programs\Git\bin\bash.exe"),
+                os.path.expandvars(
+                    r"%LOCALAPPDATA%\Programs\Git\bin\bash.exe"),
             ]
             self.bash_path = next(
                 (p for p in posibles if os.path.exists(p)), None
@@ -60,7 +56,8 @@ class PhishingModule:
 
     def _instalar_zphisher(self) -> bool:
         destino = os.path.join(os.getcwd(), "tools", "zphisher")
-        self._print("[yellow][!] zphisher no encontrado. Clonando desde GitHub...[/yellow]")
+        self._print(
+            "[yellow][!] zphisher no encontrado. Clonando desde GitHub...[/yellow]")
         try:
             os.makedirs(os.path.join(os.getcwd(), "tools"), exist_ok=True)
             subprocess.run(
@@ -98,7 +95,8 @@ class PhishingModule:
         if sys.platform == "win32" and not self._verificar_bash_windows():
             return
 
-        self._print("\n[bold red][!][/bold red] Iniciando Suite de Phishing...")
+        self._print(
+            "\n[bold red][!][/bold red] Iniciando Suite de Phishing...")
         self._log_audit("Suite de phishing iniciada")
 
         try:
@@ -108,7 +106,8 @@ class PhishingModule:
                 subprocess.run(["bash", self.script_path], check=True)
 
         except KeyboardInterrupt:
-            self._print("\n[yellow][!] Phishing detenido por el operador.[/yellow]")
+            self._print(
+                "\n[yellow][!] Phishing detenido por el operador.[/yellow]")
         except FileNotFoundError:
             self._print(
                 "[red][!] bash no encontrado.[/red]\n"

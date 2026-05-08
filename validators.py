@@ -1,9 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════╗
-║  APEX SENTINEL — validators.py                                   ║
-║  Validación de entradas del usuario                              ║
-╚══════════════════════════════════════════════════════════════════╝
-"""
 from __future__ import annotations
 
 import ipaddress

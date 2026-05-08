@@ -63,7 +63,8 @@ class ColaTareas:
 
     MAX_HISTORIAL = 20
 
-    def __init__(self):
+    def __init__(self, sentinel=None):
+        self.sentinel = sentinel
         self._tareas: dict[str, Tarea] = {}
         self._lock = threading.Lock()
 

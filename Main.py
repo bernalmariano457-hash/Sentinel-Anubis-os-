@@ -1,9 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════╗
-║         APEX SENTINEL — ANUBIS OS  v2.2                          ║
-║         Main.py · Núcleo orquestador                             ║
-╚══════════════════════════════════════════════════════════════════╝
-"""
 from __future__ import annotations
 from command_handler import CommandHandler
 from rf_module import RFModuleIntegrado
@@ -198,7 +192,7 @@ class ApexSentinel:
             from RadarSentinel import RadarSentinel
             from GeomapSentinel import GeomapSentinel
             self.radar = RadarSentinel(interface="Wi-Fi")
-            self.radar.start_sniffing()
+            self.radar.run()
             self.geomap = GeomapSentinel()
         except Exception as e:
             self.log.warning(f"Radar/Geomap: {e}", "Init")
@@ -386,6 +380,11 @@ class ApexSentinel:
             "rfdb":      c.rfdb,
             "rfstats":   c.rfstats,
             "rfstatus":  c.rfestado,
+            # RF — nuevos módulos v2.2
+            "radio":     c.radio,       # demodulación en tiempo real
+            "rfgrabar":  c.rfgrabar,    # grabación IQ a archivo
+            "rfplay":    c.rfplay,      # reproducir grabación IQ
+            "adsb":      c.adsb,        # monitor ADS-B 1090 MHz
             # Mobile
             "mobile":       c.mobile,
             "mobile-deep":  c.mobile_deep,

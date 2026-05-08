@@ -1,30 +1,3 @@
-"""
-rfscanner.capture — Pipeline de captura IQ con threading real
-=============================================================
-Arquitectura productor/consumidor:
-
-  CaptureThread (producer)
-    └─ Lee muestras IQ del hardware SDR
-    └─ Pone bloques en sample_queue
-
-  Pipeline (consumer) — llamado desde el hilo principal o de render
-    └─ Saca bloques de la queue
-    └─ Ejecuta DSP (FFT, detección de picos)
-    └─ Llama callbacks (render, DB, waterfall)
-
-Beneficios:
-  - La captura no bloquea el render ni la UI
-  - El hardware nunca espera al procesamiento
-  - Reconexión automática por USB hot-plug
-  - Graceful shutdown con SIGINT/SIGTERM
-
-Uso:
-    pipeline = CapturePipeline(sdr_manager, dsp_engine)
-    pipeline.start(freq_hz=433.92e6)
-    ...
-    pipeline.stop()
-"""
-
 from __future__ import annotations
 
 import queue
@@ -60,26 +33,26 @@ class CaptureThread(threading.Thread):
         sdr_manager,              # instancia de SDRManager
         sample_queue: queue.Queue,
         freq_hz:      float,
-        n_muestras:   int   = 524_288,
-        settle_ms:    int   = 50,
+        n_muestras:   int = 524_288,
+        settle_ms:    int = 50,
         reconnect_attempts: int = 5,
         reconnect_delay_s:  float = 2.0,
     ):
         super().__init__(name="rfscanner-capture", daemon=True)
-        self._mgr        = sdr_manager
-        self._queue      = sample_queue
-        self._freq_hz    = freq_hz
+        self._mgr = sdr_manager
+        self._queue = sample_queue
+        self._freq_hz = freq_hz
         self._n_muestras = n_muestras
-        self._settle_ms  = settle_ms
+        self._settle_ms = settle_ms
         self._reconnect_attempts = reconnect_attempts
-        self._reconnect_delay_s  = reconnect_delay_s
+        self._reconnect_delay_s = reconnect_delay_s
 
-        self._running    = threading.Event()
+        self._running = threading.Event()
         self._running.set()
         self._error:     Optional[Exception] = None
         self._samples_total = 0
-        self._reads_ok      = 0
-        self._reads_fail    = 0
+        self._reads_ok = 0
+        self._reads_fail = 0
 
     def tune(self, freq_hz: float) -> None:
         """Cambia la frecuencia en caliente (thread-safe)."""
@@ -113,8 +86,8 @@ class CaptureThread(threading.Thread):
                     settle_ms=self._settle_ms,
                 )
                 self._samples_total += len(samples)
-                self._reads_ok      += 1
-                fail_count           = 0  # reset en éxito
+                self._reads_ok += 1
+                fail_count = 0  # reset en éxito
 
                 try:
                     self._queue.put_nowait(samples)
@@ -129,12 +102,13 @@ class CaptureThread(threading.Thread):
 
             except HardwareDisconnectedError as e:
                 self._reads_fail += 1
-                fail_count       += 1
+                fail_count += 1
                 log.warning(f"Hardware desconectado: {e} "
                             f"(intento {fail_count}/{self._reconnect_attempts})")
 
                 if fail_count >= self._reconnect_attempts:
-                    log.error("Máximo de intentos de reconexión alcanzado. Deteniendo captura.")
+                    log.error(
+                        "Máximo de intentos de reconexión alcanzado. Deteniendo captura.")
                     self._error = e
                     self._running.clear()
                     break
@@ -181,15 +155,15 @@ class CapturePipeline:
     """
 
     def __init__(self, sdr_manager, dsp_engine, queue_maxsize: int = 8):
-        self._mgr      = sdr_manager
-        self._dsp      = dsp_engine
+        self._mgr = sdr_manager
+        self._dsp = dsp_engine
         self._queue: queue.Queue = queue.Queue(maxsize=queue_maxsize)
         self._capture: Optional[CaptureThread] = None
         self._callbacks: list[Callable] = []
-        self._running  = False
+        self._running = False
 
         # Instalar manejadores de señal para graceful shutdown
-        self._orig_sigint  = None
+        self._orig_sigint = None
         self._orig_sigterm = None
 
     def on_frame(self, callback: Callable) -> None:
@@ -204,7 +178,7 @@ class CapturePipeline:
         self,
         freq_hz:    float,
         duration_s: float = 0,      # 0 = indefinido hasta stop()
-        n_muestras: int   = 524_288,
+        n_muestras: int = 524_288,
         gain_db:    Optional[float] = None,
     ) -> None:
         """
@@ -219,7 +193,7 @@ class CapturePipeline:
             self._mgr.set_gain(gain_db)
 
         self._running = True
-        self._queue   = queue.Queue(maxsize=8)
+        self._queue = queue.Queue(maxsize=8)
 
         # Configurar captura
         from rfscanner.config import cfg
@@ -237,7 +211,7 @@ class CapturePipeline:
         self._install_signal_handlers()
 
         self._capture.start()
-        inicio    = time.time()
+        inicio = time.time()
         iteration = 0
 
         try:
@@ -262,7 +236,7 @@ class CapturePipeline:
                 # DSP
                 try:
                     freqs, psd = self._dsp.calcular_psd(samples)
-                    picos      = self._dsp.detectar_picos(freqs, psd, freq_hz)
+                    picos = self._dsp.detectar_picos(freqs, psd, freq_hz)
                 except Exception as e:
                     log.error(f"Error DSP: {e}", exc_info=True)
                     continue
@@ -309,8 +283,10 @@ class CapturePipeline:
 
     def _install_signal_handlers(self) -> None:
         try:
-            self._orig_sigint  = signal.signal(signal.SIGINT,  self._handle_signal)
-            self._orig_sigterm = signal.signal(signal.SIGTERM, self._handle_signal)
+            self._orig_sigint = signal.signal(
+                signal.SIGINT,  self._handle_signal)
+            self._orig_sigterm = signal.signal(
+                signal.SIGTERM, self._handle_signal)
         except (OSError, ValueError):
             pass  # No disponible fuera del hilo principal
 
@@ -335,8 +311,10 @@ class CapturePipeline:
 class HardwareDisconnectedError(Exception):
     """El dispositivo SDR fue desconectado del USB."""
 
+
 class HardwareNotFoundError(Exception):
     """No se detectó ningún dispositivo SDR compatible."""
+
 
 class HardwareConfigError(Exception):
     """Error al configurar el hardware SDR."""

@@ -1,15 +1,3 @@
-"""
-AnubisOS — Bootscreen v3  ·  APEX SENTINEL
-═══════════════════════════════════════════
-Pantalla de arranque profesional con:
-  · Animación multi-fase
-  · ASCII art mejorado
-  · Menú de ayuda por categorías (mostrar_ayuda)
-  · Banner compacto (mostrar_banner)
-  · Exporta: mostrar_bootloader, mostrar_banner, mostrar_ayuda,
-             MODULOS_BOOT, ESTILOS_LOG, ANUBIS_ART, COMANDOS_HELP
-"""
-
 import os
 import sys
 import time
@@ -96,13 +84,22 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
         ("sniff",            "Captura de paquetes"),
         ("radar",            "Modo radar Wi-Fi RSSI"),
     ],
+    "RF / SDR": [
+        ("rfscan",           "Escaneo de frecuencias RF"),
+        ("rfbarrido",        "Barrido de espectro por rango"),
+        ("rfbandas",         "Escanear todas las bandas conocidas"),
+        ("radio",            "Escuchar y demodular señal (WFM/NFM/AM/SSB)"),
+        ("rfgrabar",         "Grabar señal IQ a archivo"),
+        ("rfplay",           "Reproducir grabación IQ"),
+        ("adsb",             "Monitor ADS-B — transponders de aeronaves"),
+        ("rfstatus",         "Estado del hardware SDR"),
+    ],
     "ATAQUES": [
         ("audit",            "Auditoría de credenciales"),
         ("vulnscan",         "Análisis de vulnerabilidades"),
         ("sqlcheck",         "Detección SQLi básica"),
         ("wifi",             "Auditoría Wi-Fi"),
         ("eviltwin",         "Access point gemelo maligno"),
-        ("rfscan",           "Escaneo de frecuencias RF"),
         ("btjumper",         "Salto de canal Bluetooth"),
         ("phishing",         "Clonar página de phishing"),
         ("ducky",            "Generar payload USB Ducky"),

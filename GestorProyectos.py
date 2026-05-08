@@ -69,7 +69,8 @@ class GestorProyectos:
 
     TIPOS = ["red-interna", "web", "wireless", "forense", "osint", "general"]
 
-    def __init__(self):
+    def __init__(self, sentinel=None):
+        self.sentinel = sentinel
         os.makedirs(PROYECTOS_PATH, exist_ok=True)
         self.proyecto_activo: Proyecto | None = None
 
