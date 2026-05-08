@@ -1,321 +1,170 @@
-<div align="center">
+# APEX SENTINEL — Anubis OS
+
+> A terminal-based tactical OS I'm building for the ClockworkPi uConsole. No GUI, no mouse. Just Python, RF hardware, and a keyboard.
+
+![Python](https://img.shields.io/badge/Python-3.13-blue) ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Android%20%7C%20uConsole-green) ![Status](https://img.shields.io/badge/Status-In%20Development-orange) ![License](https://img.shields.io/badge/License-MIT-yellow)
+
+---
+
+## What is this?
+
+I wanted a portable security tool that actually fits in a pocket and runs without a desktop environment. The uConsole is exactly the hardware I had in mind — clamshell, keyboard, expansion port for an RTL-SDR dongle. So I started building the software to match.
+
+Anubis OS is a Python application that boots into its own terminal interface, asks for a master password, and gives you a set of modules for network analysis, RF scanning, OSINT, and field forensics. It's designed to run natively on the uConsole but also works on Kali, Debian, and Termux on Android.
+
+The goal isn't to replace Kali. It's something different — a purpose-built system with its own auth, its own interface, and tight integration with SDR hardware.
+
+---
+
+## What's working right now
 
 ```
-   ╔═══════════════════╗
-   ║    /\       /\    ║
-   ║   (  \_____/  )   ║
-   ║    \         /    ║
-   ║    /\  ___  /\    ║
-   ║   / / | A | \ \   ║
-   ╚═══════════════════╝
+AnubisOS@Sentinel~# (): help
+
+  APEX SENTINEL  v2.2
+  ANUBIS OS — Sistema Operativo Táctico
+
+  SISTEMA          DESCRIPCIÓN
+  help / ?         Show this menu
+  status           System status
+  logs             Event history
+  exit             Close Sentinel
+
+  RED              DESCRIPCIÓN
+  scan             ARP scan of local network
+  advscan          Advanced scan (Nmap)
+  portscan         TCP port scan
+  sniff            Packet capture
+  radar            Wi-Fi RSSI radar mode
+
+  RF / SDR         DESCRIPCIÓN
+  rfscan           RF frequency scan
+  rfbarrido        Spectrum sweep by range
+  radio            Listen and demodulate (WFM/NFM/AM/SSB)
+  rfgrabar         Record IQ signal to file
+  rfplay           Replay recorded IQ file
+  adsb             ADS-B monitor — live aircraft transponders at 1090 MHz
+
+  FORENSE          DESCRIPCIÓN
+  geofoto          Extract GPS from photo EXIF
+  locate           IP geolocation
+  mobile           Basic mobile triage
+  view             Read forensic file
+
+  PROYECTOS        DESCRIPCIÓN
+  proyecto nuevo   Create operation workspace
+  reporte          Generate full report
 ```
 
-# APEX SENTINEL
-### Anubis OS — Framework Táctico de Ciberseguridad
+---
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue?style=flat-square&logo=python)](https://python.org)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey?style=flat-square)]()
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-En%20desarrollo-yellow?style=flat-square)]()
+## RF / SDR module
 
-*Framework de análisis de seguridad para entornos autorizados, laboratorios y CTFs.*
+This is the part I'm most excited about for the uConsole. The RF engine supports RTL-SDR natively with a MockSDR fallback for development without hardware.
 
-</div>
+Right now it does:
+- Real-time FFT spectrum analysis with waterfall display
+- Signal detection across 35 known frequency bands
+- WFM / NFM / AM / USB / LSB demodulation
+- IQ recording to `.iq` files (compatible with SDR#, GQRX, GNU Radio)
+- ADS-B decoding at 1090 MHz — live aircraft tracking in the terminal
+
+When the uConsole arrives, the RTL-SDR connects through the expansion port and everything runs natively. On Android/Termux it uses MockSDR for development.
 
 ---
 
-> **⚠ AVISO LEGAL**
-> Este software es exclusivamente para uso en sistemas sobre los que tienes **permiso explícito y por escrito** del propietario, entornos de laboratorio controlados y competencias CTF. El uso contra sistemas ajenos sin autorización es un delito tipificado en la mayoría de jurisdicciones. El autor no se responsabiliza del mal uso de esta herramienta.
+## Security
+
+- bcrypt with auto-generated salt (migrates from legacy SHA-256 on first login)
+- Credentials stored separately, never in `config.json`
+- Persistent lockout between sessions — rate limiting survives restarts
+- Fernet symmetric encryption for sensitive files
+- Key rotation with dated backups
 
 ---
 
-## Índice
+## Running it
 
-- [Características](#características)
-- [Requisitos del sistema](#requisitos-del-sistema)
-- [Instalación](#instalación)
-- [Estructura del proyecto](#estructura-del-proyecto)
-- [Primer inicio](#primer-inicio)
-- [Módulos disponibles](#módulos-disponibles)
-- [Comandos](#comandos)
-- [Hardware objetivo](#hardware-objetivo)
-- [Tecnologías](#tecnologías)
-- [Contribuir](#contribuir)
-- [Licencia](#licencia)
-
----
-
-## Características
-
-- **Análisis de red** — ARP sweep, port scan, traffic sniff, Wi-Fi radar
-- **Módulo RF** — Escáner de espectro con FFT/CFAR, demodulación AM/FM/SSB, waterfall terminal
-- **TSCM** — Detección de hardware de vigilancia por OUI (cámaras, IoT, ESP32)
-- **Forense digital** — Lectura de WhatsApp, Chrome, Firefox, Telegram sin modificar los datos
-- **Criptografía** — Descifrado AES-256-GCM de bases de datos WhatsApp (crypt14/crypt15)
-- **Bluetooth** — Escaneo BLE y Bluetooth clásico con clasificación de dispositivos
-- **OSINT** — Geolocalización por IP, metadatos EXIF/GPS en imágenes
-- **Seguridad** — Autenticación bcrypt, logs con rotación, evidencia en CSV/SigMF
-- **Sin hardware requerido** — MockSDR para desarrollo y tests sin RTL-SDR físico
-
----
-
-## Requisitos del sistema
-
-| Componente    | Mínimo                        | Recomendado              |
-|---------------|-------------------------------|--------------------------|
-| Python        | 3.10+                         | 3.11+                    |
-| Sistema       | Linux / Windows 10+           | Debian 12 / Ubuntu 22.04 |
-| RAM           | 512 MB                        | 2 GB+                    |
-| Permisos      | Usuario normal                | root para módulos de red |
-| Hardware SDR  | Ninguno (MockSDR disponible)  | RTL-SDR v3 / CM5         |
-
----
-
-## Instalación
-
+**On Linux / Kali / Debian:**
 ```bash
-# 1. Clonar el repositorio
-git clone https://github.com/bernalmariano457-hash/Sentinel-Anubis-os-.git
-cd Sentinel-Anubis-os-
-
-# 2. Crear entorno virtual (recomendado)
-python -m venv venv
-source venv/bin/activate        # Linux / macOS
-venv\Scripts\activate           # Windows
-
-# 3. Instalar dependencias del sistema (Linux)
-sudo apt install -y \
-  rtl-sdr librtlsdr-dev \
-  python3-pyaudio portaudio19-dev \
-  python3-dev libbluetooth-dev
-
-# 4. Instalar dependencias Python
+git clone https://github.com/YOUR_USER/Sentinel-Anubis-os.git
+cd Sentinel-Anubis-os
 pip install -r requirements.txt
-
-# 5. Ejecutar
-python main.py
+python Main.py
 ```
 
-> **Nota para uConsole / ARM:**
-> ```bash
-> pip install -r requirements.txt --break-system-packages
-> ```
+**On Android (Termux):**
+```bash
+pkg update && pkg install git python
+git clone https://github.com/bernalmariano457-hash/Sentinel-Anubis-os.git
+cd Sentinel-Anubis-os
+pip install -r requirements.txt --break-system-packages
+python Main.py
+```
+
+First boot will ask you to set a master password. After that it goes straight to the interface.
+
+**For RTL-SDR support:**
+```bash
+# Linux
+sudo apt install rtl-sdr
+pip install pyrtlsdr
+
+# Termux
+pkg install rtl-sdr
+pip install pyrtlsdr --break-system-packages
+```
 
 ---
 
-## Estructura del proyecto
+## Project structure
 
 ```
 Sentinel-Anubis-os/
-│
-├── main.py                    # Punto de entrada — CLI principal
-├── bootscreen.py              # Banner y pantalla de arranque
-├── requirements.txt           # Dependencias Python
-│
-├── modules/                   # Módulos del sistema
-│   │
-│   ├── ── Red ──────────────────────────────────────────
-│   ├── SweepModule.py         # Barrido ARP + detección TSCM por OUI
-│   ├── AdvancedScanner.py     # Escaneo de puertos detallado
-│   ├── TacticalSniffer.py     # Captura y análisis de tráfico
-│   ├── RadarSentinel.py       # Radar Wi-Fi por RSSI
-│   ├── NetworkModule.py       # Utilidades de red general
-│   │
-│   ├── ── RF / Espectro ─────────────────────────────────
-│   ├── RFScanner.py           # Escáner de espectro RF (FFT + CFAR)
-│   ├── rf_demod.py            # Demodulación AM/NFM/WFM/SSB
-│   ├── rf_mock.py             # MockSDR para tests sin hardware
-│   ├── dsp.py                 # Motor DSP (Welch, CFAR, BW -3dB)
-│   ├── bands.py               # Base de datos de bandas RF
-│   ├── rf_database.py         # Persistencia SQLite de señales
-│   ├── rf_storage.py          # Almacenamiento IQ / SigMF
-│   │
-│   ├── ── Forense ───────────────────────────────────────
-│   ├── ForensicReader.py      # WhatsApp / Chrome / Firefox / Telegram
-│   ├── WADecryptor.py         # Descifrado AES-GCM crypt14/crypt15
-│   ├── ExifAnalyzer.py        # Metadatos GPS en imágenes
-│   ├── MobileSentinel.py      # Triaje Android / iOS
-│   │
-│   ├── ── Bluetooth ─────────────────────────────────────
-│   ├── BluetoothModule.py     # BLE + clásico — detección y puente
-│   │
-│   ├── ── OSINT / Geolocalización ───────────────────────
-│   ├── LocatorModule.py       # Rastreo IP / GPS
-│   ├── GeomapSentinel.py      # Mapa de señales geolocalizadas
-│   ├── GeoPrecise.py          # Precisión GPS aumentada
-│   │
-│   ├── ── Ataques controlados (laboratorio) ────────────
-│   ├── WifiAtack.py           # Beacon spam / Deauth (lab only)
-│   ├── EvilTwinServer.py      # AP gemelo malicioso (lab only)
-│   ├── HydraModule.py         # Fuerza bruta de credenciales
-│   ├── PhishingModule.py      # Plantillas de phishing (CTF)
-│   ├── DuckyModule.py         # Payloads USB Rubber Ducky
-│   │
-│   └── ── Sistema ───────────────────────────────────────
-│       ├── SecurityModule.py  # Autenticación y control de acceso
-│       ├── StealthModule.py   # Verificación de huella digital
-│       ├── SystemChecker.py   # Diagnóstico de dependencias
-│       ├── AuditEngine.py     # Motor de auditoría
-│       ├── DictionaryManager.py # Gestión de wordlists
-│       └── ReportManager.py   # Generación de reportes
-│
-├── data/
-│   ├── logs/                  # Logs con rotación automática
-│   ├── evidence/              # Resultados de escaneos (CSV, WAV, IQ)
-│   │   ├── rf/                # Capturas de espectro y señales
-│   │   ├── sweep/             # Evidencia de barridos de red
-│   │   └── mobile/            # Triaje forense móvil
-│   └── wordlists/             # Diccionarios para auditoría
-│
-└── tools/
-    └── zphisher/              # Herramienta de phishing externa
+├── Main.py
+├── core/           # auth, logging, command routing, plugins
+├── modules/
+│   ├── rf/         # RTL-SDR, spectrum analysis, demodulation, ADS-B
+│   ├── network/    # radar, scanner, sniffer, Wi-Fi
+│   ├── geo/        # geolocation, Wi-Fi triangulation
+│   ├── forense/    # EXIF, mobile triage, forensic reader
+│   ├── osint/      # passive recon, CVE lookup
+│   ├── audit/      # credential audit, phishing, payloads
+│   └── reporte/    # report generation, evidence management
+├── plugins/        # hot-loadable modules
+├── data/           # logs, evidence, security (gitignored)
+└── tools/          # setup scripts
 ```
 
 ---
 
-## Primer inicio
+## Hardware target
 
-Al ejecutar por primera vez se crea una contraseña maestra almacenada como hash bcrypt. **Nunca se guarda en texto plano.**
+**ClockworkPi uConsole with RTL-SDR V3**
 
-```
-╔══════════════════════════════════╗
-║   ANUBIS OS — SETUP DE SEGURIDAD ║
-╚══════════════════════════════════╝
+The uConsole is the whole reason this project exists in the shape it's in. Terminal-native, keyboard-driven, compact enough to carry anywhere. The expansion port takes an RTL-SDR dongle directly, which means the RF module runs on real hardware without adapters.
 
-[?] Contraseña Maestra (mín. 8 caracteres): ············
-[?] Confirme la contraseña:                 ············
-[+] Hash bcrypt generado y almacenado.
-[+] Sistema listo.
-```
+My uConsole is on its way. Until then, development runs on Termux (Android) with MockSDR for the RF parts and real hardware for everything else.
 
 ---
 
-## Módulos disponibles
+## Roadmap
 
-### Red y Perímetro
-
-| Módulo           | Descripción                                              |
-|------------------|----------------------------------------------------------|
-| `SweepModule`    | Barrido ARP con detección TSCM por OUI — cámaras, IoT, ESP32 |
-| `AdvancedScanner`| Escaneo de puertos con fingerprinting de servicio        |
-| `TacticalSniffer`| Captura pasiva de tráfico con análisis de protocolos     |
-| `RadarSentinel`  | Mapa de redes Wi-Fi ordenadas por RSSI                   |
-
-### RF / Espectro
-
-| Módulo        | Descripción                                                 |
-|---------------|-------------------------------------------------------------|
-| `RFScanner`   | Escáner de espectro con FFT Welch + CFAR bilateral          |
-| `rf_demod`    | Demodulación AM / NFM / WFM / USB / LSB en numpy puro       |
-| `rf_mock`     | MockSDR — señales sintéticas sin hardware real              |
-| `dsp`         | Motor DSP: PSD, picos, BW -3dB, supresión DC               |
-
-### Forense Digital
-
-| Módulo           | Descripción                                              |
-|------------------|----------------------------------------------------------|
-| `ForensicReader` | Mensajes WhatsApp, historial Chrome/Firefox, Telegram    |
-| `WADecryptor`    | Descifrado AES-256-GCM de bases de datos WhatsApp        |
-| `ExifAnalyzer`   | Extracción de metadatos GPS en fotos                     |
-| `MobileSentinel` | Triaje completo de dispositivos Android / iOS            |
-
-### Bluetooth
-
-| Módulo            | Descripción                                             |
-|-------------------|---------------------------------------------------------|
-| `BluetoothModule` | Escaneo BLE + clásico, clasificación por RSSI, puente TCP |
+- [ ] Native boot mode for uConsole (replace login shell)
+- [ ] NOAA satellite image decoder (137 MHz)
+- [ ] Full ADS-B decoder with pyModeS
+- [ ] install.sh for one-command setup on Debian/Kali
+- [ ] Wi-Fi geolocation triangulation with live map
 
 ---
 
-## Comandos
+## Dependencies
 
-| Categoría | Comando     | Descripción                               |
-|-----------|-------------|-------------------------------------------|
-| Sistema   | `help`      | Índice completo de comandos               |
-|           | `status`    | Estado de módulos y dependencias          |
-|           | `clear`     | Recarga el banner                         |
-|           | `logs`      | Historial de operaciones                  |
-|           | `files`     | Explorador de evidencias                  |
-|           | `exit`      | Cierre seguro con hash de sesión          |
-| Red       | `sweep`     | Barrido ARP + detección TSCM             |
-|           | `portscan`  | Auditoría de puertos TCP/UDP              |
-|           | `sniff`     | Captura pasiva de tráfico                 |
-|           | `advscan`   | Escaneo detallado de objetivo             |
-|           | `radar`     | Radar Wi-Fi por RSSI                      |
-| RF        | `rf`        | Escáner de espectro RF                    |
-|           | `rfscan`    | Escaneo rápido en frecuencia dada         |
-| Forense   | `mobile`    | Triaje Android / iOS                      |
-|           | `geofoto`   | Metadatos GPS en imágenes                 |
-|           | `locate`    | Rastreo IP / GPS                          |
-| BT        | `btjumper`  | Menú Bluetooth                            |
-|           | `btscan`    | Escaneo BLE rápido                        |
-| Stealth   | `stealth`   | Verificar huella digital del sistema      |
+Core: `rich` `python-dotenv` `requests` `bcrypt` `cryptography`  
+RF: `numpy` `scipy` `sounddevice` `pyrtlsdr` (optional)  
+Network: `scapy` `netifaces`  
+Forensics: `Pillow` `python-whois`
 
 ---
 
-## Hardware objetivo
-
-El sistema fue diseñado para correr en hardware compacto de campo:
-
-| Hardware              | Estado          | Notas                              |
-|-----------------------|-----------------|-------------------------------------|
-| Raspberry Pi 4        | ✅ Soportado    | Probado con RTL-SDR v3              |
-| **Compute Module 5**  | 🔜 En camino    | Target principal — todo listo       |
-| uConsole (CM4)        | ✅ Soportado    | ARM — usar `--break-system-packages`|
-| PC Linux x86_64       | ✅ Soportado    | Entorno de desarrollo               |
-| Windows 10/11         | ⚠ Parcial      | Sin módulos de red raw              |
-
-> El módulo RF funciona en **modo MockSDR** sin hardware SDR hasta que llegue el CM5.
-
----
-
-## Tecnologías
-
-| Librería          | Uso                                               |
-|-------------------|---------------------------------------------------|
-| [Rich](https://github.com/Textualize/rich)         | Interfaz de terminal — tablas, paneles, waterfall |
-| [Scapy](https://scapy.net/)                         | ARP scan, captura de paquetes                     |
-| [NumPy](https://numpy.org/)                         | FFT, PSD, CFAR, demodulación RF                   |
-| [bcrypt](https://pypi.org/project/bcrypt/)          | Hash seguro de contraseña maestra                 |
-| [PyCryptodome](https://pycryptodome.readthedocs.io/)| Descifrado AES-256-GCM WhatsApp                   |
-| [Bleak](https://bleak.readthedocs.io/)              | Escaneo Bluetooth Low Energy (BLE)                |
-| [Pillow](https://python-pillow.org/)                | Análisis de metadatos EXIF                        |
-| [pyrtlsdr](https://pyrtlsdr.readthedocs.io/)        | Driver RTL-SDR hardware                           |
-| SQLite3           | Persistencia de señales y evidencias (stdlib)     |
-
----
-
-## Contribuir
-
-```bash
-# 1. Fork del repositorio en GitHub
-# 2. Crear rama de feature
-git checkout -b feature/nombre-del-modulo
-
-# 3. Desarrollar y testear
-python -m pytest tests/ -v
-
-# 4. Commit con mensaje descriptivo
-git commit -m "feat(ModuloX): descripción concisa del cambio"
-
-# 5. Push y Pull Request
-git push origin feature/nombre-del-modulo
-```
-
-**Convenciones de commits:**
-- `feat(modulo):` — nueva funcionalidad
-- `fix(modulo):` — corrección de bug
-- `refactor(modulo):` — mejora de código sin cambio funcional
-- `docs:` — cambios en documentación
-
----
-
-## Licencia
-
-MIT License — consulta el archivo [LICENSE](LICENSE) para más detalles.
-
----
-
-<div align="center">
-<sub>Apex Sentinel — Anubis OS | Desarrollado para CM5 🔜</sub>
-</div>
+Built by [@bernalmariano457](https://github.com/bernalmariano457) — feedback welcome, especially from anyone running Python tools on embedded hardware.
