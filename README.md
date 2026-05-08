@@ -87,7 +87,7 @@ When the uConsole arrives, the RTL-SDR connects through the expansion port and e
 
 **On Linux / Kali / Debian:**
 ```bash
-git clone https://github.com/YOUR_USER/Sentinel-Anubis-os.git
+git clone https://github.com/bernalmariano457-hash/Sentinel-Anubis-os.git
 cd Sentinel-Anubis-os
 pip install -r requirements.txt
 python Main.py
