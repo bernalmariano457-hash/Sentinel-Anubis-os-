@@ -2,7 +2,7 @@
 Plugin de ejemplo para AnubisOS.
 Archivo: plugins/ejemplo_plugin.py
 """
-from PluginSystem import PluginBase
+from core.PluginSystem import PluginBase
 
 class EjemploPlugin(PluginBase):
     NOMBRE      = "ejemplo"

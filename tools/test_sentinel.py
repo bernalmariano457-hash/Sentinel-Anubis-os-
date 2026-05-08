@@ -54,7 +54,7 @@ class TestValidador:
     """Cubre validators.py — validación de entradas del usuario."""
 
     def setup_method(self):
-        from validators import Validador
+        from core.validators import Validador
         self.V = Validador
 
     # IPs
@@ -151,7 +151,7 @@ class TestGestorAuth:
 
     @pytest.fixture
     def auth(self, console, mock_log):
-        from auth import GestorAuth
+        from core.auth import GestorAuth
         config = {"sistema": {"nombre": "Test", "version": "1.0",
                               "primer_arranque": False}}
         return GestorAuth(config, console, mock_log)
@@ -207,7 +207,7 @@ class TestGestorAuth:
 
     # solicitar_acceso con hash en config
     def test_solicitar_acceso_correcto(self, console, mock_log):
-        from auth import GestorAuth
+        from core.auth import GestorAuth
         import hashlib
         pwd = "acceso123"
         salt = "deadbeef"
@@ -222,7 +222,7 @@ class TestGestorAuth:
         assert resultado is True
 
     def test_solicitar_acceso_agota_intentos(self, console, mock_log):
-        from auth import GestorAuth
+        from core.auth import GestorAuth
         import hashlib
         salt = "cafebabe"
         h_str = hashlib.sha256((salt + "correcta").encode()).hexdigest()
@@ -246,7 +246,7 @@ class TestLogSistema:
     @pytest.fixture
     def log(self, console, tmp_dir, monkeypatch):
         monkeypatch.chdir(tmp_dir)
-        from log_sistema import LogSistema
+        from core.log_sistema import LogSistema
         return LogSistema(console)
 
     def test_info_no_lanza(self, log):
@@ -311,7 +311,7 @@ class TestColaTareas:
 
     @pytest.fixture
     def cola(self):
-        from ColaTareas import ColaTareas
+        from core.ColaTareas import ColaTareas
         return ColaTareas()
 
     def test_agregar_tarea_retorna_id(self, cola):
@@ -330,7 +330,7 @@ class TestColaTareas:
             raise ValueError("error intencional")
         tid = cola.agregar("tarea_error", lanza)
         time.sleep(0.3)
-        from ColaTareas import EstadoTarea
+        from core.ColaTareas import EstadoTarea
         tarea = cola._tareas.get(tid)
         assert tarea is not None
         assert tarea.estado == EstadoTarea.ERROR
@@ -340,7 +340,7 @@ class TestColaTareas:
         cola.agregar("t2", lambda: None)
         time.sleep(0.3)
         cola.limpiar_completadas()
-        from ColaTareas import EstadoTarea
+        from core.ColaTareas import EstadoTarea
         for t in cola._tareas.values():
             assert t.estado != EstadoTarea.COMPLETADA
 
@@ -383,12 +383,12 @@ class TestGestorProyectos:
         import GestorProyectos as gp_mod
         monkeypatch.setattr(gp_mod, "PROYECTOS_PATH",
                             str(tmp_dir / "data" / "proyectos"))
-        from GestorProyectos import GestorProyectos
+        from core.GestorProyectos import GestorProyectos
         return GestorProyectos()
 
     @pytest.fixture
     def proyecto_activo(self, gp):
-        from GestorProyectos import Proyecto
+        from core.GestorProyectos import Proyecto
         p = Proyecto("TestOp", "Objetivo de prueba",
                      "192.168.1.0/24", "red-interna")
         gp.proyecto_activo = p
@@ -397,7 +397,7 @@ class TestGestorProyectos:
         return p
 
     def test_crear_proyecto_objeto(self, tmp_dir):
-        from GestorProyectos import Proyecto
+        from core.GestorProyectos import Proyecto
         p = Proyecto("Op1", "Objetivo", "10.0.0.0/8", "web")
         assert p.nombre == "Op1"
         assert p.objetivo == "Objetivo"
@@ -407,7 +407,7 @@ class TestGestorProyectos:
         assert isinstance(p.hallazgos, list)
 
     def test_proyecto_to_dict(self, tmp_dir):
-        from GestorProyectos import Proyecto
+        from core.GestorProyectos import Proyecto
         p = Proyecto("TestDict", "Obj", "10.0.0.0/8")
         d = p.to_dict()
         for campo in ["id", "nombre", "objetivo", "scope", "estado",
@@ -415,7 +415,7 @@ class TestGestorProyectos:
             assert campo in d
 
     def test_proyecto_from_dict_roundtrip(self):
-        from GestorProyectos import Proyecto
+        from core.GestorProyectos import Proyecto
         p = Proyecto("RoundTrip", "Objetivo", "192.168.0.0/16", "forense")
         d = p.to_dict()
         p2 = Proyecto.from_dict(d)
@@ -446,7 +446,7 @@ class TestGestorProyectos:
         gp.registrar_evidencia("test", "evidencia", {})
         gp._guardar_proyecto()
 
-        from GestorProyectos import GestorProyectos
+        from core.GestorProyectos import GestorProyectos
         gp2 = GestorProyectos()
         proyectos = gp2.listar_proyectos(mostrar=False)
         nombres = [p["nombre"] for p in proyectos]
@@ -481,7 +481,7 @@ class TestPluginSystem:
         monkeypatch.chdir(tmp_dir)
         import PluginSystem as ps_mod
         monkeypatch.setattr(ps_mod, "PLUGINS_PATH", str(tmp_dir / "plugins"))
-        from PluginSystem import GestorPlugins
+        from core.PluginSystem import GestorPlugins
         return GestorPlugins(sentinel_mock)
 
     @pytest.fixture
@@ -492,7 +492,7 @@ class TestPluginSystem:
         monkeypatch.setattr(ps_mod, "PLUGINS_PATH", str(plugins_dir))
 
         contenido = '''
-from PluginSystem import PluginBase
+from core.PluginSystem import PluginBase
 
 class PluginTest(PluginBase):
     NOMBRE = "plugin_test"
@@ -512,7 +512,7 @@ class PluginTest(PluginBase):
         assert (tmp_dir / "plugins").exists()
 
     def test_plugin_base_ayuda(self, sentinel_mock):
-        from PluginSystem import PluginBase
+        from core.PluginSystem import PluginBase
 
         class MiPlugin(PluginBase):
             NOMBRE = "mi_plugin"
@@ -532,7 +532,7 @@ class PluginTest(PluginBase):
         assert "cmd1" in ayuda
 
     def test_plugin_base_sin_ejecutar_lanza(self, sentinel_mock):
-        from PluginSystem import PluginBase
+        from core.PluginSystem import PluginBase
 
         class PluginIncompleto(PluginBase):
             NOMBRE = "incompleto"
@@ -580,7 +580,7 @@ class TestSecurityModule:
     def security(self, tmp_dir, monkeypatch):
         monkeypatch.chdir(tmp_dir)
         sentinel = MagicMock()
-        from Security import SecurityModule
+        from core.Security import SecurityModule
         return SecurityModule(sentinel)
 
     def test_llave_se_crea(self, security, tmp_dir):
@@ -639,20 +639,20 @@ class TestCVEMatcher:
         sentinel = MagicMock()
         sentinel.console = console
         sentinel.gp = None
-        from CVEMatcher import CVEMatcher
+        from modules.osint.CVEMatcher import CVEMatcher
         return CVEMatcher(sentinel)
 
     def test_instancia_correcta(self, cve):
-        from CVEMatcher import CVEMatcher
+        from modules.osint.CVEMatcher import CVEMatcher
         assert isinstance(cve, CVEMatcher)
 
     def test_severidad_colores_definidos(self):
-        from CVEMatcher import SEVERIDAD_COLOR
+        from modules.osint.CVEMatcher import SEVERIDAD_COLOR
         for nivel in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"]:
             assert nivel in SEVERIDAD_COLOR
 
     def test_severidad_emojis_definidos(self):
-        from CVEMatcher import SEVERIDAD_EMOJI
+        from modules.osint.CVEMatcher import SEVERIDAD_EMOJI
         for nivel in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"]:
             assert nivel in SEVERIDAD_EMOJI
 
@@ -785,7 +785,7 @@ class TestMotorDSP:
 
     @pytest.fixture
     def dsp(self):
-        from RFScanner import MotorDSP
+        from modules.rf.RFScanner import MotorDSP
         return MotorDSP(fft_size=2048, ventana="blackman")
 
     @pytest.fixture
@@ -853,7 +853,7 @@ class TestMotorDSP:
         assert np.all(np.isfinite(promedio))
 
     def test_ventanas_disponibles(self):
-        from RFScanner import MotorDSP
+        from modules.rf.RFScanner import MotorDSP
         for ventana in ["blackman", "hann", "hamming"]:
             dsp = MotorDSP(fft_size=512, ventana=ventana)
             assert dsp is not None
@@ -886,7 +886,7 @@ class TestRealHardware:
     """Tests que requieren hardware SDR físico. Ejecutar con: pytest --hardware"""
 
     def test_conectar_rtlsdr(self, hardware_required):
-        from RFScanner import RFScanner
+        from modules.rf.RFScanner import RFScanner
         sentinel = MagicMock()
         rf = RFScanner(sentinel)
         assert rf.sdr is not None, "No se pudo conectar al RTL-SDR"
@@ -894,7 +894,7 @@ class TestRealHardware:
 
     def test_captura_muestras_reales(self, hardware_required):
         import numpy as np
-        from RFScanner import RFScanner
+        from modules.rf.RFScanner import RFScanner
         sentinel = MagicMock()
         rf = RFScanner(sentinel)
         muestras = rf._capturar(100e6)
@@ -904,7 +904,7 @@ class TestRealHardware:
         rf.cerrar()
 
     def test_scan_fm_real(self, hardware_required):
-        from RFScanner import RFScanner
+        from modules.rf.RFScanner import RFScanner
         sentinel = MagicMock()
         rf = RFScanner(sentinel)
         # Escaneo de 2 segundos en FM

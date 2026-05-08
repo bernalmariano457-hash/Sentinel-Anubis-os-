@@ -1,8 +1,8 @@
 from __future__ import annotations
-from command_handler import CommandHandler
-from rf_module import RFModuleIntegrado
-from validators import Validador
-from log_sistema import LogSistema
+from core.command_handler import CommandHandler
+from modules.rf.rf_module import RFModuleIntegrado
+from core.validators import Validador
+from core.log_sistema import LogSistema
 
 import json
 import logging
@@ -34,7 +34,7 @@ if str(_HERE) not in sys.path:
 
 # ── Bootscreen ────────────────────────────────────────────────────────
 try:
-    from bootscreen import (
+    from core.bootscreen import (
         ANUBIS_ART, COMANDOS_HELP, ESTILOS_LOG, MODULOS_BOOT,
         mostrar_ayuda, mostrar_banner, mostrar_bootloader,
     )
@@ -59,7 +59,7 @@ except ImportError:
 
 # ── Auth ──────────────────────────────────────────────────────────────
 try:
-    from auth import GestorAuth
+    from core.auth import GestorAuth
 except ImportError:
     class GestorAuth:           # type: ignore
         def __init__(self, *a, **kw): pass
@@ -152,26 +152,31 @@ class ApexSentinel:
 
     def _cargar_modulos(self):
         imports = [
-            ("checker",      "SystemChecker",    "SystemChecker"),
-            ("audit_engine", "AuditEngine",       "AuditEngine"),
-            ("dict_manager", "DictionaryManager", "DictionaryManager"),
+            ("checker",      "SystemChecker",    "core.SystemChecker"),
+            ("audit_engine", "AuditEngine",       "modules.audit.AuditEngine"),
+            ("dict_manager", "DictionaryManager",
+             "modules.audit.DictionaryManager"),
             ("hydra",        "HydraModule",       "HydraModule"),
-            ("reportes",     "ReportManager",     "ReportManager"),
-            ("stealth",      "StealthModule",     "Stealth"),
-            ("locator",      "LocatorModule",     "LocatorModule"),
-            ("exif",         "ExifAnalyzer",      "ExifAnalyzer"),
-            ("geopreciose",  "GeoPrecise",        "GeoPrecise"),
-            ("wifi_attack",  "WifiAttack",        "WifiAtack"),
-            ("reader",       "ForensicReader",    "ForensicReader"),
-            ("sniffer",      "TacticalSniffer",   "TacticalSniffer"),
-            ("bt",           "BluetoothModule",   "bt_module"),
-            ("sweep",        "SweepModule",       "SweepModule"),
-            ("ducky",        "DuckyModule",       "DuckyModule"),
-            ("adv_scanner",  "AdvancedScanner",   "AdvancedScanner"),
-            ("mobile",       "MobileSentinel",    "MobileSentinel"),
-            ("security",     "SecurityModule",    "Security"),
-            ("network",      "NetworkModule",     "Network"),
-            ("phishing",     "PhishingModule",    "PhishingModule"),
+            ("reportes",     "ReportManager",     "modules.reporte.ReportManager"),
+            ("stealth",      "Stealth",           "modules.forense.Stealth"),
+            ("locator",      "LocatorModule",     "modules.geo.LocatorModule"),
+            ("exif",         "ExifAnalyzer",      "modules.forense.ExifAnalyzer"),
+            ("geopreciose",  "GeoPrecise",        "modules.geo.GeoPrecise"),
+            ("wifi_attack",  "WifiAtack",         "modules.network.WifiAtack"),
+            ("reader",       "ForensicReader",
+             "modules.forense.ForensicReader"),
+            ("sniffer",      "TacticalSniffer",
+             "modules.network.TacticalSniffer"),
+            ("bt",           "bt_module",         "modules.network.bt_module"),
+            ("sweep",        "SweepModule",       "modules.network.SweepModule"),
+            ("ducky",        "DuckyModule",       "modules.audit.DuckyModule"),
+            ("adv_scanner",  "AdvancedScanner",
+             "modules.network.AdvancedScanner"),
+            ("mobile",       "MobileSentinel",
+             "modules.forense.MobileSentinel"),
+            ("security",     "SecurityModule",    "core.Security"),
+            ("network",      "Network",           "modules.network.Network"),
+            ("phishing",     "PhishingModule",    "modules.audit.PhishingModule"),
         ]
 
         for attr, clase, modulo in imports:
@@ -189,10 +194,9 @@ class ApexSentinel:
 
         # Radar / Geomap
         try:
-            from RadarSentinel import RadarSentinel
-            from GeomapSentinel import GeomapSentinel
+            from modules.network.RadarSentinel import RadarSentinel
+            from modules.geo.GeomapSentinel import GeomapSentinel
             self.radar = RadarSentinel(interface="Wi-Fi")
-            self.radar.run()
             self.geomap = GeomapSentinel()
         except Exception as e:
             self.log.warning(f"Radar/Geomap: {e}", "Init")
@@ -200,7 +204,7 @@ class ApexSentinel:
 
         # EvilTwin
         try:
-            from EvilTwinServer import iniciar_servidor
+            from modules.network.EvilTwinServer import iniciar_servidor
             self._evil_twin_server = iniciar_servidor
         except Exception:
             self._evil_twin_server = None
@@ -226,10 +230,10 @@ class ApexSentinel:
 
         # Módulos profesionales
         for nombre_cls, modulo_str, attr_name in [
-            ("GestorProyectos", "GestorProyectos", "gp"),
-            ("OSINTEngine",     "OSINTEngine",     "osint"),
-            ("CVEMatcher",      "CVEMatcher",      "cve"),
-            ("ColaTareas",      "ColaTareas",      "cola"),
+            ("GestorProyectos", "core.GestorProyectos",  "gp"),
+            ("OSINTEngine",     "modules.osint.OSINTEngine", "osint"),
+            ("CVEMatcher",      "modules.osint.CVEMatcher",  "cve"),
+            ("ColaTareas",      "core.ColaTareas",        "cola"),
         ]:
             Cls = _importar(modulo_str, nombre_cls)
             try:
@@ -240,7 +244,7 @@ class ApexSentinel:
 
         # MotorReportes depende de GestorProyectos
         try:
-            from MotorReportes import MotorReportes
+            from modules.reporte.MotorReportes import MotorReportes
             self.motor_rep = MotorReportes(self) if self.gp else None
         except Exception as e:
             self.log.warning(f"MotorReportes: {e}", "Init")
@@ -248,7 +252,7 @@ class ApexSentinel:
 
         # Plugins
         try:
-            from PluginSystem import GestorPlugins, crear_plugin_ejemplo
+            from core.PluginSystem import GestorPlugins, crear_plugin_ejemplo
             self.plugins = GestorPlugins(self)
             crear_plugin_ejemplo()
             self.plugins.cargar_todos()
