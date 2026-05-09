@@ -1,43 +1,104 @@
 import os
+import logging
+from pathlib import Path
 from rich.console import Console
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class DictionaryManager:
-    def __init__(self):
-        self.base_path = "/usr/share/wordlists"
-        self.dict_map = {
-            "ssh": "metasploit/unix_passwords.txt",
-            "ftp": "metasploit/ftp_default_pass.txt",
-            "http-post-form": "dirbuster/directory-list-2.3-small.txt",
-            "http-get": "dirbuster/directory-list-2.3-small.txt",
-            "mysql": "metasploit/mysql_default_pass.txt",
-            "telnet": "metasploit/mirai_pass.txt",
-            "default": "rockyou.txt"
-        }
+    BASE_PATHS = [
+        "/usr/share/wordlists",
+        "/usr/share/seclists",          # SecLists si está instalado
+        os.path.expanduser("~/.wordlists"),  # wordlists personales del usuario
+    ]
 
-    def obtener_ruta_diccionario(self, protocolo):
-        """
-        Analiza el protocolo y devuelve la ruta absoluta del mejor diccionario disponible.
-        """
-        # 1. Buscar la ruta óptima en el mapa, o usar 'default' si es un protocolo desconocido
-        sub_ruta = self.dict_map.get(
-            protocolo.lower(), self.dict_map["default"])
-        full_path = os.path.join(self.base_path, sub_ruta)
+    # Protocolo → ruta relativa (en orden de preferencia)
+    DICT_MAP: dict[str, list[str]] = {
+        "ssh": [
+            "metasploit/unix_passwords.txt",
+            "rockyou.txt",
+        ],
+        "ftp": [
+            "metasploit/ftp_default_pass.txt",
+            "metasploit/unix_passwords.txt",
+        ],
+        "http-post-form": [
+            "dirbuster/directory-list-2.3-medium.txt",
+            "dirbuster/directory-list-2.3-small.txt",
+        ],
+        "http-get": [
+            "dirbuster/directory-list-2.3-medium.txt",
+            "dirbuster/directory-list-2.3-small.txt",
+        ],
+        "mysql": [
+            "metasploit/mysql_default_pass.txt",
+            "rockyou.txt",
+        ],
+        "telnet": [
+            "metasploit/mirai_pass.txt",
+            "metasploit/unix_passwords.txt",
+        ],
+        "smb": [
+            "metasploit/unix_passwords.txt",
+            "rockyou.txt",
+        ],
+        "rdp": [
+            "rockyou.txt",
+        ],
+        "default": [
+            "rockyou.txt",
+        ],
+    }
 
-        # 2. Verificar si el archivo específico realmente existe en el sistema
-        if os.path.exists(full_path):
-            return full_path
-        else:
-            # 3. Fallback (Plan B): Si no está el específico, intentamos con el RockYou genérico
-            ruta_rockyou = os.path.join(self.base_path, "rockyou.txt")
-            if os.path.exists(ruta_rockyou):
-                return ruta_rockyou
-            else:
-                # 4. Fallback extremo (Plan C): Por si estás probando en una máquina limpia sin wordlists
+    LOCAL_FALLBACK = Path("local_pass.txt")
+
+    def obtener_ruta_diccionario(self, protocolo: str) -> Path | None:
+        protocolo = protocolo.lower().strip()
+        candidatos = self.DICT_MAP.get(protocolo, self.DICT_MAP["default"])
+
+        # 1. Buscar candidatos en orden de preferencia
+        for base in self.BASE_PATHS:
+            for sub in candidatos:
+                ruta = Path(base) / sub
+                if ruta.is_file():
+                    logger.info("[Dict] Usando: %s", ruta)
+                    return ruta
+
+        # 2. Fallback genérico a rockyou en cualquier base
+        for base in self.BASE_PATHS:
+            ruta = Path(base) / "rockyou.txt"
+            if ruta.is_file():
                 console.print(
-                    "\n[bold red][!] Advertencia: No se encontraron los diccionarios estándar en /usr/share/wordlists/[/bold red]")
-                console.print(
-                    "[yellow][!] Utilizando diccionario local 'local_pass.txt' (asegúrate de crearlo en esta carpeta).[/yellow]")
-                return "local_pass.txt"
+                    f"[yellow][!] Diccionario específico para '{protocolo}' no encontrado. "
+                    f"Usando rockyou.txt[/yellow]"
+                )
+                return ruta
+
+        # 3. Fallback local
+        if self.LOCAL_FALLBACK.is_file():
+            console.print(
+                "[bold red][!] Wordlists estándar no encontradas. "
+                "Usando local_pass.txt[/bold red]"
+            )
+            return self.LOCAL_FALLBACK
+
+        # 4. Sin opciones
+        console.print(
+            "[bold red][!] No se encontró ningún diccionario. "
+            "Instala wordlists: sudo apt install wordlists seclists[/bold red]"
+        )
+        logger.error(
+            "[Dict] Sin diccionarios disponibles para protocolo: %s", protocolo)
+        return None
+
+    def listar_protocolos(self) -> list[str]:
+        """Devuelve los protocolos soportados."""
+        return [p for p in self.DICT_MAP if p != "default"]
+
+    def agregar_protocolo(self, protocolo: str, rutas: list[str]):
+        """Permite extender el mapa en tiempo de ejecución."""
+        self.DICT_MAP[protocolo.lower()] = rutas
+        logger.info("[Dict] Protocolo '%s' registrado con %d rutas.",
+                    protocolo, len(rutas))

@@ -122,8 +122,6 @@ BANDAS = [
 # ════════════════════════════════════════════════════════════════════
 
 class ConfigSDR:
-    """Parámetros de configuración del receptor SDR."""
-
     # RTL-SDR
     RTLSDR_SAMPLE_RATE = 2.048e6    # Hz  — máximo estable para RTL-SDR
     RTLSDR_GAIN_DEFAULT = 40.2       # dB  — ganancia moderada en campo
@@ -154,10 +152,6 @@ class ConfigSDR:
 # ════════════════════════════════════════════════════════════════════
 
 class MotorDSP:
-    """
-    Motor de procesamiento de señal digital.
-    Implementa FFT, estimación de piso de ruido y detección de picos.
-    """
 
     VENTANAS = {
         "blackman": np.blackman,   # Mejor rechazo de lóbulos laterales
@@ -186,20 +180,6 @@ class MotorDSP:
 
     def calcular_psd(self, muestras: np.ndarray,
                      sample_rate: float) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Calcula la Densidad Espectral de Potencia.
-
-        Proceso:
-          1. Toma bloque central de muestras
-          2. Aplica ventana para reducir spectral leakage
-          3. FFT con zero-padding para mayor resolución
-          4. Convierte a dBm con referencia correcta
-          5. Aplica corrección por factor de ventana
-
-        Retorna:
-          freqs_hz  : array de frecuencias relativas al centro (Hz)
-          psd_dbm   : array de potencia en dBm
-        """
         n = self.fft_size
 
         # Extraer bloque central (evitar transitorios de inicio/fin)
@@ -230,20 +210,11 @@ class MotorDSP:
         return freqs_hz, psd_dbm
 
     def promediar_capturas(self, capturas: list[np.ndarray]) -> np.ndarray:
-        """
-        Promedia múltiples capturas de PSD para reducir ruido.
-        Usa promedio en escala lineal (no dBm) para resultado correcto.
-        """
         lineales = [10 ** (c / 10.0) for c in capturas]
         promedio = np.mean(lineales, axis=0)
         return 10.0 * np.log10(np.maximum(promedio, 1e-15))
 
     def estimar_piso_ruido(self, psd_dbm: np.ndarray) -> float:
-        """
-        Estima el piso de ruido usando la mediana del espectro.
-        La mediana es robusta frente a picos de señal.
-        Se excluye el 10% central (posible señal DC offset del SDR).
-        """
         n = len(psd_dbm)
         excl = int(n * 0.05)
         datos = np.concatenate([psd_dbm[:n//2 - excl],
@@ -254,16 +225,9 @@ class MotorDSP:
                        psd_dbm: np.ndarray,
                        freq_centro_hz: float,
                        sample_rate: float) -> list[dict]:
-        """
-        Detecta picos de señal sobre el umbral dinámico.
 
-        Algoritmo:
-          1. Calcular piso de ruido (mediana)
-          2. Umbral = piso + margen configurable
-          3. Buscar máximos locales sobre el umbral
-          4. Para cada pico: calcular freq absoluta, BW a -3dB, SNR
-          5. Filtrar picos demasiado cercanos (resolución de frecuencia)
-        """
+        # Suavizado leve: reduce falsos positivos por bins ruidosos individuales
+        psd_dbm = np.convolve(psd_dbm, np.ones(3) / 3.0, mode="same")
         piso = self.estimar_piso_ruido(psd_dbm)
         umbral = max(piso + ConfigSDR.UMBRAL_MARGEN_DB,
                      ConfigSDR.UMBRAL_ABS_DBM)
@@ -317,7 +281,7 @@ class MotorDSP:
         return sorted(picos, key=lambda p: p["snr_db"], reverse=True)
 
     def _refinar_pico(self, psd: np.ndarray, idx: int) -> float:
-        """Interpolación cuadrática para precisión sub-bin."""
+
         if idx <= 0 or idx >= len(psd) - 1:
             return float(idx)
         a = psd[idx - 1]
@@ -354,7 +318,6 @@ BARRA_INTENSIDAD = " ▁▂▃▄▅▆▇█"
 
 
 class Renderizador:
-    """Renderiza espectro, waterfall y tablas en terminal Rich."""
 
     def __init__(self, console: Console):
         self.console = console
@@ -448,11 +411,7 @@ class Renderizador:
 
     def waterfall(self, historial: deque,
                   freq_centro_mhz: float) -> Panel:
-        """
-        Renderiza el waterfall (cascada temporal).
-        Más reciente arriba, más antiguo abajo.
-        Intensidad de color indica potencia.
-        """
+
         if not historial:
             return Panel("[dim]Sin datos de waterfall.[/dim]",
                          title="WATERFALL", border_style="dim green")
@@ -494,7 +453,7 @@ class Renderizador:
         )
 
     def tabla_picos(self, picos: list) -> Panel:
-        """Tabla de señales detectadas con clasificación y métricas."""
+
         if not picos:
             return Panel(
                 "[dim]No se detectaron señales sobre el umbral de detección.[/dim]",
@@ -579,7 +538,7 @@ class Renderizador:
                      border_style="green")
 
     def mapa_barrido(self, resultados: list) -> Panel:
-        """Mapa visual de actividad para barrido de espectro."""
+
         tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
                    show_edge=False, expand=True)
         tb.add_column("Frecuencia",  style="cyan",  min_width=14, no_wrap=True)
@@ -634,14 +593,6 @@ class Renderizador:
 # ════════════════════════════════════════════════════════════════════
 
 class RFScanner:
-    """
-    Escáner de radiofrecuencia profesional para AnubisOS.
-
-    Uso desde el Main:
-        self.rf.escanear_frecuencia(433.92)
-        self.rf.barrido_espectro(400, 500, paso_mhz=0.5)
-        self.rf.menu()
-    """
 
     def __init__(self, sentinel):
         self.sentinel = sentinel
@@ -651,6 +602,7 @@ class RFScanner:
 
         # Hardware
         self.sdr = None
+        self._soapy_stream = None   # stream persistente para SoapySDR
         self.sample_rate = ConfigSDR.RTLSDR_SAMPLE_RATE
         self.gain = ConfigSDR.RTLSDR_GAIN_DEFAULT
         self.hw_nombre = "No inicializado"
@@ -662,7 +614,8 @@ class RFScanner:
 
         # Estado de sesión
         self._waterfall = deque(maxlen=ConfigSDR.WATERFALL_ROWS)
-        self._senales_sesion = []
+        self._senales_sesion: deque = deque(
+            maxlen=2000)  # evitar crecimiento ilimitado
         self._capturas_sesion = 0
 
         # Inicializar hardware
@@ -695,10 +648,15 @@ class RFScanner:
                 self.sdr.setSampleRate(SoapySDR.SOAPY_SDR_RX, 0,
                                        self.sample_rate)
                 self.sdr.setGain(SoapySDR.SOAPY_SDR_RX, 0, self.gain)
+                # Abrir el stream UNA sola vez y reutilizarlo en cada captura
+                self._soapy_stream = self.sdr.setupStream(
+                    SoapySDR.SOAPY_SDR_RX, SoapySDR.SOAPY_SDR_CF32)
+                self.sdr.activateStream(self._soapy_stream)
                 self.hw_nombre = SDR_TIPO
                 self._print(f"[green][+] {SDR_TIPO} conectado.[/green]")
                 return
             except Exception as e:
+                self._soapy_stream = None
                 self._print(f"[red][!] {SDR_TIPO} error: {e}[/red]")
 
         # Sin hardware
@@ -711,13 +669,16 @@ class RFScanner:
         )
 
     def configurar_ganancia(self, ganancia):
-        """Ajusta la ganancia del receptor en campo."""
+
         if self.sdr is None:
             self._print("[red][!] Sin hardware conectado.[/red]")
             return
         try:
             if SDR_TIPO == "RTL-SDR":
                 self.sdr.gain = ganancia
+            elif SDR_TIPO and "SOAPY" in SDR_TIPO.upper():
+                import SoapySDR
+                self.sdr.setGain(SoapySDR.SOAPY_SDR_RX, 0, ganancia)
             self.gain = ganancia
             self.hw_nombre = (self.hw_nombre.split("gain=")[0]
                               + f"gain={ganancia}dB")
@@ -748,17 +709,14 @@ class RFScanner:
                     self._capturas_sesion += 1
                     return np.array(muestras, dtype=np.complex64)
 
-                # SoapySDR genérico
+                # SoapySDR genérico — reutiliza stream persistente abierto en _conectar_hardware
                 import SoapySDR
                 self.sdr.setFrequency(SoapySDR.SOAPY_SDR_RX, 0, freq_hz)
                 buff = np.zeros(ConfigSDR.SAMPLES_N, dtype=np.complex64)
-                sr = self.sdr.setupStream(SoapySDR.SOAPY_SDR_RX,
-                                          SoapySDR.SOAPY_SDR_CF32)
-                self.sdr.activateStream(sr)
-                sr2 = self.sdr.readStream(sr, [buff],
-                                          ConfigSDR.SAMPLES_N, timeoutUs=5_000_000)
-                self.sdr.deactivateStream(sr)
-                self.sdr.closeStream(sr)
+                sr2 = self.sdr.readStream(
+                    self._soapy_stream, [buff],
+                    ConfigSDR.SAMPLES_N, timeoutUs=5_000_000
+                )
                 self._capturas_sesion += 1
                 return buff[:sr2.ret] if sr2.ret > 0 else buff
 
@@ -819,6 +777,10 @@ class RFScanner:
         )
         time.sleep(0.5)
 
+        # El eje de frecuencias es fijo para una sample_rate dada; calcularlo una sola vez
+        _dummy = np.zeros(ConfigSDR.FFT_SIZE, dtype=np.complex64)
+        freqs_hz, _ = self.dsp.calcular_psd(_dummy, self.sample_rate)
+
         inicio = time.time()
         iteracion = 0
         todos_picos = []
@@ -834,7 +796,6 @@ class RFScanner:
                     _, psd = self.dsp.calcular_psd(muestras, self.sample_rate)
                     capturas_psd.append(psd)
 
-                freqs_hz, _ = self.dsp.calcular_psd(muestras, self.sample_rate)
                 psd_prom = self.dsp.promediar_capturas(capturas_psd)
 
                 # Detectar y enriquecer picos
@@ -947,8 +908,8 @@ class RFScanner:
         except KeyboardInterrupt:
             self._print("\n[yellow][!] Barrido interrumpido.[/yellow]")
 
-        print()
-        self.console.print()
+        print()  # cerrar línea de progreso inline
+        self._print()
 
         if resultados:
             self.console.print(self.render.mapa_barrido(resultados))
@@ -1009,10 +970,20 @@ class RFScanner:
                 end=""
             )
 
-        print()
-        self.console.print()
+        print()  # cerrar línea de progreso inline
+        self._print()
         if resultados:
             self.console.print(self.render.mapa_barrido(resultados))
+            self._exportar_csv_barrido(resultados, 0.0, 0.0)
+            if self.gp:
+                self.gp.registrar_evidencia(
+                    "rf_bands_scan",
+                    f"Escaneo de bandas conocidas: {len(resultados)} bandas",
+                    {"hardware": self.hw_nombre, "bandas": len(resultados)},
+                )
+            if self.log:
+                self.log.info(
+                    f"Escaneo bandas: {len(resultados)} mediciones", "RFScanner")
 
     def menu(self):
         """Menú interactivo del módulo RF para uso en campo."""
@@ -1118,6 +1089,16 @@ class RFScanner:
             try:
                 if SDR_TIPO == "RTL-SDR":
                     self.sdr.close()
+                elif SDR_TIPO and "SOAPY" in SDR_TIPO.upper():
+                    # Cerrar stream persistente antes de destruir el dispositivo
+                    stream = getattr(self, "_soapy_stream", None)
+                    if stream is not None:
+                        try:
+                            self.sdr.deactivateStream(stream)
+                            self.sdr.closeStream(stream)
+                        except Exception:
+                            pass
+                        self._soapy_stream = None
                 self._print(
                     "[green][+] SDR desconectado correctamente.[/green]")
             except Exception as e:

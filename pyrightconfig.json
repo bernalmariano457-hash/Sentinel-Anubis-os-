@@ -1,30 +1,16 @@
 {
     "pythonVersion": "3.13",
-    "include": ["."],
+    "include": [
+        "."
+    ],
     "extraPaths": [
         ".",
-        "core",
-        "modules",
-        "modules/rf",
-        "modules/network",
-        "modules/geo",
-        "modules/forense",
-        "modules/osint",
-        "modules/audit",
-        "modules/reporte",
-        "tools"
+        "./test_"
     ],
-    "reportMissingImports": "none",
+    "reportMissingImports": "warning",
     "reportMissingModuleSource": "none",
     "reportAttributeAccessIssue": "none",
-    "reportOptionalMemberAccess": "none",
-    "reportPossiblyUnbound": "none",
-    "reportAssignmentType": "none",
-    "reportArgumentType": "none",
-    "reportReturnType": "none",
-    "reportOperatorIssue": "none",
-    "reportIndexIssue": "none",
-    "reportInvalidTypeForm": "none",
-    "reportUnsupportedDunderAll": "none",
-    "typeCheckingMode": "off"
+    "reportOptionalMemberAccess": "warning",
+    "reportPossiblyUnbound": "warning",
+    "typeCheckingMode": "basic"
 }

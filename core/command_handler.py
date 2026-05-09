@@ -15,7 +15,7 @@ from rich.table import Table
 from core.validators import Validador
 
 if TYPE_CHECKING:
-    from sentinel import ApexSentinel
+    from sentinel import ApexSentinel  # type: ignore
 
 
 class CommandHandler:
@@ -195,6 +195,11 @@ class CommandHandler:
         servicio = Prompt.ask("[?] Servicio", choices=[
                               "ssh", "ftp", "mysql", "http-get", "telnet"], default="ssh")
         diccionario = s.dict_manager.obtener_ruta_diccionario(servicio)
+        if diccionario is None:
+            self.console.print(
+                "[red][!] No hay diccionarios disponibles. "
+                "Instala wordlists: sudo apt install wordlists[/red]")
+            return
         if Prompt.ask(f"¿Iniciar ataque con {diccionario}?", choices=["s", "n"], default="n") == "s":
             resultado = s.hydra.ejecutar_ataque(
                 target, servicio, "root", diccionario)
@@ -209,19 +214,35 @@ class CommandHandler:
         if not target:
             return
         resultado = s.audit_engine.escaneo_vulnerabilidades(target)
+        if resultado.error:
+            self.console.print(
+                f"[red][!] Error en escaneo: {resultado.error}[/red]")
+            return
+        contenido = resultado.stdout or "[dim]Sin resultados.[/dim]"
         self.console.print(
-            Panel(resultado, title="RESULTADOS DE VULNERABILIDAD", border_style="red"))
+            Panel(contenido, title="RESULTADOS DE VULNERABILIDAD", border_style="red"))
+        if resultado.stderr:
+            s.log.warning(resultado.stderr[:200], "AuditEngine")
         s.log.audit(f"Vulnscan en {target}", "AuditEngine")
 
     def sqlcheck(self):
+        s = self.s
         if not self._modulo_ok("audit_engine"):
             return
         url = Validador.pedir_url(self.console, "[?] URL Objetivo")
         if not url:
             return
-        resultado = self.s.audit_engine.auditoria_sql(url)
+        resultado = s.audit_engine.auditoria_sql(url)
+        if resultado.error:
+            self.console.print(
+                f"[red][!] Error en SQLmap: {resultado.error}[/red]")
+            return
+        contenido = resultado.stdout or "[dim]Sin resultados.[/dim]"
         self.console.print(
-            Panel(resultado, title="INFORME SQLMAP", border_style="yellow"))
+            Panel(contenido, title="INFORME SQLMAP", border_style="yellow"))
+        if resultado.stderr:
+            s.log.warning(resultado.stderr[:200], "AuditEngine")
+        s.log.audit(f"SQLcheck en {url}", "AuditEngine")
 
     # ── Wireless ──────────────────────────────────────────────────────
 
@@ -666,7 +687,8 @@ class CommandHandler:
     def ducky(self):
         if not self._modulo_ok("ducky"):
             return
-        self.s.ducky.ejecutar_payload()
+        with self.s.ducky:
+            self.s.ducky.ejecutar_payload()
 
     def stealth(self):
         if not self._modulo_ok("stealth"):
