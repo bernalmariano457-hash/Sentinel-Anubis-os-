@@ -1,0 +1,122 @@
+# ══════════════════════════════════════════════════════════════════
+#  APEX SENTINEL — .gitignore
+#  Última revisión: seguridad pre-GitHub
+# ══════════════════════════════════════════════════════════════════
+
+# ── Claves y credenciales ─────────────────────────────────────────
+# CRÍTICO: cualquier ruta dentro del proyecto
+**/.credentials
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/anubis_master.key
+**/panic.key
+**/key_backups/
+
+# Directorio de seguridad completo (en cualquier nivel)
+**/data/security/
+
+# ── Variables de entorno ──────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Logs y datos de sesión ────────────────────────────────────────
+# CRÍTICO: contienen IPs reales, UUIDs de sesión, actividad
+**/data/logs/
+**/core/data/logs/
+
+# Logs sueltos en raíz
+*.log
+sentinel_activity.log
+sentinel_auth.log
+audit.log
+
+# ── Evidencias y capturas ─────────────────────────────────────────
+# Contienen datos de operaciones reales
+data/evidence/
+data/proyectos/
+**/evidence/
+*.pcap
+*.cap
+*.pcapng
+*.iq
+*.iq.gz
+*.wav
+
+# Scans RF con datos reales
+data/evidence/rf/
+modules/rf/data/
+
+# ── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Entorno virtual
+venv/
+.venv/
+env/
+.env_dir/
+
+# ── Base de datos local ───────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+data/rf/*.db
+
+# GeoLite2 — archivo grande de geolocalización local
+*.mmdb
+
+# ── Archivos temporales del sistema ──────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ── Binarios compilados ───────────────────────────────────────────
+*.dll
+*.so
+*.dylib
+*.exe
+
+# ── Herramientas de desarrollo ────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+pyrightconfig.json
+
+# ── Configuraciones con secretos ─────────────────────────────────
+# El config.json puede contener credenciales de API en el futuro
+# Por seguridad, usar config.example.json y copiar manualmente
+config.local.json
+config.local.toml
+
+# ── Lo que SÍ debe subirse (excepciones explícitas) ───────────────
+# Templates y ejemplos sin datos reales
+!.env.example
+!config.example.json
+!data/.gitkeep
+!data/logs/.gitkeep
+!data/evidence/.gitkeep
+!data/proyectos/.gitkeep
+!core/data/logs/.gitkeep
+!core/data/security/.gitkeep
+!plugins/ejemplo_plugin.py
+!plugins/README.md
