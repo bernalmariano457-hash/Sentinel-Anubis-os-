@@ -8,7 +8,6 @@ class ReportGenerator:
         self.operador = operador
 
     def generar_pdf_forense(self, tipo_dato, datos, output_path):
-        """Crea un reporte PDF profesional con la evidencia recolectada."""
         pdf = FPDF()
         pdf.add_page()
 

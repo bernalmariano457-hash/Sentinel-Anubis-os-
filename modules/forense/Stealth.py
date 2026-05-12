@@ -16,7 +16,6 @@ class StealthModule:
         self.llave_panico = "panic.key"
 
     def verificar_identidad(self):
-        """Verifica la IP pública y determina si el operador está protegido."""
         print("\n[*] Verificando máscara de identidad digital...")
 
         try:
@@ -59,14 +58,12 @@ class StealthModule:
             print(f"[-] Error de conexión (Posible falta de internet): {e}")
 
     def generar_llave(self):
-        """Genera una llave de un solo uso para bloquear todo."""
         llave = Fernet.generate_key()
         with open(self.llave_panico, "wb") as f:
             f.write(llave)
         return Fernet(llave)
 
     def cifrar_archivos(self, f):
-        """Cifra el contenido de los archivos críticos con la llave generada."""
         for archivo in self.archivos_sensibles:
             if os.path.exists(archivo):
                 try:
@@ -79,7 +76,6 @@ class StealthModule:
                     print(f"  [-] Error asegurando {archivo}: {e}")
 
     def limpiar_historial(self):
-        """Borra el historial de bash en Linux (Raspberry Pi/Debian)."""
         try:
             os.system("history -c")
             os.system("cat /dev/null > ~/.bash_history")
@@ -88,7 +84,6 @@ class StealthModule:
             print("  [-] No se pudo limpiar el historial (¿Estás en Windows?)")
 
     def activar_panico(self):
-        """Ejecuta la secuencia de autodestrucción lógica."""
         print("\n[!!!] INICIANDO PROTOCOLO DE PÁNICO [!!!]")
         time.sleep(0.5)
 

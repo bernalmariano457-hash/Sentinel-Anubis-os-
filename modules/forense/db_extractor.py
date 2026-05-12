@@ -9,7 +9,6 @@ class DatabaseExtractor:
     # --- TUS MÉTODOS DE EXTRACCIÓN ---
 
     def extraer_whatsapp(self, save_path):
-        """Intenta extraer la base de datos de mensajes de WhatsApp."""
         print("[*] Localizando base de datos de WhatsApp...")
         remote_path = "/data/data/com.whatsapp/databases/msgstore.db"
         local_file = os.path.join(save_path, "whatsapp_messages.db")
@@ -27,7 +26,6 @@ class DatabaseExtractor:
 
     # AQUÍ ES DONDE VA TU CÓDIGO NUEVO
     def extraer_whatsapp_key(self, save_path):
-        """Extrae el archivo 'key' vital para el descifrado."""
         print("[*] Intentando acceso al 'Enclave' de llaves de WhatsApp...")
         remote_key_path = "/data/data/com.whatsapp/files/key"
         local_key_file = os.path.join(save_path, "whatsapp.key")

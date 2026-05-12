@@ -15,7 +15,6 @@ class MobileSentinel:
             self.adb = adb_path
 
     def extraer_whatsapp(self, save_path):
-        """Intenta extraer la base de datos de mensajes de WhatsApp."""
         print("[*] Localizando base de datos de WhatsApp...")
         # Ruta estándar en Android rooteado
         remote_path = "/data/data/com.whatsapp/databases/msgstore.db"
@@ -35,7 +34,6 @@ class MobileSentinel:
             print("[-] Error: No se pudo acceder a la DB de WhatsApp (¿Falta Root?)")
 
     def extraer_historial_chrome(self, save_path):
-        """Extrae el historial de navegación de Google Chrome."""
         print("[*] Localizando historial de Chrome...")
         remote_path = "/data/data/com.android.chrome/app_chrome/Default/History"
         local_file = os.path.join(save_path, "chrome_history.db")
@@ -47,7 +45,6 @@ class MobileSentinel:
         print(f"[+] Historial de Chrome guardado.")
 
     def extraer_sms_system(self, save_path):
-        """Extrae la base de datos de SMS nativa del sistema."""
         print("[*] Localizando base de datos de SMS...")
         remote_path = "/data/data/com.android.providers.telephony/databases/mmssms.db"
         local_file = os.path.join(save_path, "system_sms.db")

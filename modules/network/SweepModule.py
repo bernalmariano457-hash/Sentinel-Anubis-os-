@@ -150,7 +150,6 @@ _RIESGO_STYLE: dict[str, str] = {
 
 @dataclass
 class Dispositivo:
-    """Dispositivo descubierto en el escaneo ARP."""
     ip:           str
     mac:          str
     fabricante:   str = "Desconocido"
@@ -175,7 +174,6 @@ class Dispositivo:
 
 @dataclass
 class ResultadoSweep:
-    """Resultado completo de un escaneo de perímetro."""
     rango:       str
     total:       int
     amenazas:    int
@@ -194,14 +192,6 @@ class ResultadoSweep:
 # ════════════════════════════════════════════════════════════════════
 
 class SweepModule:
-    """
-    Módulo de barrido TSCM para detección de hardware de vigilancia.
-
-    Envía paquetes ARP broadcast para descubrir hosts activos,
-    clasifica cada dispositivo por OUI y nivel de riesgo,
-    y genera un reporte forense con los hallazgos.
-    """
-
     def __init__(self, sentinel):
         self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
@@ -217,18 +207,6 @@ class SweepModule:
         exportar:  bool = False,
         resolver:  bool = False,
     ) -> Optional[ResultadoSweep]:
-        """
-        Ejecuta un barrido ARP del rango dado y clasifica los hosts.
-
-        Args:
-            ip_rango: rango CIDR a escanear (ej. "192.168.1.0/24")
-            timeout:  segundos de espera por respuesta ARP
-            exportar: si True, guarda CSV con la evidencia
-            resolver: si True, consulta macvendors.com para OUIs desconocidos
-
-        Returns:
-            ResultadoSweep con todos los hallazgos, o None si falla.
-        """
         if not _SCAPY_OK:
             self.console.print(
                 "[red][!] Scapy no disponible.[/red]\n"
@@ -283,7 +261,6 @@ class SweepModule:
     def _arp_scan(
         self, ip_rango: str, timeout: int
     ) -> Optional[list[dict]]:
-        """Envía ARP broadcast y retorna lista de {ip, mac}."""
         paquete = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip_rango)
 
         with Progress(
@@ -317,7 +294,6 @@ class SweepModule:
     def _clasificar(
         self, hosts: list[dict], resolver: bool
     ) -> list[Dispositivo]:
-        """Cruza cada MAC con la base OUI y construye Dispositivos."""
         dispositivos: list[Dispositivo] = []
 
         for h in hosts:
@@ -353,7 +329,6 @@ class SweepModule:
     # ── Resolución online de fabricante ──────────────────────────────
 
     def _resolver_fabricante(self, mac: str) -> str:
-        """Consulta macvendors.com para resolver el OUI."""
         oui = mac[:8]
         if oui in self._vendor_cache:
             return self._vendor_cache[oui]
@@ -379,7 +354,6 @@ class SweepModule:
     # ── Exportación CSV ───────────────────────────────────────────────
 
     def _exportar_csv(self, resultado: ResultadoSweep) -> Optional[Path]:
-        """Guarda la evidencia del escaneo en CSV."""
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         out = _EVIDENCE_DIR / f"sweep_{ts}.csv"
         try:
@@ -404,7 +378,6 @@ class SweepModule:
     # ── Registro en Sentinel ──────────────────────────────────────────
 
     def _registrar(self, resultado: ResultadoSweep) -> None:
-        """Registra hallazgos en el sistema de reportes del Sentinel."""
         reportes = getattr(self.sentinel, "reportes", None)
         if not reportes:
             return
@@ -442,7 +415,6 @@ class SweepModule:
         ))
 
     def _renderizar(self, r: ResultadoSweep) -> None:
-        """Renderiza tabla de resultados y resumen final."""
         # ── Tabla de dispositivos ────────────────────────────────────
         tb = Table(
             box=box.HEAVY_HEAD,

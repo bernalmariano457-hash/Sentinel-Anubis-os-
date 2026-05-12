@@ -1,4 +1,5 @@
 from __future__ import annotations
+from PluginSystem import PluginBase
 
 import hashlib
 import json
@@ -31,7 +32,6 @@ def console():
 
 @pytest.fixture
 def mock_log():
-    """Log falso que no escribe nada en disco."""
     log = MagicMock()
     log.info = MagicMock()
     log.warning = MagicMock()
@@ -51,7 +51,6 @@ def tmp_dir(tmp_path):
 # ════════════════════════════════════════════════════════════════════
 
 class TestValidador:
-    """Cubre validators.py — validación de entradas del usuario."""
 
     def setup_method(self):
         from validators import Validador
@@ -147,7 +146,6 @@ class TestValidador:
 # ════════════════════════════════════════════════════════════════════
 
 class TestGestorAuth:
-    """Cubre auth.py — hashing, verificación y flujo de acceso."""
 
     @pytest.fixture
     def auth(self, console, mock_log):
@@ -241,7 +239,6 @@ class TestGestorAuth:
 # ════════════════════════════════════════════════════════════════════
 
 class TestLogSistema:
-    """Cubre log_sistema.py — registro y persistencia de logs."""
 
     @pytest.fixture
     def log(self, console, tmp_dir, monkeypatch):
@@ -307,7 +304,6 @@ class TestLogSistema:
 # ════════════════════════════════════════════════════════════════════
 
 class TestColaTareas:
-    """Cubre ColaTareas.py — tareas en background."""
 
     @pytest.fixture
     def cola(self):
@@ -375,7 +371,6 @@ class TestColaTareas:
 # ════════════════════════════════════════════════════════════════════
 
 class TestGestorProyectos:
-    """Cubre GestorProyectos.py — ciclo de vida de proyectos."""
 
     @pytest.fixture
     def gp(self, tmp_dir, monkeypatch):
@@ -468,7 +463,6 @@ class TestGestorProyectos:
 # ════════════════════════════════════════════════════════════════════
 
 class TestPluginSystem:
-    """Cubre PluginSystem.py — carga y despacho de plugins."""
 
     @pytest.fixture
     def sentinel_mock(self, console):
@@ -491,8 +485,8 @@ class TestPluginSystem:
         plugins_dir.mkdir(exist_ok=True)
         monkeypatch.setattr(ps_mod, "PLUGINS_PATH", str(plugins_dir))
 
-        contenido = '''
-from PluginSystem import PluginBase
+        contenido =
+
 
 class PluginTest(PluginBase):
     NOMBRE = "plugin_test"
@@ -503,7 +497,7 @@ class PluginTest(PluginBase):
 
     def ejecutar(self, comando, args=None):
         return f"ejecutado:{comando}"
-'''
+
         archivo = plugins_dir / "plugin_test.py"
         archivo.write_text(contenido)
         return archivo
@@ -574,8 +568,6 @@ class PluginTest(PluginBase):
 # ════════════════════════════════════════════════════════════════════
 
 class TestSecurityModule:
-    """Cubre Security.py — cifrado y descifrado con Fernet."""
-
     @pytest.fixture
     def security(self, tmp_dir, monkeypatch):
         monkeypatch.chdir(tmp_dir)
@@ -632,7 +624,6 @@ class TestSecurityModule:
 # ════════════════════════════════════════════════════════════════════
 
 class TestCVEMatcher:
-    """Cubre CVEMatcher.py — parseo y lógica local (sin red)."""
 
     @pytest.fixture
     def cve(self, console):
@@ -698,7 +689,6 @@ class TestCVEMatcher:
 # ════════════════════════════════════════════════════════════════════
 
 class TestRFModuleIntegrado:
-    """Cubre rf_module.py — lógica de fachada sin hardware real."""
 
     @pytest.fixture
     def sentinel_mock(self, console, mock_log):
@@ -781,7 +771,6 @@ class TestRFModuleIntegrado:
 # ════════════════════════════════════════════════════════════════════
 
 class TestMotorDSP:
-    """Cubre RFScanner.py — MotorDSP (sin hardware SDR)."""
 
     @pytest.fixture
     def dsp(self):
@@ -883,7 +872,6 @@ def hardware_required(request):
 
 
 class TestRealHardware:
-    """Tests que requieren hardware SDR físico. Ejecutar con: pytest --hardware"""
 
     def test_conectar_rtlsdr(self, hardware_required):
         from RFScanner import RFScanner

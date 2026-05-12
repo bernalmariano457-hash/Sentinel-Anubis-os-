@@ -16,7 +16,6 @@ class AdvancedScanner:
         }
 
     def escanear_wifi_perimetro(self):
-        """Escanea redes Wi-Fi cercanas para obtener BSSID y Señal (RSSI)"""
         self.redes_detectadas = []
         print("[*] Escaneando espacio radioeléctrico...")
 
@@ -44,7 +43,6 @@ class AdvancedScanner:
             return []
 
     def obtener_redes_formateadas(self):
-        """Prepara los datos para el módulo GeoPrecise"""
         # Si la lista está vacía, intentamos escanear primero
         if not self.redes_detectadas:
             self.escanear_wifi_perimetro()
@@ -58,7 +56,6 @@ class AdvancedScanner:
         return lista_api
 
     def escanear_objetivo(self, ip):
-        """Tu función original de escaneo de puertos (IP)"""
         print(f"\n[*] Analizando objetivo: {ip}")
         self.sentinel.reportes.registrar_evento(
             "SCANNER", f"Escaneando puertos en {ip}")

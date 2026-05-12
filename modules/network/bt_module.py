@@ -146,11 +146,7 @@ class BluetoothModule:
             self.console.print(f"[red][!][/red] {msg}")
 
     def _run_async(self, coro) -> None:
-        """
-        Ejecuta una corrutina de forma segura.
-        Detecta si ya hay un event loop activo (ej. Jupyter, frameworks async)
-        y usa un thread separado para evitar el RuntimeError de asyncio.run().
-        """
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -177,7 +173,6 @@ class BluetoothModule:
     # ── Renderizado ───────────────────────────────────────────────────
 
     def _tabla_dispositivos(self, dispositivos: list[DispositivoBLE]) -> Panel:
-        """Renderiza la tabla Rich de dispositivos BLE descubiertos."""
         if not dispositivos:
             return Panel(
                 "[dim]No se encontraron dispositivos BLE en el entorno.[/dim]",
@@ -252,7 +247,6 @@ class BluetoothModule:
             logger.exception("BLE scan error")
 
     async def _escanear_una_vez(self):
-        """Corrutina de escaneo único con callback de detección."""
         encontrados: list[DispositivoBLE] = []
 
         def _callback(device: "BLEDevice", adv: "AdvertisementData"):
@@ -309,7 +303,6 @@ class BluetoothModule:
 
     async def _monitoreo_loop(self, duracion_seg: int,
                               callback_nuevo: Callable | None):
-        """Loop de monitoreo BLE con detección de cambios."""
         conocidos: set[str] = set()
         inicio = time.time()
 
@@ -507,7 +500,6 @@ class BluetoothModule:
     # ── Estado y sesión ───────────────────────────────────────────────
 
     def estado(self):
-        """Muestra el estado del módulo y el resumen de la sesión actual."""
         with self._lock:
             total = len(self._dispositivos)
             cercanos = sum(
@@ -537,7 +529,6 @@ class BluetoothModule:
         ))
 
     def limpiar_sesion(self):
-        """Resetea el historial de dispositivos de la sesión actual."""
         with self._lock:
             n = len(self._dispositivos)
             self._dispositivos.clear()

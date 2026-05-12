@@ -12,7 +12,6 @@ class ForensicReader:
         self.console = Console()
 
     def formatear_fecha_wa(self, timestamp):
-        """Timestamp de WhatsApp (iOS/Android)"""
         try:
             if timestamp > 1000000000000:
                 ts = timestamp / 1000
@@ -25,7 +24,6 @@ class ForensicReader:
             return "??:??"
 
     def formatear_fecha_chrome(self, webkit_timestamp):
-        """Convierte Microsegundos WebKit (Chrome) a legible"""
         try:
             epoch_start = datetime(1601, 1, 1)
             delta = timedelta(microseconds=webkit_timestamp)

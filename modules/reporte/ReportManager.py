@@ -11,7 +11,6 @@ class ReportManager:
         self.limite_mb = 5  # Umbral de 5MB
 
     def verificar_y_limpiar(self):
-        """Revisa si los reportes son muy pesados y los comprime."""
         if os.path.exists(self.archivo_reportes):
             tamaño_bytes = os.path.getsize(self.archivo_reportes)
             tamaño_mb = tamaño_bytes / (1024 * 1024)
@@ -22,7 +21,6 @@ class ReportManager:
                 self.comprimir_y_rotar()
 
     def comprimir_y_rotar(self):
-        """Crea un backup cifrado y vacía el archivo actual."""
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         nombre_zip = f"backup_reportes_{timestamp}.zip"
         password = "Apex_Sentinel_Admin"  # Puedes cambiar esto o pedirlo por config
@@ -50,14 +48,12 @@ class ReportManager:
             print(f"[-] Error en auto-limpieza: {e}")
 
     def registrar_evento(self, modulo, mensaje):
-        """Guarda un log técnico de lo que está haciendo el sistema."""
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"[{timestamp}] [{modulo.upper()}] {mensaje}\n"
         with open(self.archivo_log, "a") as f:
             f.write(log_entry)
 
     def mostrar_historial(self):
-        """Lee y muestra el contenido del archivo de logs en la terminal."""
         print(f"\n\033[1;34m--- HISTORIAL DE EVENTOS SEGURIDAD ---\033[0m")
         try:
             if os.path.exists(self.archivo_log):
@@ -74,7 +70,6 @@ class ReportManager:
         print(f"\033[1;34m{'-'*40}\033[0m")
 
     def guardar_auditoria(self, tipo, datos):
-        """Guarda resultados detallados de un escaneo o auditoría."""
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         with open(self.archivo_reportes, "a") as f:
             f.write(f"\n{'='*50}\n")

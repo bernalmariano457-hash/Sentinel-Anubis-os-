@@ -16,11 +16,6 @@ SEVERIDAD_EMOJI = {
 
 
 class MotorReportes:
-    """
-    Genera reportes estructurados a partir de un proyecto.
-    Soporta: Markdown completo, resumen ejecutivo TXT,
-    y timeline de evidencias.
-    """
 
     def __init__(self, gestor_proyectos):
         self.gp = gestor_proyectos
@@ -31,7 +26,6 @@ class MotorReportes:
     # ------------------------------------------------------------------
 
     def generar_reporte_completo(self):
-        """Genera el reporte Markdown completo del proyecto activo."""
         p = self.gp.proyecto_activo
         if not p:
             self.console.print("[yellow][!] No hay proyecto activo.[/yellow]")
@@ -91,7 +85,6 @@ class MotorReportes:
             return None
 
     def generar_resumen_ejecutivo(self):
-        """Genera un resumen ejecutivo corto en TXT."""
         p = self.gp.proyecto_activo
         if not p:
             self.console.print("[yellow][!] No hay proyecto activo.[/yellow]")
@@ -127,7 +120,6 @@ class MotorReportes:
         self.console.print(f"[dim]Guardado en: {ruta}[/dim]")
 
     def generar_timeline(self):
-        """Genera un timeline cronológico de todas las evidencias."""
         p = self.gp.proyecto_activo
         if not p:
             self.console.print("[yellow][!] No hay proyecto activo.[/yellow]")

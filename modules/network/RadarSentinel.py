@@ -168,7 +168,6 @@ class TokenBucket:
         self._lock = threading.Lock()
 
     def consume(self, timeout: float = 8.0) -> bool:
-        """Bloquea hasta obtener 1 token o agotar el timeout. Devuelve False si no hay."""
         deadline = time.monotonic() + timeout
         while True:
             with self._lock:

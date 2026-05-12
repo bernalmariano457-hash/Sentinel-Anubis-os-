@@ -94,11 +94,9 @@ class DictionaryManager:
         return None
 
     def listar_protocolos(self) -> list[str]:
-        """Devuelve los protocolos soportados."""
         return [p for p in self.DICT_MAP if p != "default"]
 
     def agregar_protocolo(self, protocolo: str, rutas: list[str]):
-        """Permite extender el mapa en tiempo de ejecución."""
         self.DICT_MAP[protocolo.lower()] = rutas
         logger.info("[Dict] Protocolo '%s' registrado con %d rutas.",
                     protocolo, len(rutas))

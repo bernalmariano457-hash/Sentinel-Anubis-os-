@@ -40,7 +40,6 @@ class WifiAttack:
     # ==========================================
 
     def beacon_spam(self, ssid_base="ANUBIS_"):
-        """Inunda el aire con redes falsas para confundir escáneres."""
         self.ataca_activo = True
 
         if not ESPACIO_RADIO_DISPONIBLE:
@@ -73,7 +72,6 @@ class WifiAttack:
         threading.Thread(target=spam, daemon=True).start()
 
     def deauth(self, target_mac, ap_mac):
-        """Desconecta un dispositivo del AP."""
         if not ESPACIO_RADIO_DISPONIBLE:
             print(
                 f"[SIMULACIÓN] Enviando paquetes Deauth ficticios: {target_mac} -> {ap_mac}")

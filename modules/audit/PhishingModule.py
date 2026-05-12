@@ -4,11 +4,6 @@ import subprocess
 
 
 class PhishingModule:
-    """
-    Compatible con Windows (Git Bash), Linux, Termux y uConsole.
-    Detecta el sistema operativo automáticamente.
-    """
-
     ZPHISHER_REPO = "https://github.com/htr-tech/zphisher.git"
 
     def __init__(self, sentinel=None):
@@ -87,7 +82,6 @@ class PhishingModule:
     # ── API pública ───────────────────────────────────────────────────
 
     def lanzar(self):
-        """Lanza zphisher detectando el OS automáticamente."""
         if not self._zphisher_instalado():
             if not self._instalar_zphisher():
                 return
@@ -122,7 +116,6 @@ class PhishingModule:
             self._log_error(f"Launch: {e}")
 
     def estado(self):
-        """Muestra el estado del módulo."""
         instalado = self._zphisher_instalado()
         self._print(
             f"[cyan]zphisher:[/cyan]   {'[green]Instalado[/green]' if instalado else '[red]No instalado[/red]'}\n"

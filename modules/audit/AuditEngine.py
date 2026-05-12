@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AuditResult:
-    """Estructura de resultado para cada fase de auditoría."""
     fase: str
     target: str
     stdout: str = ""
@@ -110,15 +109,6 @@ class AuditEngine:
                       nivel: int = 1,
                       riesgo: int = 1,
                       extra_args: list[str] | None = None) -> AuditResult:
-        """
-        Ejecuta SQLmap sobre una URL objetivo.
-
-        Args:
-            url:        URL con parámetros a analizar.
-            nivel:      Profundidad de tests (1–5). Default: 1.
-            riesgo:     Nivel de riesgo de payloads (1–3). Default: 1.
-            extra_args: Argumentos adicionales de SQLmap, ej: ['--dbs', '--tables'].
-        """
         self.main_app.animar_barra(
             f"[Fase 4] Analizando inyección SQL en {url}...")
 

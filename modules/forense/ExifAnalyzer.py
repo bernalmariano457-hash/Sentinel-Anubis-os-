@@ -8,7 +8,6 @@ class ExifAnalyzer:
         self.main_app = main_app
 
     def obtener_coordenadas(self, gps_info):
-        """Convierte los datos racionales de GPS EXIF a grados decimales."""
         try:
             def to_decimal(coords, ref):
                 d = coords[0][0] / coords[0][1]

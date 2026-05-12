@@ -29,11 +29,6 @@ SEVERIDAD_EMOJI = {
 
 
 class CVEMatcher:
-    """
-    Consulta la API pública de NVD (NIST) para buscar CVEs
-    relacionados con servicios y versiones detectadas.
-    """
-
     def __init__(self, sentinel):
         self.sentinel = sentinel
         self.console = sentinel.console
@@ -48,10 +43,6 @@ class CVEMatcher:
     # ------------------------------------------------------------------
 
     def analizar_servicio(self, servicio: str, version: str = ""):
-        """
-        Busca CVEs para un servicio+versión específico.
-        Ejemplo: analizar_servicio("OpenSSH", "8.2")
-        """
         query = f"{servicio} {version}".strip()
         self.console.print(
             f"\n[bold cyan]CVE Matcher → {query}[/bold cyan]"
@@ -88,10 +79,6 @@ class CVEMatcher:
         return cves
 
     def analizar_resultado_scan(self, servicios: list[dict]):
-        """
-        Analiza una lista de servicios detectados por un scan.
-        servicios = [{"nombre": "OpenSSH", "version": "8.2"}, ...]
-        """
         if not servicios:
             self.console.print(
                 "[yellow][!] No hay servicios para analizar.[/yellow]")
@@ -115,7 +102,6 @@ class CVEMatcher:
         return todos_cves
 
     def busqueda_libre(self):
-        """Búsqueda interactiva de CVEs."""
         self.console.print()
         query = self.console.input(
             "[bold cyan][?] Buscar CVE (ej: 'apache 2.4', 'openssh'): [/bold cyan]"
@@ -128,7 +114,6 @@ class CVEMatcher:
     # ------------------------------------------------------------------
 
     def _buscar_nvd(self, query: str, max_results: int = 10) -> list[dict]:
-        """Consulta la API pública de NVD."""
         try:
             r = self._sesion.get(
                 NVD_URL,
@@ -161,7 +146,6 @@ class CVEMatcher:
         return []
 
     def _parsear_nvd(self, data: dict) -> list[dict]:
-        """Parsea la respuesta de NVD API v2."""
         resultados = []
         vulnerabilidades = data.get("vulnerabilities", [])
 
@@ -219,7 +203,6 @@ class CVEMatcher:
     # ------------------------------------------------------------------
 
     def _mostrar_cves(self, cves: list[dict], query: str):
-        """Muestra tabla de CVEs encontrados."""
         criticos = sum(1 for c in cves if c["severidad"] == "CRITICAL")
         altos = sum(1 for c in cves if c["severidad"] == "HIGH")
 
@@ -268,7 +251,6 @@ class CVEMatcher:
                     self.console.print(f"  [dim]→[/dim] [blue]{ref}[/blue]")
 
     def _mostrar_resumen_scan(self, todos_cves: dict):
-        """Muestra resumen cuando se analizan múltiples servicios."""
         if not todos_cves:
             self.console.print(
                 "[green][+] No se encontraron CVEs conocidos.[/green]")

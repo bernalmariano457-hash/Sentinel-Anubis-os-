@@ -8,7 +8,6 @@ class TacticalSniffer:
         self.sniffing = False
 
     def procesar_paquete(self, paquete):
-        """Analiza cada paquete capturado en tiempo real."""
         if paquete.haslayer(IP):
             ip_src = paquete[IP].src
             ip_dst = paquete[IP].dst
@@ -29,7 +28,6 @@ class TacticalSniffer:
                             "SNIFFER", f"Captura de datos de {ip_src}")
 
     def iniciar_captura(self, interface=None, filtro="", duracion=30):
-        """Arranca el bucle de escucha."""
         self.sniffing = True
         print(
             f"[*] Iniciando escucha en {interface if interface else 'Default'}...")

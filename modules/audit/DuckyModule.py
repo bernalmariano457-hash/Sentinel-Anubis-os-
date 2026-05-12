@@ -92,7 +92,6 @@ class DuckyModule:
             self._fd = None
 
     def _write_report(self, modifier: int, key_code: int):
-        """Escribe un reporte HID de 8 bytes y lo libera."""
         reporte = bytearray(8)
         reporte[0] = modifier
         reporte[2] = key_code
@@ -114,7 +113,6 @@ class DuckyModule:
     # ------------------------------------------------------------------ #
 
     def presionar(self, key_code: int, modifier: int = MOD_NONE):
-        """Envía una pulsación HID con modificador opcional."""
         try:
             self._write_report(modifier, key_code)
         except OSError as e:
@@ -135,7 +133,6 @@ class DuckyModule:
             time.sleep(delay)
 
     def combo(self, modifier: int, key: str):
-        """Ejecuta una combinación de teclas: combo(MOD_CTRL, 'c') → Ctrl+C"""
         key_code = _BASE.get(key.lower()) or _BASE.get(key.upper())
         if key_code is None:
             logger.warning("[HID] Tecla de combo no reconocida: %r", key)
@@ -143,12 +140,6 @@ class DuckyModule:
         self.presionar(key_code, modifier)
 
     def ejecutar_script(self, ruta_script: str):
-        """
-        Interpreta un Ducky Script con soporte de:
-          STRING, DELAY, ENTER, TAB, ESC, BACKSPACE,
-          GUI/WINDOWS, CTRL, ALT, SHIFT, combos (CTRL c),
-          teclas de función F1–F12 y teclas especiales.
-        """
         try:
             with open(ruta_script, "r", encoding="utf-8") as f:
                 lineas = f.readlines()

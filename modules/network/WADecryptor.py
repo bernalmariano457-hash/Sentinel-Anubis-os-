@@ -8,7 +8,6 @@ class WhatsAppDecryptor:
         pass
 
     def descifrar_crypt14(self, crypt_file, key_file, output_file):
-        """Rompe el cifrado AES-GCM de WhatsApp usando la llave extraída."""
         print(f"\n[*] Iniciando secuencia de descifrado AES-GCM...")
 
         try:

@@ -20,14 +20,6 @@ _STOP_SENTINEL = None
 # ══════════════════════════════════════════════════════════════════
 
 class CaptureThread(threading.Thread):
-    """
-    Thread dedicado a leer muestras IQ del hardware SDR.
-    Pone bloques numpy en una queue thread-safe.
-
-    El thread se reinicia automáticamente si el hardware falla
-    (USB desconectado, error transitorio de libusb).
-    """
-
     def __init__(
         self,
         sdr_manager,              # instancia de SDRManager
@@ -55,7 +47,6 @@ class CaptureThread(threading.Thread):
         self._reads_fail = 0
 
     def tune(self, freq_hz: float) -> None:
-        """Cambia la frecuencia en caliente (thread-safe)."""
         self._freq_hz = freq_hz
 
     def stop(self) -> None:
@@ -143,17 +134,6 @@ class CaptureThread(threading.Thread):
 # ══════════════════════════════════════════════════════════════════
 
 class CapturePipeline:
-    """
-    Orquesta la captura + DSP + callbacks.
-
-    Ejemplo de uso:
-        pipeline = CapturePipeline(sdr_manager, dsp_engine)
-        pipeline.on_frame(render_callback)
-        pipeline.on_frame(db_callback)
-        pipeline.start(433.92e6, duration=30)
-        # bloquea hasta que pase el tiempo o se llame stop()
-    """
-
     def __init__(self, sdr_manager, dsp_engine, queue_maxsize: int = 8):
         self._mgr = sdr_manager
         self._dsp = dsp_engine
@@ -167,11 +147,6 @@ class CapturePipeline:
         self._orig_sigterm = None
 
     def on_frame(self, callback: Callable) -> None:
-        """
-        Registra un callback que se llama con cada frame procesado.
-        Firma: callback(frame: dict) donde frame contiene:
-          {freqs, psd, picos, freq_mhz, iteration, elapsed}
-        """
         self._callbacks.append(callback)
 
     def start(
@@ -181,10 +156,7 @@ class CapturePipeline:
         n_muestras: int = 524_288,
         gain_db:    Optional[float] = None,
     ) -> None:
-        """
-        Inicia la pipeline. Bloquea hasta que acabe la duración
-        o se llame stop() / Ctrl+C.
-        """
+
         if self._running:
             log.warning("Pipeline ya en ejecución")
             return
@@ -277,7 +249,6 @@ class CapturePipeline:
         log.info("Pipeline detenida")
 
     def tune(self, freq_hz: float) -> None:
-        """Cambia la frecuencia en caliente."""
         if self._capture:
             self._capture.tune(freq_hz)
 

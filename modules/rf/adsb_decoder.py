@@ -1,15 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════╗
-║  APEX SENTINEL — ANUBIS OS  v2.2                                 ║
-║  adsb_decoder.py · Decodificador ADS-B 1090 MHz                  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Decodifica transponders Mode S / ADS-B de aeronaves en tiempo   ║
-║  real usando RTL-SDR sintonizado a 1090 MHz.                     ║
-║                                                                  ║
-║  Requiere: pyrtlsdr (hardware) o MockSDR (modo demo)             ║
-║  Opcional: pyModeS para decodificación avanzada                  ║
-╚══════════════════════════════════════════════════════════════════╝
-"""
 from __future__ import annotations
 
 import logging
@@ -29,8 +17,8 @@ from rich import box
 
 log = logging.getLogger("sentinel.rf.adsb")
 
-_FREQ_ADSB   = 1_090_000_000   # 1090 MHz — estándar mundial ADS-B
-_SR_ADSB     = 2_000_000       # 2 Msps
+_FREQ_ADSB = 1_090_000_000   # 1090 MHz — estándar mundial ADS-B
+_SR_ADSB = 2_000_000       # 2 Msps
 _PREAMBLE_US = 8               # µs de preámbulo Mode S
 
 # ── pyModeS — decodificador completo (opcional) ──────────────────
@@ -49,16 +37,15 @@ except ImportError:
 
 @dataclass
 class Aeronave:
-    """Representa una aeronave detectada vía ADS-B."""
     icao:       str                   # Código ICAO de 24 bits (hex)
-    callsign:   str  = ""             # Indicativo de vuelo
+    callsign:   str = ""             # Indicativo de vuelo
     latitud:    Optional[float] = None
     longitud:   Optional[float] = None
-    altitud_ft: Optional[int]   = None
-    velocidad:  Optional[int]   = None  # nudos
-    rumbo:      Optional[int]   = None  # grados
-    squawk:     Optional[str]   = None
-    msgs:       int  = 0
+    altitud_ft: Optional[int] = None
+    velocidad:  Optional[int] = None  # nudos
+    rumbo:      Optional[int] = None  # grados
+    squawk:     Optional[str] = None
+    msgs:       int = 0
     ultima_vez: float = field(default_factory=time.time)
 
     @property
@@ -87,7 +74,6 @@ class MensajeADSB:
 # ══════════════════════════════════════════════════════════════════
 
 def _crc24(data: bytes) -> int:
-    """CRC-24 estándar ICAO para validación Mode S."""
     GENERATOR = 0xFFF409
     crc = 0
     for byte in data:
@@ -100,7 +86,6 @@ def _crc24(data: bytes) -> int:
 
 
 def _validar_mensaje(hex_str: str) -> bool:
-    """Valida el CRC de un mensaje Mode S."""
     try:
         data = bytes.fromhex(hex_str)
         if len(data) < 7:
@@ -113,7 +98,6 @@ def _validar_mensaje(hex_str: str) -> bool:
 
 
 def _extraer_icao(hex_str: str) -> str:
-    """Extrae el código ICAO de 24 bits (bytes 1-3)."""
     try:
         return hex_str[2:8].upper()
     except Exception:
@@ -121,10 +105,7 @@ def _extraer_icao(hex_str: str) -> str:
 
 
 def _extraer_callsign_basico(hex_str: str) -> str:
-    """
-    Extrae el callsign de mensajes DF17 TC=1-4 (Aircraft Identification).
-    Charset ADS-B: '#ABCDEFGHIJKLMNOPQRSTUVWXYZ#####_###############0123456789######'
-    """
+
     CHARSET = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ#####_###############0123456789######"
     try:
         if len(hex_str) < 22:
@@ -136,7 +117,7 @@ def _extraer_callsign_basico(hex_str: str) -> str:
         chars = []
         for i in range(8):
             byte_idx = 5 + (i * 6) // 8
-            bit_off  = (i * 6) % 8
+            bit_off = (i * 6) % 8
             if byte_idx + 1 < len(data):
                 val = ((data[byte_idx] << 8) | data[byte_idx + 1])
                 val = (val >> (10 - bit_off)) & 0x3F
@@ -147,7 +128,6 @@ def _extraer_callsign_basico(hex_str: str) -> str:
 
 
 def _extraer_altitud_basico(hex_str: str) -> Optional[int]:
-    """Extrae altitud en pies de mensajes DF17 TC=9-18."""
     try:
         data = bytes.fromhex(hex_str)
         tc = (data[4] >> 3) & 0x1F
@@ -165,25 +145,15 @@ def _extraer_altitud_basico(hex_str: str) -> Optional[int]:
 # ══════════════════════════════════════════════════════════════════
 
 class ADSBDecoder:
-    """
-    Decodificador ADS-B en tiempo real para APEX SENTINEL.
-
-    Sintoniza a 1090 MHz y muestra aeronaves detectadas en consola.
-
-    Uso:
-        decoder = ADSBDecoder(sentinel)
-        decoder.iniciar(duracion_seg=120)   # monitoreo por 2 minutos
-        decoder.iniciar()                   # monitoreo indefinido (Ctrl+C)
-    """
 
     TTL_AERONAVE = 60    # segundos sin mensaje para considerar fuera de rango
     MAX_AERONAVES = 50   # máximo en pantalla
 
     def __init__(self, sentinel):
-        self.sentinel   = sentinel
+        self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
         self._aeronaves: dict[str, Aeronave] = {}
-        self._lock      = threading.Lock()
+        self._lock = threading.Lock()
         self._corriendo = False
         self._msgs_total = 0
         self._msgs_validos = 0
@@ -191,17 +161,11 @@ class ADSBDecoder:
     # ── API pública ────────────────────────────────────────────────
 
     def iniciar(self, duracion_seg: Optional[int] = None):
-        """
-        Inicia el monitoreo ADS-B.
-
-        Args:
-            duracion_seg: segundos de monitoreo. None = hasta Ctrl+C.
-        """
         if not self._verificar_hardware():
             return
 
-        self._corriendo  = True
-        self._aeronaves  = {}
+        self._corriendo = True
+        self._aeronaves = {}
         self._msgs_total = 0
         inicio = time.time()
 
@@ -236,14 +200,12 @@ class ADSBDecoder:
         self._mostrar_resumen()
 
     def aeronaves_activas(self) -> list[Aeronave]:
-        """Retorna lista de aeronaves vistas en los últimos 60 segundos."""
         with self._lock:
             return [a for a in self._aeronaves.values() if a.activo]
 
     # ── Captura y decodificación ───────────────────────────────────
 
     def _bucle_captura(self, duracion: Optional[int], inicio: float):
-        """Hilo de captura de muestras IQ y decodificación."""
         sdr = getattr(self.sentinel, "rf_scanner", None)
 
         if sdr is None or not hasattr(sdr, "_capturar"):
@@ -265,10 +227,6 @@ class ADSBDecoder:
                 self._procesar_mensaje(msg)
 
     def _detectar_preamble(self, iq: np.ndarray) -> list[str]:
-        """
-        Detecta y extrae mensajes Mode S por preámbulo.
-        El preámbulo ADS-B es 8µs de patrón específico a 2 Msps.
-        """
         mensajes = []
         try:
             mag = np.abs(iq)
@@ -297,7 +255,6 @@ class ADSBDecoder:
         return mensajes
 
     def _demodular_bits(self, mag: np.ndarray) -> list[int]:
-        """Demodulación PPM (Pulse Position Modulation) de Mode S."""
         try:
             bits = []
             for i in range(0, min(len(mag) - 2, 112 * 2), 2):
@@ -308,7 +265,6 @@ class ADSBDecoder:
             return []
 
     def _bits_a_hex(self, bits: list[int]) -> str:
-        """Convierte lista de bits a string hexadecimal."""
         try:
             result = ""
             for i in range(0, len(bits) - 7, 8):
@@ -321,7 +277,6 @@ class ADSBDecoder:
             return ""
 
     def _procesar_mensaje(self, hex_str: str):
-        """Decodifica un mensaje y actualiza el estado de la aeronave."""
         try:
             icao = _extraer_icao(hex_str)
             if not icao or icao == "??????":
@@ -345,7 +300,6 @@ class ADSBDecoder:
             log.debug(f"Error procesando mensaje {hex_str}: {e}")
 
     def _decodificar_pymodes(self, hex_str: str, aeronave: Aeronave):
-        """Decodificación completa con pyModeS."""
         try:
             df = pms.df(hex_str)
             if df == 17:
@@ -362,12 +316,11 @@ class ADSBDecoder:
                     vel = pms.adsb.velocity(hex_str)
                     if vel and vel[0]:
                         aeronave.velocidad = int(vel[0])
-                        aeronave.rumbo     = int(vel[1]) if vel[1] else None
+                        aeronave.rumbo = int(vel[1]) if vel[1] else None
         except Exception:
             pass
 
     def _decodificar_basico(self, hex_str: str, aeronave: Aeronave):
-        """Decodificación básica sin pyModeS."""
         if not aeronave.callsign:
             cs = _extraer_callsign_basico(hex_str)
             if cs:
@@ -380,7 +333,6 @@ class ADSBDecoder:
     # ── Demo sin hardware ──────────────────────────────────────────
 
     def _modo_demo(self, duracion: Optional[int], inicio: float):
-        """Genera aeronaves simuladas para demostración."""
         demos = [
             ("ABC123", "AMX001", 35000, 450, 270),
             ("DEF456", "UAL320", 28000, 480, 90),
@@ -396,20 +348,19 @@ class ADSBDecoder:
                     if icao not in self._aeronaves:
                         self._aeronaves[icao] = Aeronave(icao=icao)
                     a = self._aeronaves[icao]
-                    a.callsign    = cs
-                    a.altitud_ft  = alt + np.random.randint(-200, 200)
-                    a.velocidad   = vel + np.random.randint(-20, 20)
-                    a.rumbo       = hdg
-                    a.msgs       += 1
-                    a.ultima_vez  = time.time()
-                self._msgs_total  += 1
+                    a.callsign = cs
+                    a.altitud_ft = alt + np.random.randint(-200, 200)
+                    a.velocidad = vel + np.random.randint(-20, 20)
+                    a.rumbo = hdg
+                    a.msgs += 1
+                    a.ultima_vez = time.time()
+                self._msgs_total += 1
                 self._msgs_validos += 1
             time.sleep(2)
 
     # ── Renderizado ────────────────────────────────────────────────
 
     def _render_tabla(self) -> Panel:
-        """Genera la tabla Rich de aeronaves para Live display."""
         tabla = Table(
             box=box.SIMPLE_HEAD,
             header_style="bold cyan",
@@ -421,7 +372,8 @@ class ADSBDecoder:
         tabla.add_column("Alt (ft)", justify="right",      width=10)
         tabla.add_column("Vel (kt)", justify="right",      width=9)
         tabla.add_column("Rumbo",    justify="right",      width=7)
-        tabla.add_column("Msgs",     justify="right",      width=6, style="dim")
+        tabla.add_column("Msgs",     justify="right",
+                         width=6, style="dim")
         tabla.add_column("Estado",   width=10)
 
         activas = sorted(
@@ -443,8 +395,8 @@ class ADSBDecoder:
                 a.icao,
                 a.callsign or "[dim]?[/dim]",
                 f"{a.altitud_ft:,}" if a.altitud_ft else "[dim]—[/dim]",
-                str(a.velocidad)   if a.velocidad   else "[dim]—[/dim]",
-                f"{a.rumbo}°"      if a.rumbo       else "[dim]—[/dim]",
+                str(a.velocidad) if a.velocidad else "[dim]—[/dim]",
+                f"{a.rumbo}°" if a.rumbo else "[dim]—[/dim]",
                 str(a.msgs),
                 estado,
             )
@@ -467,7 +419,6 @@ class ADSBDecoder:
         )
 
     def _mostrar_resumen(self):
-        """Muestra resumen al terminar el monitoreo."""
         activas = self.aeronaves_activas()
         self.console.print(Panel(
             f"[bold green]Monitoreo ADS-B completado[/bold green]\n\n"
@@ -489,7 +440,6 @@ class ADSBDecoder:
             pass
 
     def _verificar_hardware(self) -> bool:
-        """Verifica que hay hardware SDR o modo demo disponible."""
         rf = getattr(self.sentinel, "rf_scanner", None)
         if rf is None:
             self.console.print(

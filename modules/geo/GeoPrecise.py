@@ -40,7 +40,6 @@ _PROVEEDORES = {
 
 @dataclass
 class PuntoAcceso:
-    """Representa un punto de acceso Wi-Fi para triangulación."""
     macAddress:     str
     signalStrength: int          # RSSI en dBm (negativo, ej. -65)
     channel:        int = 0
@@ -66,7 +65,6 @@ class PuntoAcceso:
 
 @dataclass
 class ResultadoGeo:
-    """Resultado de una triangulación exitosa."""
     latitud:    float
     longitud:   float
     precision:  float            # metros
@@ -88,27 +86,6 @@ class ResultadoGeo:
 # ══════════════════════════════════════════════════════════════════════
 
 class GeoPrecise:
-    """
-    Motor de geolocalización pasiva por triangulación Wi-Fi.
-
-    Usa múltiples proveedores con fallback automático:
-      1. Mozilla Location Services (gratuito)
-      2. Google Geolocation API    (si se configura GOOGLE_GEO_KEY)
-      3. ip-api.com                (fallback por IP pública)
-
-    Uso:
-        geo = GeoPrecise(sentinel)
-
-        redes = [
-            PuntoAcceso("AA:BB:CC:DD:EE:FF", -65),
-            PuntoAcceso("11:22:33:44:55:66", -72),
-        ]
-        resultado = geo.triangular(redes)
-        if resultado:
-            geo.mostrar_resultado(resultado)
-            geo.exportar(resultado)
-    """
-
     def __init__(self, sentinel):
         self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
@@ -124,16 +101,6 @@ class GeoPrecise:
         redes: list[PuntoAcceso | dict],
         forzar: bool = False,
     ) -> Optional[ResultadoGeo]:
-        """
-        Triangula la posición usando los puntos de acceso Wi-Fi dados.
-
-        Args:
-            redes:  Lista de PuntoAcceso o dicts con macAddress/signalStrength.
-            forzar: Si True, ignora el caché y hace una nueva petición.
-
-        Returns:
-            ResultadoGeo si tuvo éxito, None si falló.
-        """
         # Normalizar a PuntoAcceso
         puntos = self._normalizar(redes)
 
@@ -177,7 +144,6 @@ class GeoPrecise:
         return resultado
 
     def mostrar_resultado(self, r: ResultadoGeo) -> None:
-        """Muestra el resultado en consola con formato Rich."""
         tabla = Table(show_header=False, box=None, padding=(0, 2))
         tabla.add_column(style="dim cyan")
         tabla.add_column(style="bold white")
@@ -197,11 +163,7 @@ class GeoPrecise:
         ))
 
     def exportar(self, r: ResultadoGeo, ruta: Optional[str] = None) -> Path:
-        """
-        Exporta el resultado a un archivo JSON en data/evidence/geo/.
 
-        Retorna la ruta del archivo generado.
-        """
         ts_safe = r.timestamp.replace(":", "-").replace(" ", "_")
         nombre = f"geo_{ts_safe}_{r.proveedor}.json"
         destino = Path(ruta) if ruta else _RESULTS_DIR / nombre
@@ -268,7 +230,6 @@ class GeoPrecise:
         return None
 
     def _consultar_ipapi(self) -> Optional[ResultadoGeo]:
-        """Fallback: geolocalización aproximada por IP pública."""
         log.info("Usando fallback ip-api (geolocalización por IP)...")
         try:
             resp = requests.get(_PROVEEDORES["ipapi"], timeout=_TIMEOUT_SEG)
@@ -290,7 +251,6 @@ class GeoPrecise:
     # ── Utilidades internas ────────────────────────────────────────────
 
     def _normalizar(self, redes: list) -> list[PuntoAcceso]:
-        """Convierte dicts o PuntoAcceso a una lista uniforme de PuntoAcceso."""
         resultado = []
         for r in redes:
             if isinstance(r, PuntoAcceso):
@@ -312,7 +272,6 @@ class GeoPrecise:
         return resultado
 
     def _registrar_log(self, r: ResultadoGeo, n_redes: int) -> None:
-        """Registra el evento en el sistema de reportes de Sentinel."""
         mensaje = (
             f"Triangulación exitosa via {r.proveedor} | "
             f"Coords: {r.latitud:.5f}, {r.longitud:.5f} | "

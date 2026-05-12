@@ -14,11 +14,6 @@ TIMEOUT = 5
 
 
 class OSINTEngine:
-    """
-    Motor de reconocimiento pasivo.
-    Usa únicamente APIs públicas y gratuitas.
-    """
-
     def __init__(self, sentinel):
         self.sentinel = sentinel
         self.console = sentinel.console
@@ -33,7 +28,6 @@ class OSINTEngine:
     # ------------------------------------------------------------------
 
     def analizar_ip(self, ip: str):
-        """Análisis completo de una IP: geolocalización, ASN, reputación."""
         self.console.print(
             f"\n[bold cyan]OSINT → Analizando IP: {ip}[/bold cyan]")
         self.console.print(Rule(style="dim cyan"))
@@ -144,7 +138,6 @@ class OSINTEngine:
     # ------------------------------------------------------------------
 
     def analizar_dominio(self, dominio: str):
-        """Reconocimiento de un dominio: WHOIS, DNS, subdominios."""
         self.console.print(
             f"\n[bold cyan]OSINT → Analizando dominio: {dominio}[/bold cyan]"
         )
@@ -259,7 +252,6 @@ class OSINTEngine:
     # ------------------------------------------------------------------
 
     def menu(self):
-        """Menú principal del motor OSINT."""
         self.console.print()
         self.console.print(Panel(
             "[bold cyan]OSINT ENGINE[/bold cyan]\n"
