@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.commands._base import _DomainBase
+from core._base import _DomainBase
 from core.validators import Validador
 
 
@@ -17,10 +17,11 @@ class OsintCommands(_DomainBase):
 
     def locate_p(self):
         s = self.s
-        if not self._modulo_ok("adv_scanner") or not self._modulo_ok("geopreciose"):
+        # FIX typo: geopreciose → geoprecise
+        if not self._modulo_ok("adv_scanner") or not self._modulo_ok("geoprecise"):
             return
         redes = s.adv_scanner.obtener_redes_formateadas()
-        s.geopreciose.triangular_posicion(redes)
+        s.geoprecise.triangular_posicion(redes)
 
     def geofoto(self):
         if not self._modulo_ok("exif"):

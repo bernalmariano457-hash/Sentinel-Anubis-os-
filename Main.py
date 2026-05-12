@@ -1,80 +1,58 @@
 from __future__ import annotations
-from core.command_handler import CommandHandler
-from modules.rf.rf_module import RFModuleIntegrado
 from core.validators import Validador
 from core.log_sistema import LogSistema
+from core.ModuleRegistry import ModuleRegistry
+from core.command_handler import CommandHandler
 
 import json
-import logging
 import os
 import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 from rich.console import Console
 from rich.markup import escape as _esc
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.prompt import Prompt
 from rich.rule import Rule
-from rich.table import Table
 
 # ── Asegurar ruta del proyecto ────────────────────────────────────────
-if sys.platform == "win32":
-    _proj = os.path.abspath(os.path.dirname(__file__))
-    os.add_dll_directory(_proj)
-
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-# ── Módulos propios ───────────────────────────────────────────────────
+# ── Core ──────────────────────────────────────────────────────────────
 
 # ── Bootscreen ────────────────────────────────────────────────────────
 try:
     from core.bootscreen import (
-        ANUBIS_ART, COMANDOS_HELP, ESTILOS_LOG, MODULOS_BOOT,
-        mostrar_ayuda, mostrar_banner, mostrar_bootloader,
+        COMANDOS_HELP,
+        mostrar_ayuda,
+        mostrar_banner,
+        mostrar_bootloader,
     )
 except ImportError:
-    ESTILOS_LOG = {"INFO": ("cyan", "ℹ"), "WARNING": ("yellow", "⚠"),
-                   "ERROR": ("red", "✖"),  "SUCCESS": ("green", "✔"),
-                   "AUDIT": ("magenta", "🔍"), "DEBUG": ("dim", "·")}
-    MODULOS_BOOT = []
-    ANUBIS_ART = ""
     COMANDOS_HELP = {}
 
-    def mostrar_bootloader(console, nombre, version, iface):
-        console.print(
-            Panel(f"[bold green]{nombre} v{version}[/bold green]", border_style="green"))
+    def mostrar_bootloader(c, nombre, version, iface, estados_modulos=None):
+        c.print(Panel(f"[bold green]{nombre} v{version}[/bold green]"))
 
-    def mostrar_banner(console, nombre, version, iface):
-        console.print(Rule(f"[bold green]{nombre} v{version}[/bold green]"))
+    def mostrar_banner(c, nombre, version, iface, proyecto=None):
+        c.print(Rule(f"[bold green]{nombre} v{version}[/bold green]"))
 
-    def mostrar_ayuda(console, version, cmds):
-        console.print(
-            Panel("[dim]Sin ayuda disponible.[/dim]", title="AYUDA", border_style="cyan"))
+    def mostrar_ayuda(c, version, cmds=None):
+        c.print(Panel("[dim]Sin ayuda.[/dim]", title="AYUDA"))
 
 # ── Auth ──────────────────────────────────────────────────────────────
 try:
     from core.auth import GestorAuth
 except ImportError:
-    class GestorAuth:           # type: ignore
+    class GestorAuth:           # type: ignore[misc]
         def __init__(self, *a, **kw): pass
         def solicitar_acceso(self) -> bool: return True
-
-
-def _importar(modulo: str, clase: str):
-    """Importa una clase de forma segura; retorna None si falla."""
-    try:
-        m = __import__(modulo, fromlist=[clase])
-        return getattr(m, clase)
-    except Exception as exc:
-        logging.getLogger("sentinel").debug(
-            f"[IMPORT] {clase} ({modulo}): {exc}")
-        return None
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -83,56 +61,96 @@ def _importar(modulo: str, clase: str):
 
 class ApexSentinel:
 
-    VERSION = "2.2"
+    VERSION = "2.3"
     NOMBRE = "ApexSentinel"
 
+    # ── OUI local — caché de fabricantes ─────────────────────────────
+    _OUI_LOCAL: dict[str, str] = {
+        "8C:64:A2": "Apple",         "3C:D9:2B": "Apple",      "00:17:F2": "Apple",
+        "58:CB:52": "Samsung",       "90:7A:58": "Samsung",     "B0:72:BF": "Samsung",
+        "D8:24:BD": "Huawei",        "00:E0:FC": "Huawei",      "6C:4B:90": "Huawei",
+        "64:16:7F": "Intel",         "48:51:B7": "Intel",       "A4:C3:F0": "Intel",
+        "00:0C:29": "VMware",        "08:00:27": "VirtualBox",
+        "B8:27:EB": "Raspberry Pi",  "DC:A6:32": "Raspberry Pi 4",
+        "E4:5F:01": "Raspberry Pi 5",
+        "00:50:56": "VMware ESXi",   "18:60:24": "Cisco",       "00:1A:A0": "Dell",
+        "FC:EC:DA": "Xiaomi",        "64:09:80": "Xiaomi",      "F4:60:E2": "Motorola",
+        "78:02:F8": "OnePlus",       "AC:37:43": "HTC",
+    }
+    _OUI_CACHE: dict[str, str] = {}
+
     def __init__(self):
+        # ── Directorios de trabajo ─────────────────────────────────────
         for d in ["data/logs", "data/evidence", "data/evidence/rf",
-                  "data/evidence/rf/iq", "plugins"]:
+                  "data/evidence/rf/iq", "data/evidence/mobile",
+                  "core/data/logs", "core/data/security", "plugins"]:
             os.makedirs(d, exist_ok=True)
 
         self.console = Console()
+        self.log = LogSistema(self.console)
         self.config = self._cargar_config()
         self.nombre = self.config.get(
             "sistema", {}).get("nombre",  self.NOMBRE)
         self.version = self.config.get(
             "sistema", {}).get("version", self.VERSION)
-        self.log = LogSistema(self.console)
         self.auth = GestorAuth(self.config, self.console, self.log)
 
         self._registrar_senales()
-        self._cargar_modulos()
 
-        # Despachador de comandos (separado del núcleo)
+        # ── Carga declarativa de módulos ───────────────────────────────
+        self._registry = ModuleRegistry(self)
+        self._registry.cargar_todos()
+
+        # ── Despachador de comandos ────────────────────────────────────
         self._cmd = CommandHandler(self)
 
-    # ── Señales OS ────────────────────────────────────────────────────
+        # ── primer_arranque: persistir False tras el primer boot ───────
+        if self.config.get("sistema", {}).get("primer_arranque", False):
+            self.config["sistema"]["primer_arranque"] = False
+            self._guardar_config()
 
-    def _registrar_senales(self):
+        # ── Bootscreen con estados REALES ──────────────────────────────
+        mostrar_bootloader(
+            self.console,
+            nombre=self.nombre,
+            version=self.version,
+            iface=self._iface(),
+            estados_modulos=self._registry.estados(),
+        )
+
+    # ── Señales ───────────────────────────────────────────────────────
+
+    def _registrar_senales(self) -> None:
         def _handler(signum, frame):
-            nombre_sig = "SIGINT" if signum == getattr(
+            sig = "SIGINT" if signum == getattr(
                 signal, "SIGINT", 2) else "SIGTERM"
             self.console.print(
-                f"\n[yellow][!] Señal {nombre_sig} — cerrando...[/yellow]")
+                f"\n[yellow][!] Señal {sig} — cerrando...[/yellow]")
             self._cleanup()
             sys.exit(0)
         signal.signal(signal.SIGINT, _handler)
-        sigterm = getattr(signal, "SIGTERM", None)
-        if sigterm:
-            signal.signal(sigterm, _handler)
+        term = getattr(signal, "SIGTERM", None)
+        if term:
+            signal.signal(term, _handler)
 
-    def _cleanup(self):
+    def _cleanup(self) -> None:
         try:
             if self.log:
                 self.log.info("Sesión terminada.", "ApexSentinel")
             if getattr(self, "radar", None):
-                self.radar.stop_sniffing()
+                try:
+                    self.radar.stop_sniffing()
+                except Exception:
+                    pass
             if getattr(self, "cola", None):
                 self.cola.limpiar_completadas()
             if getattr(self, "gp", None) and self.gp.proyecto_activo:
                 self.gp.cerrar_proyecto()
             if getattr(self, "rf", None):
-                self.rf.cerrar()
+                try:
+                    self.rf.cerrar()
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -143,130 +161,19 @@ class ApexSentinel:
             with open("config.json", "r", encoding="utf-8") as f:
                 return json.load(f)
         except FileNotFoundError:
-            return {"sistema": {"nombre": "Sentinel", "version": self.VERSION,
+            return {"sistema": {"nombre": "Sentinel",
+                                "version": self.VERSION,
                                 "primer_arranque": True}}
         except json.JSONDecodeError:
             raise SystemExit("[FATAL] config.json está dañado.")
 
-    # ── Carga de módulos ──────────────────────────────────────────────
-
-    def _cargar_modulos(self):
-        imports = [
-            ("checker",      "SystemChecker",    "core.SystemChecker"),
-            ("audit_engine", "AuditEngine",       "modules.audit.AuditEngine"),
-            ("dict_manager", "DictionaryManager",
-             "modules.audit.DictionaryManager"),
-            ("hydra",        "HydraModule",       "HydraModule"),
-            ("reportes",     "ReportManager",     "modules.reporte.ReportManager"),
-            ("stealth",      "Stealth",           "modules.forense.Stealth"),
-            ("locator",      "LocatorModule",     "modules.geo.LocatorModule"),
-            ("exif",         "ExifAnalyzer",      "modules.forense.ExifAnalyzer"),
-            ("geopreciose",  "GeoPrecise",        "modules.geo.GeoPrecise"),
-            ("wifi_attack",  "WifiAtack",         "modules.network.WifiAtack"),
-            ("reader",       "ForensicReader",
-             "modules.forense.ForensicReader"),
-            ("sniffer",      "TacticalSniffer",
-             "modules.network.TacticalSniffer"),
-            ("bt",           "bt_module",         "modules.network.bt_module"),
-            ("sweep",        "SweepModule",       "modules.network.SweepModule"),
-            ("ducky",        "DuckyModule",       "modules.audit.DuckyModule"),
-            ("adv_scanner",  "AdvancedScanner",
-             "modules.network.AdvancedScanner"),
-            ("mobile",       "MobileSentinel",
-             "modules.forense.MobileSentinel"),
-            ("security",     "SecurityModule",    "core.Security"),
-            ("network",      "Network",           "modules.network.Network"),
-            ("phishing",     "PhishingModule",    "modules.audit.PhishingModule"),
-        ]
-
-        for attr, clase, modulo in imports:
-            Cls = _importar(modulo, clase)
-            if Cls is None:
-                setattr(self, attr, None)
-                continue
-            try:
-                setattr(self, attr,
-                        Cls() if clase in ("SystemChecker", "ReportManager", "DictionaryManager")
-                        else Cls(self))
-            except Exception as e:
-                self.log.warning(f"{clase} falló al iniciar: {e}", "Init")
-                setattr(self, attr, None)
-
-        # Radar / Geomap
+    def _guardar_config(self) -> None:
+        """Persiste config.json (necesario para primer_arranque → False)."""
         try:
-            from modules.network.RadarSentinel import RadarSentinel
-            from modules.geo.GeomapSentinel import GeomapSentinel
-            self.radar = RadarSentinel(interface="Wi-Fi")
-            self.geomap = GeomapSentinel()
-        except Exception as e:
-            self.log.warning(f"Radar/Geomap: {e}", "Init")
-            self.radar = self.geomap = None
-
-        # EvilTwin
-        try:
-            from modules.network.EvilTwinServer import iniciar_servidor
-            self._evil_twin_server = iniciar_servidor
-        except Exception:
-            self._evil_twin_server = None
-
-        # Clases opcionales (instanciar bajo demanda)
-        self._db_extractor_cls = _importar("db_extractor", "DatabaseExtractor")
-        self._wa_decryptor_cls = _importar("WADecryptor",  "WhatsAppDecryptor")
-
-        # ForensicReader directo si el genérico falló
-        _FR = _importar("ForensicReader", "ForensicReader")
-        if _FR is not None and self.reader is None:
-            try:
-                self.reader = _FR(self)
-            except Exception as e:
-                self.log.warning(f"ForensicReader directo: {e}", "Init")
-
-        # Scapy
-        try:
-            from scapy.all import ARP, Ether, srp
-            self._ARP, self._Ether, self._srp = ARP, Ether, srp
-        except Exception:
-            self._ARP = self._Ether = self._srp = None
-
-        # Módulos profesionales
-        for nombre_cls, modulo_str, attr_name in [
-            ("GestorProyectos", "core.GestorProyectos",  "gp"),
-            ("OSINTEngine",     "modules.osint.OSINTEngine", "osint"),
-            ("CVEMatcher",      "modules.osint.CVEMatcher",  "cve"),
-            ("ColaTareas",      "core.ColaTareas",        "cola"),
-        ]:
-            Cls = _importar(modulo_str, nombre_cls)
-            try:
-                setattr(self, attr_name, Cls(self) if Cls else None)
-            except Exception as e:
-                self.log.warning(f"{nombre_cls}: {e}", "Init")
-                setattr(self, attr_name, None)
-
-        # MotorReportes depende de GestorProyectos
-        try:
-            from modules.reporte.MotorReportes import MotorReportes
-            self.motor_rep = MotorReportes(self) if self.gp else None
-        except Exception as e:
-            self.log.warning(f"MotorReportes: {e}", "Init")
-            self.motor_rep = None
-
-        # Plugins
-        try:
-            from core.PluginSystem import GestorPlugins, crear_plugin_ejemplo
-            self.plugins = GestorPlugins(self)
-            crear_plugin_ejemplo()
-            self.plugins.cargar_todos()
-        except Exception as e:
-            self.log.warning(f"PluginSystem: {e}", "Init")
-            self.plugins = None
-
-        # RF Module Integrado
-        try:
-            self.rf = RFModuleIntegrado(self)
-            self.log.info(f"RF Module cargado — {self.rf.hw_nombre}", "Init")
-        except Exception as e:
-            self.log.warning(f"RFModuleIntegrado: {e}", "Init")
-            self.rf = None
+            with open("config.json", "w", encoding="utf-8") as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            self.log.warning(f"No se pudo guardar config.json: {e}", "Config")
 
     # ── Helpers ───────────────────────────────────────────────────────
 
@@ -274,55 +181,100 @@ class ApexSentinel:
         return getattr(getattr(self, "bt", None), "iface", "wlan0mon")
 
     def _modulo_ok(self, nombre_attr: str) -> bool:
-        m = getattr(self, nombre_attr, None)
-        if m is None:
+        """Verifica si un módulo está disponible; imprime aviso si no."""
+        if getattr(self, nombre_attr, None) is None:
             self.console.print(
-                f"[red][!] Módulo '{nombre_attr}' no disponible en este entorno.[/red]")
+                f"[red][!] Módulo '[bold]{nombre_attr}[/bold]' "
+                f"no disponible en este entorno.[/red]"
+            )
             return False
         return True
 
-    def _limpiar(self):
+    def _limpiar(self) -> None:
         os.system("cls" if os.name == "nt" else "clear")
 
-    def _run(self, cmd: list, timeout: int = 30, **kwargs) -> subprocess.CompletedProcess:
+    def _run(self, cmd: list, timeout: int = 30,
+             **kwargs) -> subprocess.CompletedProcess:
         return subprocess.run(cmd, timeout=timeout, check=True, **kwargs)
 
-    def animar_barra(self, tarea: str):
-        print(f"\n{tarea}")
-        largo = 20
-        for i in range(largo + 1):
-            pct = int((i / largo) * 100)
-            print(f"\r[{'█'*i}{'-'*(largo-i)}] {pct}%", end="")
-            time.sleep(0.05)
-        print("\n[OK] Tarea completada.\n")
+    # ── Fabricante de MAC ─────────────────────────────────────────────
 
     def obtener_fabricante(self, mac: str) -> str:
+        mac_upper = mac.upper()
+        if mac_upper in self._OUI_CACHE:
+            return self._OUI_CACHE[mac_upper]
+
+        prefijo = mac_upper[:8]
+        if prefijo in self._OUI_LOCAL:
+            vendor = self._OUI_LOCAL[prefijo]
+            self._OUI_CACHE[mac_upper] = vendor
+            return vendor
+
+        try:
+            if int(mac.split(":")[0], 16) & 0x02:
+                self._OUI_CACHE[mac_upper] = "MAC aleatorizada"
+                return "MAC aleatorizada"
+        except (ValueError, IndexError):
+            pass
+
         try:
             import requests
-            r = requests.get(f"https://api.macvendors.com/{mac}", timeout=2)
-            return r.text if r.status_code == 200 else "Desconocido"
+            r = requests.get(
+                f"https://api.macvendors.com/{mac}",
+                timeout=3,
+                headers={"User-Agent": f"ApexSentinel/{self.version}"},
+            )
+            vendor = r.text.strip() if r.status_code == 200 else "Desconocido"
         except Exception:
-            return "Error"
+            vendor = "Desconocido"
 
-    def mostrar_dashboard_exito(self, ip: str, servicio: str, credencial: str):
-        from rich import box as _box
-        tabla = Table(title="ACCESO OBTENIDO", show_header=True,
-                      header_style="bold green")
-        tabla.add_column("Objetivo",          style="cyan",
+        self._OUI_CACHE[mac_upper] = vendor
+        return vendor
+
+    # ── Barra de progreso ─────────────────────────────────────────────
+
+    def animar_barra(self, tarea: str, pasos: int = 20) -> None:
+        """Rich Progress — compatible con Live activo (sin print() desnudo)."""
+        with Progress(
+            SpinnerColumn(style="bold green"),
+            TextColumn("[green]{task.description}[/green]"),
+            BarColumn(bar_width=24, complete_style="bold green"),
+            TextColumn("[bold green]{task.percentage:>3.0f}%[/bold green]"),
+            TimeElapsedColumn(),
+            console=self.console,
+            transient=True,
+        ) as pg:
+            tk = pg.add_task(tarea, total=pasos)
+            for _ in range(pasos):
+                time.sleep(0.05)
+                pg.advance(tk)
+        self.console.print(f"[bold green][OK][/bold green] {tarea}")
+
+    # ── Dashboard de éxito ────────────────────────────────────────────
+
+    def mostrar_dashboard_exito(self, ip: str, servicio: str,
+                                credencial: str) -> None:
+        from rich import box
+        from rich.table import Table
+        tabla = Table(title="ACCESO OBTENIDO", header_style="bold green")
+        tabla.add_column("Objetivo",           style="cyan",
                          justify="center")
-        tabla.add_column("Protocolo",         style="yellow",
+        tabla.add_column("Protocolo",          style="yellow",
                          justify="center")
         tabla.add_column("Credenciales (U:P)",
                          style="bold white", justify="center")
         tabla.add_row(ip, servicio.upper(), credencial)
-        self.console.print("\n")
-        self.console.print(Panel(tabla, title="[bold green]MISSION ACCOMPLISHED[/bold green]",
-                                 border_style="bright_green", expand=False))
+        self.console.print(
+            Panel(tabla, title="[bold green]MISSION ACCOMPLISHED[/bold green]",
+                  border_style="bright_green", expand=False))
         self.log.audit(f"Acceso obtenido en {ip} vía {servicio}", "Hydra")
-        if self.gp:
-            self.gp.registrar_hallazgo("CRITICO", f"Credenciales obtenidas en {ip}:{servicio}",
-                                       f"Credenciales válidas: {credencial}",
-                                       "Cambiar credenciales inmediatamente.")
+        if getattr(self, "gp", None):
+            self.gp.registrar_hallazgo(
+                "CRITICO",
+                f"Credenciales obtenidas en {ip}:{servicio}",
+                f"Credenciales válidas: {credencial}",
+                "Cambiar credenciales inmediatamente.",
+            )
 
     # ── Despachador ───────────────────────────────────────────────────
 
@@ -330,11 +282,10 @@ class ApexSentinel:
         partes = entrada.strip().lower().split()
         if not partes:
             return True
-        cmd = partes[0]
-        args = partes[1:]
+        cmd, args = partes[0], partes[1:]
         c = self._cmd
 
-        # Comandos con subargs
+        # Comandos con subargumentos
         if cmd == "proyecto":
             c.proyecto(args)
             return True
@@ -351,14 +302,23 @@ class ApexSentinel:
             (c.locate_p if "-p" in args else c.locate)()
             return True
 
-        tabla = {
-            # Generales
+        # Banner con proyecto activo
+        def _banner():
+            proy = (self.gp.proyecto_actual.nombre
+                    if getattr(self, "gp", None) and
+                    getattr(self.gp, "proyecto_actual", None) else None)
+            mostrar_banner(self.console, self.nombre,
+                           self.version, self._iface(), proyecto=proy)
+
+        tabla: dict[str, Any] = {
+            # Sistema
             "help": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
             "?": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
             "status":    c.status,
-            "hora": lambda: self.console.print(f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
-            "clear": lambda: mostrar_banner(self.console, self.nombre, self.version, self._iface()),
-            "cls": lambda: mostrar_banner(self.console, self.nombre, self.version, self._iface()),
+            "hora": lambda: self.console.print(
+                f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
+            "clear":     _banner,
+            "cls":       _banner,
             "logs":      self.log.mostrar_historial,
             "files":     c.files,
             # Red
@@ -375,7 +335,8 @@ class ApexSentinel:
             # Wireless
             "wifi":      c.wifi,
             "eviltwin":  c.eviltwin,
-            "btjumper": lambda: self.bt.iniciar_jumper() if self._modulo_ok("bt") else None,
+            "btjumper": lambda: (self.bt.iniciar_jumper()
+                                 if self._modulo_ok("bt") else None),
             # RF
             "rfscan":    c.rfscan,
             "rfmenu":    c.rfmenu,
@@ -384,15 +345,14 @@ class ApexSentinel:
             "rfdb":      c.rfdb,
             "rfstats":   c.rfstats,
             "rfstatus":  c.rfestado,
-            # RF — nuevos módulos v2.2
-            "radio":     c.radio,       # demodulación en tiempo real
-            "rfgrabar":  c.rfgrabar,    # grabación IQ a archivo
-            "rfplay":    c.rfplay,      # reproducir grabación IQ
-            "adsb":      c.adsb,        # monitor ADS-B 1090 MHz
-            # Mobile
-            "mobile":       c.mobile,
-            "mobile-deep":  c.mobile_deep,
-            "view":         c.view,
+            "radio":     c.radio,
+            "rfgrabar":  c.rfgrabar,
+            "rfplay":    c.rfplay,
+            "adsb":      c.adsb,
+            # Mobile / Forense
+            "mobile":      c.mobile,
+            "mobile-deep": c.mobile_deep,
+            "view":        c.view,
             # OSINT / Geo
             "geofoto":   c.geofoto,
             "osint":     c.osint,
@@ -400,16 +360,19 @@ class ApexSentinel:
             # Ofensivo
             "phishing":  c.phishing,
             "ducky":     c.ducky,
-            # Stealth
             "stealth":   c.stealth,
             "panic":     c.panic,
         }
 
         if cmd in tabla:
-            tabla[cmd]()
+            try:
+                tabla[cmd]()
+            except Exception as exc:
+                self.console.print(f"[red][!] Error en '{cmd}': {exc}[/red]")
+                self.log.error(str(exc), f"cmd:{cmd}")
             return True
 
-        if self.plugins and self.plugins.tiene_comando(cmd):
+        if getattr(self, "plugins", None) and self.plugins.tiene_comando(cmd):
             self.plugins.ejecutar_comando(cmd, args)
             return True
 
@@ -417,7 +380,7 @@ class ApexSentinel:
 
     # ── Bucle principal ───────────────────────────────────────────────
 
-    def ejecutar(self):
+    def ejecutar(self) -> None:
         if not self.auth.solicitar_acceso():
             self.console.print(
                 "[red][!] Acceso denegado. Sistema bloqueado.[/red]")
@@ -425,35 +388,34 @@ class ApexSentinel:
                 "Sistema bloqueado por intentos fallidos.", "GestorAuth")
             return
 
-        mostrar_bootloader(self.console, self.nombre,
-                           self.version, self._iface())
-
-        self.console.print(
-            "[bold blue][*] Diagnosticando dependencias...[/bold blue]")
-        if self.checker:
+        if getattr(self, "checker", None):
             self.checker.verificar_dependencias()
 
         self.log.verificar_y_limpiar()
-        if self.stealth:
+
+        if getattr(self, "stealth", None):
             self.stealth.verificar_identidad()
 
         self.log.info("Sistema iniciado correctamente.", "ApexSentinel")
 
-        if self.rf:
-            rf_status = (f"[green]{self.rf.hw_nombre}[/green]"
-                         if self.rf.hw_disponible else f"[yellow]{self.rf.hw_nombre}[/yellow]")
-            self.console.print(f"\n[dim][RF] Hardware: {rf_status}[/dim]")
+        if getattr(self, "rf", None):
+            rf_tag = (f"[green]{self.rf.hw_nombre}[/green]"
+                      if self.rf.hw_disponible
+                      else f"[yellow]{self.rf.hw_nombre}[/yellow]")
+            self.console.print(f"\n[dim][RF] Hardware: {rf_tag}[/dim]")
 
-        if self.gp and not self.gp.proyecto_activo:
+        if getattr(self, "gp", None) and not self.gp.proyecto_activo:
             self.console.print(
                 "\n[dim][tip] Usa [bold white]proyecto nuevo[/bold white] "
-                "para crear un workspace de operación.[/dim]\n"
-            )
+                "para crear un workspace de operación.[/dim]\n")
 
         while True:
             try:
-                plab = f"[{_esc(str(self.gp.proyecto_activo.nombre))}]" \
-                    if self.gp and self.gp.proyecto_activo else ""
+                plab = (
+                    f"[{_esc(str(self.gp.proyecto_activo.nombre))}]"
+                    if getattr(self, "gp", None) and self.gp.proyecto_activo
+                    else ""
+                )
                 prompt_str = (
                     f"[bold green]AnubisOS[/bold green]"
                     f"[dim white]@[/dim white]"
@@ -474,22 +436,24 @@ class ApexSentinel:
                     break
                 if not self._despachar(entrada):
                     self.console.print(
-                        f"[yellow][?] Comando '[bold]{entrada}[/bold]' no reconocido. "
-                        f"Escribe [bold white]help[/bold white] para ver opciones.[/yellow]"
-                    )
+                        f"[yellow][?] Comando '[bold]{entrada}[/bold]' no "
+                        f"reconocido. Escribe [bold white]help[/bold white] "
+                        f"para ver opciones.[/yellow]")
             except EOFError:
                 self._cleanup()
                 break
-            except Exception as e:
-                self.console.print(f"[red][!] Error inesperado: {e}[/red]")
-                self.log.error(str(e), "Bucle principal")
+            except Exception as exc:
+                self.console.print(f"[red][!] Error inesperado: {exc}[/red]")
+                self.log.error(str(exc), "Bucle principal")
 
 
 # ── Punto de entrada ──────────────────────────────────────────────────
 
+from typing import Any  # noqa: E402 — necesario para la anotación en _despachar
+
 if __name__ == "__main__":
     for d in ["data/logs", "data/evidence", "data/evidence/rf",
-              "data/evidence/rf/iq", "plugins"]:
+              "data/evidence/rf/iq", "core/data/logs",
+              "core/data/security", "plugins"]:
         os.makedirs(d, exist_ok=True)
-
     ApexSentinel().ejecutar()

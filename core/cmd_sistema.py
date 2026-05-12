@@ -1,11 +1,8 @@
-"""
-core/commands/cmd_sistema.py — Comandos de gestión del sistema Sentinel
-"""
 from __future__ import annotations
 
 from rich.panel import Panel
 
-from core.commands._base import _DomainBase
+from core._base import _DomainBase
 
 
 class SistemaCommands(_DomainBase):
@@ -66,6 +63,7 @@ class SistemaCommands(_DomainBase):
             if p:
                 self.console.print(Panel(p.ayuda(), border_style="green"))
             else:
-                self.console.print(f"[red][!] Plugin '{args[1]}' no encontrado.[/red]")
+                self.console.print(
+                    f"[red][!] Plugin '{args[1]}' no encontrado.[/red]")
         else:
             s.plugins.listar()

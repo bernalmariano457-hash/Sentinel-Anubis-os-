@@ -5,7 +5,7 @@ import subprocess
 
 from rich.panel import Panel
 
-from core.commands._base import _DomainBase
+from core._base import _DomainBase
 
 
 class MobileCommands(_DomainBase):

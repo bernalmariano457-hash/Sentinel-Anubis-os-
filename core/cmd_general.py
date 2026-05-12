@@ -9,7 +9,7 @@ import time
 from rich import box
 from rich.table import Table
 
-from core.commands._base import _DomainBase
+from core._base import _DomainBase
 
 
 class GeneralCommands(_DomainBase):

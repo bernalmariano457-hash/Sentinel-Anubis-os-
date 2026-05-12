@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 
-from core.commands._base import _DomainBase
+from core._base import _DomainBase
 
 
 class OfensivoCommands(_DomainBase):

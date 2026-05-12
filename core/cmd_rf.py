@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.commands._base import _DomainBase
+from core._base import _DomainBase
 from core.validators import Validador
 
 
