@@ -215,8 +215,14 @@ def _panel_header(nombre: str, version: str, iface: str) -> Panel:
     )
 
 
-def _panel_modulos() -> Panel:
-    """Tabla de módulos con estado LISTO."""
+def _panel_modulos(estados: dict[str, bool] | None = None) -> Panel:
+    """
+    Tabla de módulos con estado REAL.
+
+    Args:
+        estados: dict {display_name → bool} devuelto por ModuleRegistry.estados().
+                 Si es None o no contiene el módulo, muestra ● LISTO (fallback).
+    """
     tb = Table(
         box=box.SIMPLE_HEAD,
         header_style="bold green",
@@ -230,18 +236,31 @@ def _panel_modulos() -> Panel:
     tb.add_column("Función",  style="dim white",   min_width=30)
     tb.add_column("Estado",   justify="center")
 
+    cargados = 0
     for i, (nombre, desc) in enumerate(MODULOS_BOOT, 1):
-        tb.add_row(
-            str(i),
-            nombre,
-            desc,
-            "[bold green]● LISTO[/bold green]",
-        )
+        if estados is not None and nombre in estados:
+            ok = estados[nombre]
+        else:
+            ok = True  # fallback conservador si no hay info
+
+        if ok:
+            cargados += 1
+            estado_str = "[bold green]● LISTO[/bold green]"
+        else:
+            estado_str = "[yellow]○ DEGRADADO[/yellow]"
+
+        tb.add_row(str(i), nombre, desc, estado_str)
+
+    subtitle = (
+        f"[dim green]{cargados}/{len(MODULOS_BOOT)} módulos en línea[/dim green]"
+        if estados is not None
+        else f"[dim green]{len(MODULOS_BOOT)} módulos cargados[/dim green]"
+    )
 
     return Panel(
         tb,
         title="[bold green]▸  MÓDULOS DEL SISTEMA[/bold green]",
-        subtitle=f"[dim green]{len(MODULOS_BOOT)} módulos cargados[/dim green]",
+        subtitle=subtitle,
         border_style="green",
         box=box.HEAVY_HEAD,
         padding=(0, 1),
@@ -279,14 +298,21 @@ def mostrar_bootloader(
     nombre: str,
     version: str,
     iface: str,
+    estados_modulos: dict[str, bool] | None = None,
 ) -> None:
     """
     Pantalla de arranque animada v3 — 5 fases:
       1. Header con info del sistema
       2. Separador de fase
       3. Barra de progreso de módulos
-      4. Tabla de módulos
+      4. Tabla de módulos con estado REAL
       5. Log de arranque animado línea a línea
+
+    Args:
+        estados_modulos: dict {display_name → bool} de ModuleRegistry.estados().
+                         Si se proporciona, la tabla refleja el estado real de
+                         cada módulo (● LISTO / ○ DEGRADADO) en lugar de
+                         mostrar todos como LISTO sin verificar.
     """
     _limpiar()
 
@@ -343,7 +369,7 @@ def mostrar_bootloader(
     console.print()
 
     # ── Fase 4: Tabla de módulos ───────────────────────────────────
-    console.print(_panel_modulos())
+    console.print(_panel_modulos(estados_modulos))
     console.print()
 
     # ── Fase 5: Log de arranque animado ───────────────────────────

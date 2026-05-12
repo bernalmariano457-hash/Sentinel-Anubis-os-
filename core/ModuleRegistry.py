@@ -144,8 +144,7 @@ class ModuleRegistry:
             return False
         try:
             from core.Recovery import SentinelRecovery
-            setattr(self._sentinel, "recovery",
-                    SentinelRecovery(sec, getattr(self._sentinel, "log", None)))
+            setattr(self._sentinel, "recovery", SentinelRecovery(sec))
             return True
         except Exception as exc:
             self._warn(f"SentinelRecovery — error: {exc}")

@@ -105,17 +105,6 @@ except ImportError:
 
 
 class RFModuleIntegrado:
-    """
-    Fachada única que integra todos los subsistemas RF:
-      · Hardware real (RTL-SDR / HackRF via RFScanner.py)
-      · Mock/simulación (rf_mock.py) cuando no hay hardware
-      · Motor DSP avanzado (dsp.py) para análisis CFAR
-      · Demodulación de audio (rf_demod.py)
-      · Persistencia SQLite (rf_database.py)
-      · Base de datos de bandas (bands.py)
-      · Configuración TOML (config.py)
-    """
-
     WATERFALL_CHARS = " ·░▒▓█"
     DB_MIN = -110.0
     DB_MAX = -20.0

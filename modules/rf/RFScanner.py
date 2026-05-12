@@ -325,15 +325,6 @@ class Renderizador:
     def espectro(self, freqs_hz: np.ndarray, psd_dbm: np.ndarray,
                  freq_centro_mhz: float, picos: list,
                  sample_rate: float, hw: str) -> Panel:
-        """
-        Renderiza el espectro de potencia como gráfico ASCII.
-        Incluye:
-          - Eje Y en dBm con escala real
-          - Barras coloreadas por intensidad (verde → amarillo → rojo)
-          - Línea de umbral visual
-          - Marcadores de picos detectados
-          - Etiquetas de frecuencia en eje X
-        """
         ancho = ConfigSDR.WATERFALL_ANCHO
         alto = 14
         db_min = -110.0
@@ -508,7 +499,6 @@ class Renderizador:
     def resumen_escaneo(self, freq_mhz: float, picos: list,
                         duracion: float, hw: str,
                         iteraciones: int) -> Panel:
-        """Panel de resumen al finalizar el escaneo."""
         snr_max = max((p["snr_db"] for p in picos), default=0)
         pot_max = max((p["potencia"] for p in picos), default=-999)
         bw_med = (sum(p["bw_khz"] for p in picos) / len(picos)
@@ -624,7 +614,6 @@ class RFScanner:
     # ── HARDWARE ─────────────────────────────────────────────────────
 
     def _conectar_hardware(self):
-        """Conecta al hardware SDR disponible."""
         if SDR_TIPO == "RTL-SDR" and SDR_CLASE:
             try:
                 self.sdr = SDR_CLASE()
@@ -690,10 +679,7 @@ class RFScanner:
     # ── CAPTURA ───────────────────────────────────────────────────────
 
     def _capturar(self, freq_hz: float) -> np.ndarray | None:
-        """
-        Captura muestras IQ del hardware real.
-        Retorna None si no hay hardware disponible.
-        """
+
         if self.sdr is None:
             self._print(
                 "[red][!] Sin hardware SDR. "
@@ -727,7 +713,6 @@ class RFScanner:
                 return None
 
     def _identificar_banda(self, freq_mhz: float) -> dict | None:
-        """Identifica la banda de una frecuencia."""
         for fmin, fmax, nombre, tipo, desc, color in BANDAS:
             if fmin <= freq_mhz <= fmax:
                 return {"nombre": nombre, "tipo": tipo,
@@ -735,7 +720,6 @@ class RFScanner:
         return None
 
     def _enriquecer_picos(self, picos: list) -> list:
-        """Añade info de banda a cada pico detectado."""
         for p in picos:
             p["banda"] = self._identificar_banda(p["freq_mhz"])
         return picos
@@ -743,11 +727,6 @@ class RFScanner:
     # ── API PÚBLICA ───────────────────────────────────────────────────
 
     def escanear_frecuencia(self, freq_mhz: float, duracion: int = 10):
-        """
-        Escanea una frecuencia con visualización en tiempo real.
-        Muestra espectro, waterfall y tabla de señales actualizados
-        cada captura durante el tiempo especificado.
-        """
         if self.sdr is None:
             self._print(
                 "[red][!] Operación cancelada: sin hardware SDR.[/red]")
@@ -859,10 +838,6 @@ class RFScanner:
     def barrido_espectro(self, freq_ini_mhz: float,
                          freq_fin_mhz: float,
                          paso_mhz: float = 1.0):
-        """
-        Barre un rango de frecuencias y genera mapa de actividad.
-        Captura una muestra por frecuencia y reporta potencia máxima y SNR.
-        """
         if self.sdr is None:
             self._print(
                 "[red][!] Operación cancelada: sin hardware SDR.[/red]")
@@ -926,10 +901,7 @@ class RFScanner:
                 )
 
     def escaneo_bandas_conocidas(self):
-        """
-        Escanea rápidamente el centro de cada banda conocida
-        y muestra un mapa de actividad global.
-        """
+
         if self.sdr is None:
             self._print(
                 "[red][!] Operación cancelada: sin hardware SDR.[/red]")
@@ -986,7 +958,6 @@ class RFScanner:
                     f"Escaneo bandas: {len(resultados)} mediciones", "RFScanner")
 
     def menu(self):
-        """Menú interactivo del módulo RF para uso en campo."""
         self.console.print()
         self.console.print(Panel(
             f"[bold green]RF SCANNER — {self.hw_nombre}[/bold green]\n\n"
@@ -1063,7 +1034,6 @@ class RFScanner:
             self.estado()
 
     def estado(self):
-        """Muestra el estado del hardware y la sesión."""
         g = Table.grid(padding=(0, 3))
         g.add_column(style="dim green", justify="right", min_width=20)
         g.add_column(style="white")
@@ -1084,7 +1054,6 @@ class RFScanner:
                                  border_style="green"))
 
     def cerrar(self):
-        """Cierra la conexión con el hardware SDR de forma segura."""
         if self.sdr is not None:
             try:
                 if SDR_TIPO == "RTL-SDR":
@@ -1109,7 +1078,6 @@ class RFScanner:
     # ── EXPORTACIÓN ──────────────────────────────────────────────────
 
     def _exportar_csv_picos(self, picos: list, freq_mhz: float):
-        """Exporta señales detectadas a CSV."""
         os.makedirs(ConfigSDR.EXPORT_PATH, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         fn = (f"{ConfigSDR.EXPORT_PATH}/"
@@ -1162,7 +1130,6 @@ class RFScanner:
 
     def _registrar_evidencia(self, freq_mhz: float,
                              picos: list, duracion: float):
-        """Registra el escaneo en el proyecto activo si existe."""
         if not self.gp or not picos:
             return
 

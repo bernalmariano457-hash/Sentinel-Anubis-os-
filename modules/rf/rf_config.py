@@ -1,41 +1,43 @@
-import os
+from __future__ import annotations
+
 import logging
+import os
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
 log = logging.getLogger(__name__)
 
-# ── tomllib disponible en Python 3.11+, fallback a tomli ────────────
 try:
-    import tomllib  # Python 3.11+
+    import tomllib
 
     def _load_toml(path: Path) -> dict:
         with open(path, "rb") as f:
             return tomllib.load(f)
+
 except ImportError:
     try:
-        import tomllib as tomllib  # pip install tomli
+        import tomli as tomllib  # type: ignore
 
         def _load_toml(path: Path) -> dict:
             with open(path, "rb") as f:
                 return tomllib.load(f)
+
     except ImportError:
-        # Fallback manual mínimo — solo soporta key = value simple
-        def _load_toml(path: Path) -> dict:
-            log.warning("tomllib/tomli no disponible — usando parser mínimo")
+
+        def _load_toml(path: Path) -> dict:  # type: ignore
+            log.warning("tomllib/tomli no disponible — parser minimo activo")
             result: dict = {}
             section: dict = result
-            section_name = ""
             with open(path, encoding="utf-8") as f:
-                for line in f:
-                    line = line.split("#")[0].strip()
+                for raw_line in f:
+                    line = raw_line.split("#")[0].strip()
                     if not line:
                         continue
                     if line.startswith("[") and line.endswith("]"):
-                        section_name = line[1:-1]
-                        result.setdefault(section_name, {})
-                        section = result[section_name]
+                        key = line[1:-1]
+                        result.setdefault(key, {})
+                        section = result[key]
                     elif "=" in line:
                         k, _, v = line.partition("=")
                         k = k.strip()
@@ -57,64 +59,83 @@ except ImportError:
 
 
 # ════════════════════════════════════════════════════════════════════
-# DATACLASSES DE CONFIGURACIÓN
+# DATACLASSES DE CONFIGURACION
 # ════════════════════════════════════════════════════════════════════
+
+_VALID_SAMPLE_RATES = frozenset({
+    250_000, 1_024_000, 1_536_000, 1_792_000,
+    1_920_000, 2_048_000, 2_160_000, 2_560_000,
+    2_880_000, 3_200_000,
+})
+
+_VALID_WINDOWS = frozenset({"blackman", "hann", "hamming", "flattop"})
+_VALID_MODES   = frozenset({"none", "wfm", "nfm", "am", "usb", "lsb"})
+_VALID_FFT     = frozenset({256, 512, 1024, 2048, 4096, 8192})
+
 
 @dataclass
 class HardwareConfig:
-    device_index:   int = 0
-    ppm_correction: int = 0
+    device_index:   int   = 0
+    ppm_correction: int   = 0
     gain_db:        float = 40.0
-    sample_rate:    int = 2_048_000
-    bias_tee:       bool = False
+    sample_rate:    int   = 2_048_000
+    bias_tee:       bool  = False
+    agc:            bool  = False
 
     def validate(self):
-        assert 0 <= self.device_index <= 7,         "device_index fuera de rango"
-        assert -200 <= self.ppm_correction <= 200,  "ppm_correction fuera de rango"
-        assert 0.0 <= self.gain_db <= 80.0,         "gain_db fuera de rango"
-        assert self.sample_rate in (
-            250_000, 1_024_000, 1_536_000, 1_792_000,
-            1_920_000, 2_048_000, 2_160_000, 2_560_000,
-            2_880_000, 3_200_000
-        ), f"sample_rate no soportado: {self.sample_rate}"
+        if not (0 <= self.device_index <= 7):
+            raise ValueError(f"device_index fuera de rango: {self.device_index}")
+        if not (-200 <= self.ppm_correction <= 200):
+            raise ValueError(f"ppm_correction fuera de rango: {self.ppm_correction}")
+        if not (0.0 <= self.gain_db <= 80.0):
+            raise ValueError(f"gain_db fuera de rango: {self.gain_db}")
+        if self.sample_rate not in _VALID_SAMPLE_RATES:
+            raise ValueError(f"sample_rate no soportado: {self.sample_rate}")
 
 
 @dataclass
 class DspConfig:
-    fft_size:        int = 2048
-    window:          str = "blackman"
-    snr_threshold:   float = 8.0
-    samples_per_read: int = 524_288
-    cfar_guard:      int = 4
-    cfar_ref:        int = 16
-    dc_spike_remove: bool = True
+    fft_size:         int   = 2048
+    window:           str   = "blackman"
+    snr_threshold:    float = 8.0
+    samples_per_read: int   = 524_288
+    cfar_guard:       int   = 4
+    cfar_ref:         int   = 16
+    dc_spike_remove:  bool  = True
+    welch_overlap:    float = 0.5
 
     def validate(self):
-        assert self.fft_size in (256, 512, 1024, 2048, 4096, 8192), \
-            f"fft_size debe ser potencia de 2: {self.fft_size}"
-        assert self.window in ("blackman", "hann", "hamming", "flattop"), \
-            f"window no reconocida: {self.window}"
-        assert 0 < self.snr_threshold < 60, "snr_threshold fuera de rango"
+        if self.fft_size not in _VALID_FFT:
+            raise ValueError(f"fft_size debe ser potencia de 2: {self.fft_size}")
+        if self.window not in _VALID_WINDOWS:
+            raise ValueError(f"window no reconocida: {self.window}")
+        if not (0 < self.snr_threshold < 60):
+            raise ValueError("snr_threshold fuera de rango [0, 60]")
+        if not (0.0 <= self.welch_overlap < 1.0):
+            raise ValueError("welch_overlap debe estar en [0, 1)")
 
 
 @dataclass
 class DemodConfig:
-    mode:       str = "none"
-    audio_rate: int = 48_000
+    mode:       str   = "none"
+    audio_rate: int   = 48_000
     volume:     float = 0.8
-    save_audio: bool = False
+    save_audio: bool  = False
+    squelch_db: float = 0.0
 
     def validate(self):
-        assert self.mode in ("none", "wfm", "nfm", "am", "usb", "lsb"), \
-            f"modo demodulación desconocido: {self.mode}"
-        assert 0.0 <= self.volume <= 1.0, "volume debe estar entre 0 y 1"
+        if self.mode not in _VALID_MODES:
+            raise ValueError(f"modo demodulacion desconocido: {self.mode}")
+        if not (0.0 <= self.volume <= 1.0):
+            raise ValueError("volume debe estar entre 0 y 1")
 
 
 @dataclass
 class StorageConfig:
-    data_dir:           str = "data/rf"
-    db_retention_days:  int = 0
-    compress_iq:        bool = False
+    data_dir:          str  = "data/rf"
+    db_retention_days: int  = 0
+    compress_iq:       bool = False
+    sigmf_format:      bool = True
 
     @property
     def data_path(self) -> Path:
@@ -139,11 +160,12 @@ class StorageConfig:
 
 @dataclass
 class DisplayConfig:
-    waterfall_rows:  int = 16
-    spectrum_width:  int = 64
-    spectrum_height: int = 14
+    waterfall_rows:  int   = 16
+    spectrum_width:  int   = 64
+    spectrum_height: int   = 14
     dbm_floor:       float = -110.0
     dbm_ceil:        float = -10.0
+    color_scheme:    str   = "default"
 
 
 @dataclass
@@ -157,34 +179,27 @@ class LoggingConfig:
 @dataclass
 class RFConfig:
     hardware: HardwareConfig = field(default_factory=HardwareConfig)
-    dsp:      DspConfig = field(default_factory=DspConfig)
-    demod:    DemodConfig = field(default_factory=DemodConfig)
-    storage:  StorageConfig = field(default_factory=StorageConfig)
-    display:  DisplayConfig = field(default_factory=DisplayConfig)
-    logging:  LoggingConfig = field(default_factory=LoggingConfig)
+    dsp:      DspConfig      = field(default_factory=DspConfig)
+    demod:    DemodConfig    = field(default_factory=DemodConfig)
+    storage:  StorageConfig  = field(default_factory=StorageConfig)
+    display:  DisplayConfig  = field(default_factory=DisplayConfig)
+    logging:  LoggingConfig  = field(default_factory=LoggingConfig)
 
 
 # ════════════════════════════════════════════════════════════════════
 # CARGADOR
 # ════════════════════════════════════════════════════════════════════
 
-_DEFAULT_CONFIG_CONTENT = Path(__file__).parent / "config.toml"
-
-
 def load_config(path: Optional[str] = None) -> RFConfig:
-    """
-    Carga la configuración desde un archivo TOML.
-    Precedencia: archivo → variables de entorno → defaults.
-    """
     cfg_path = Path(path) if path else _find_config()
 
     raw: dict = {}
     if cfg_path and cfg_path.exists():
         try:
             raw = _load_toml(cfg_path)
-            log.debug(f"Configuración cargada desde {cfg_path}")
+            log.debug("Configuracion cargada desde %s", cfg_path)
         except Exception as e:
-            log.warning(f"Error leyendo {cfg_path}: {e} — usando defaults")
+            log.warning("Error leyendo %s: %s — usando defaults", cfg_path, e)
     else:
         log.info("config.toml no encontrado — usando valores por defecto")
 
@@ -192,80 +207,89 @@ def load_config(path: Optional[str] = None) -> RFConfig:
         return raw.get(section, {}).get(key, default)
 
     hw = HardwareConfig(
-        device_index=int(_get("hardware", "device_index",   0)),
-        ppm_correction=int(_get("hardware", "ppm_correction", 0)),
-        gain_db=float(_get("hardware", "gain_db",      40.0)),
-        sample_rate=int(_get("hardware", "sample_rate",    2_048_000)),
-        bias_tee=bool(_get("hardware", "bias_tee",      False)),
+        device_index   = int(_get("hardware", "device_index",   0)),
+        ppm_correction = int(_get("hardware", "ppm_correction", 0)),
+        gain_db        = float(_get("hardware", "gain_db",      40.0)),
+        sample_rate    = int(_get("hardware", "sample_rate",    2_048_000)),
+        bias_tee       = bool(_get("hardware", "bias_tee",      False)),
+        agc            = bool(_get("hardware", "agc",           False)),
     )
     dsp = DspConfig(
-        fft_size=int(_get("dsp", "fft_size",         2048)),
-        window=str(_get("dsp", "window",           "blackman")),
-        snr_threshold=float(_get("dsp", "snr_threshold",  8.0)),
-        samples_per_read=int(_get("dsp", "samples_per_read", 524_288)),
-        cfar_guard=int(_get("dsp", "cfar_guard",       4)),
-        cfar_ref=int(_get("dsp", "cfar_ref",         16)),
-        dc_spike_remove=bool(_get("dsp", "dc_spike_remove", True)),
+        fft_size         = int(_get("dsp", "fft_size",         2048)),
+        window           = str(_get("dsp", "window",           "blackman")),
+        snr_threshold    = float(_get("dsp", "snr_threshold",  8.0)),
+        samples_per_read = int(_get("dsp", "samples_per_read", 524_288)),
+        cfar_guard       = int(_get("dsp", "cfar_guard",       4)),
+        cfar_ref         = int(_get("dsp", "cfar_ref",         16)),
+        dc_spike_remove  = bool(_get("dsp", "dc_spike_remove", True)),
+        welch_overlap    = float(_get("dsp", "welch_overlap",  0.5)),
     )
     demod = DemodConfig(
-        mode=str(_get("demod", "mode",       "none")),
-        audio_rate=int(_get("demod", "audio_rate", 48_000)),
-        volume=float(_get("demod", "volume",   0.8)),
-        save_audio=bool(_get("demod", "save_audio", False)),
+        mode       = str(_get("demod", "mode",       "none")),
+        audio_rate = int(_get("demod", "audio_rate", 48_000)),
+        volume     = float(_get("demod", "volume",   0.8)),
+        save_audio = bool(_get("demod", "save_audio", False)),
+        squelch_db = float(_get("demod", "squelch_db", 0.0)),
     )
     storage = StorageConfig(
-        data_dir=str(_get("storage", "data_dir",          "data/rf")),
-        db_retention_days=int(_get("storage", "db_retention_days", 0)),
-        compress_iq=bool(_get("storage", "compress_iq",      False)),
+        data_dir          = str(_get("storage", "data_dir",          "data/rf")),
+        db_retention_days = int(_get("storage", "db_retention_days", 0)),
+        compress_iq       = bool(_get("storage", "compress_iq",      False)),
+        sigmf_format      = bool(_get("storage", "sigmf_format",     True)),
     )
     display = DisplayConfig(
-        waterfall_rows=int(_get("display", "waterfall_rows",  16)),
-        spectrum_width=int(_get("display", "spectrum_width",  64)),
-        spectrum_height=int(_get("display", "spectrum_height", 14)),
-        dbm_floor=float(_get("display", "dbm_floor",     -110.0)),
-        dbm_ceil=float(_get("display", "dbm_ceil",      -10.0)),
+        waterfall_rows  = int(_get("display", "waterfall_rows",  16)),
+        spectrum_width  = int(_get("display", "spectrum_width",  64)),
+        spectrum_height = int(_get("display", "spectrum_height", 14)),
+        dbm_floor       = float(_get("display", "dbm_floor",     -110.0)),
+        dbm_ceil        = float(_get("display", "dbm_ceil",      -10.0)),
+        color_scheme    = str(_get("display", "color_scheme",    "default")),
     )
     logging_cfg = LoggingConfig(
-        level=str(_get("logging", "level",        "INFO")),
-        file=str(_get("logging", "file",         "data/rf/rfscanner.log")),
-        max_mb=int(_get("logging", "max_mb",       10)),
-        backup_count=int(_get("logging", "backup_count", 3)),
+        level        = str(_get("logging", "level",        "INFO")),
+        file         = str(_get("logging", "file",         "data/rf/rfscanner.log")),
+        max_mb       = int(_get("logging", "max_mb",       10)),
+        backup_count = int(_get("logging", "backup_count", 3)),
     )
 
-    # ── Overrides por variables de entorno ───────────────────────────
-    if (v := os.environ.get("RF_GAIN_DB")):
-        hw.gain_db = float(v)
-    if (v := os.environ.get("RF_PPM")):
-        hw.ppm_correction = int(v)
-    if (v := os.environ.get("RF_DEVICE")):
-        hw.device_index = int(v)
-    if (v := os.environ.get("RF_SAMPLE_RATE")):
-        hw.sample_rate = int(v)
-    if (v := os.environ.get("RF_DATA_DIR")):
-        storage.data_dir = v
+    # Overrides por variable de entorno (mayor prioridad que TOML)
+    _env_overrides = {
+        "RF_GAIN_DB":    ("hw.gain_db",         float),
+        "RF_PPM":        ("hw.ppm_correction",  int),
+        "RF_DEVICE":     ("hw.device_index",    int),
+        "RF_SAMPLE_RATE":("hw.sample_rate",     int),
+        "RF_DATA_DIR":   ("storage.data_dir",   str),
+        "RF_SNR_THRESH": ("dsp.snr_threshold",  float),
+        "RF_DEMOD_MODE": ("demod.mode",         str),
+    }
+    for env_var, (target, cast) in _env_overrides.items():
+        if v := os.environ.get(env_var):
+            obj_name, attr = target.split(".")
+            obj = {"hw": hw, "dsp": dsp, "demod": demod, "storage": storage}[obj_name]
+            try:
+                setattr(obj, attr, cast(v))
+                log.debug("Override: %s=%s (via %s)", attr, v, env_var)
+            except Exception as e:
+                log.warning("Override invalido %s=%s: %s", env_var, v, e)
 
     cfg = RFConfig(
         hardware=hw, dsp=dsp, demod=demod,
         storage=storage, display=display, logging=logging_cfg,
     )
 
-    # Validar rangos
     try:
         hw.validate()
         dsp.validate()
         demod.validate()
-    except AssertionError as e:
-        log.error(f"Configuración inválida: {e}")
+    except ValueError as e:
+        log.error("Configuracion invalida: %s", e)
         raise
 
-    # Crear directorios necesarios
     Path(storage.data_dir).mkdir(parents=True, exist_ok=True)
-
     return cfg
 
 
 def _find_config() -> Optional[Path]:
-    """Busca config.toml en ubicaciones estándar."""
     candidates = [
         Path("config.toml"),
         Path("rfscanner/config.toml"),
@@ -279,8 +303,7 @@ def _find_config() -> Optional[Path]:
 
 
 def save_config(cfg: RFConfig, path: str = "config.toml"):
-    """Guarda la configuración actual en TOML (sin comentarios)."""
-    lines = []
+    lines: list[str] = []
     for section_name, section_obj in asdict(cfg).items():
         lines.append(f"\n[{section_name}]")
         for k, v in section_obj.items():
@@ -291,4 +314,4 @@ def save_config(cfg: RFConfig, path: str = "config.toml"):
             else:
                 lines.append(f"{k} = {v}")
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
-    log.info(f"Configuración guardada en {path}")
+    log.info("Configuracion guardada en %s", path)
