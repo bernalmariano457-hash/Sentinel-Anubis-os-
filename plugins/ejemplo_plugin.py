@@ -3,7 +3,7 @@ from core.PluginSystem import PluginBase
 
 class EjemploPlugin(PluginBase):
     NOMBRE = "ejemplo"
-    VERSION = "1.0"
+    VERSION = "2.3"
     DESCRIPCION = "Plugin de demostración del sistema"
     AUTOR = "AnubisOS"
     COMANDOS = ["hola", "ejemplo"]

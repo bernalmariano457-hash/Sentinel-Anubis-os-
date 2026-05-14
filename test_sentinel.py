@@ -1,5 +1,4 @@
 from __future__ import annotations
-from PluginSystem import PluginBase
 
 import hashlib
 import json
@@ -18,6 +17,9 @@ import pytest
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+
+# PluginBase se importa aquí, después de configurar sys.path
+from PluginSystem import PluginBase  # noqa: E402
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -179,16 +181,14 @@ class TestGestorAuth:
 
     # Verificación SHA-256 con salt (formato nuevo sin bcrypt)
     def test_verificar_sha256_con_salt(self, auth):
-        import os as _os
         pwd = "clave_test"
-        salt = _os.urandom(16).hex()
+        salt = os.urandom(16).hex()
         h = hashlib.sha256((salt + pwd).encode()).hexdigest()
         almacenado = f"{salt}:{h}"
         assert auth._verificar(pwd, almacenado)
 
     def test_verificar_sha256_con_salt_incorrecto(self, auth):
-        import os as _os
-        salt = _os.urandom(16).hex()
+        salt = os.urandom(16).hex()
         h = hashlib.sha256((salt + "correcto").encode()).hexdigest()
         almacenado = f"{salt}:{h}"
         assert not auth._verificar("incorrecto", almacenado)
@@ -206,7 +206,6 @@ class TestGestorAuth:
     # solicitar_acceso con hash en config
     def test_solicitar_acceso_correcto(self, console, mock_log):
         from auth import GestorAuth
-        import hashlib
         pwd = "acceso123"
         salt = "deadbeef"
         h_str = hashlib.sha256((salt + pwd).encode()).hexdigest()
@@ -485,8 +484,8 @@ class TestPluginSystem:
         plugins_dir.mkdir(exist_ok=True)
         monkeypatch.setattr(ps_mod, "PLUGINS_PATH", str(plugins_dir))
 
-        contenido =
-
+        contenido = """\
+from PluginSystem import PluginBase
 
 class PluginTest(PluginBase):
     NOMBRE = "plugin_test"
@@ -497,7 +496,7 @@ class PluginTest(PluginBase):
 
     def ejecutar(self, comando, args=None):
         return f"ejecutado:{comando}"
-
+"""
         archivo = plugins_dir / "plugin_test.py"
         archivo.write_text(contenido)
         return archivo
@@ -510,7 +509,7 @@ class PluginTest(PluginBase):
 
         class MiPlugin(PluginBase):
             NOMBRE = "mi_plugin"
-            VERSION = "2.0"
+            VERSION = "2.3"
             DESCRIPCION = "Plugin de prueba"
             AUTOR = "AutorTest"
             COMANDOS = ["cmd1"]
@@ -530,6 +529,9 @@ class PluginTest(PluginBase):
 
         class PluginIncompleto(PluginBase):
             NOMBRE = "incompleto"
+            VERSION = "0.0"
+            DESCRIPCION = ""
+            AUTOR = ""
             COMANDOS = []
 
         p = PluginIncompleto(sentinel_mock)

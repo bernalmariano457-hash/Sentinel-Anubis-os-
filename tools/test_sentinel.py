@@ -51,7 +51,6 @@ def tmp_dir(tmp_path):
 # ════════════════════════════════════════════════════════════════════
 
 class TestValidador:
-    """Cubre validators.py — validación de entradas del usuario."""
 
     def setup_method(self):
         from core.validators import Validador
@@ -147,8 +146,6 @@ class TestValidador:
 # ════════════════════════════════════════════════════════════════════
 
 class TestGestorAuth:
-    """Cubre auth.py — hashing, verificación y flujo de acceso."""
-
     @pytest.fixture
     def auth(self, console, mock_log):
         from core.auth import GestorAuth
@@ -241,7 +238,6 @@ class TestGestorAuth:
 # ════════════════════════════════════════════════════════════════════
 
 class TestLogSistema:
-    """Cubre log_sistema.py — registro y persistencia de logs."""
 
     @pytest.fixture
     def log(self, console, tmp_dir, monkeypatch):
@@ -307,7 +303,6 @@ class TestLogSistema:
 # ════════════════════════════════════════════════════════════════════
 
 class TestColaTareas:
-    """Cubre ColaTareas.py — tareas en background."""
 
     @pytest.fixture
     def cola(self):
@@ -375,7 +370,6 @@ class TestColaTareas:
 # ════════════════════════════════════════════════════════════════════
 
 class TestGestorProyectos:
-    """Cubre GestorProyectos.py — ciclo de vida de proyectos."""
 
     @pytest.fixture
     def gp(self, tmp_dir, monkeypatch):
@@ -468,7 +462,6 @@ class TestGestorProyectos:
 # ════════════════════════════════════════════════════════════════════
 
 class TestPluginSystem:
-    """Cubre PluginSystem.py — carga y despacho de plugins."""
 
     @pytest.fixture
     def sentinel_mock(self, console):
@@ -574,7 +567,6 @@ class PluginTest(PluginBase):
 # ════════════════════════════════════════════════════════════════════
 
 class TestSecurityModule:
-    """Cubre Security.py — cifrado y descifrado con Fernet."""
 
     @pytest.fixture
     def security(self, tmp_dir, monkeypatch):
@@ -632,8 +624,6 @@ class TestSecurityModule:
 # ════════════════════════════════════════════════════════════════════
 
 class TestCVEMatcher:
-    """Cubre CVEMatcher.py — parseo y lógica local (sin red)."""
-
     @pytest.fixture
     def cve(self, console):
         sentinel = MagicMock()
@@ -698,8 +688,6 @@ class TestCVEMatcher:
 # ════════════════════════════════════════════════════════════════════
 
 class TestRFModuleIntegrado:
-    """Cubre rf_module.py — lógica de fachada sin hardware real."""
-
     @pytest.fixture
     def sentinel_mock(self, console, mock_log):
         s = MagicMock()
@@ -781,7 +769,6 @@ class TestRFModuleIntegrado:
 # ════════════════════════════════════════════════════════════════════
 
 class TestMotorDSP:
-    """Cubre RFScanner.py — MotorDSP (sin hardware SDR)."""
 
     @pytest.fixture
     def dsp(self):
@@ -883,7 +870,6 @@ def hardware_required(request):
 
 
 class TestRealHardware:
-    """Tests que requieren hardware SDR físico. Ejecutar con: pytest --hardware"""
 
     def test_conectar_rtlsdr(self, hardware_required):
         from modules.rf.RFScanner import RFScanner

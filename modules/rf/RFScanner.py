@@ -1,492 +1,229 @@
+from __future__ import annotations
+
+import logging
+import logging.handlers
 import os
-import csv
-import sys
-import time
 import threading
-from datetime import datetime
+import time
 from collections import deque
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
 
 import numpy as np
-
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.text import Text
-from rich.rule import Rule
-from rich.align import Align
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+
+from modules.rf.bands import (
+    COLORES_TIPO,
+    BANDAS_RF,
+    identify_band,
+    tactical_bands,
+)
+from modules.rf.dsp import DSPEngine, Signal
+from modules.rf.rf_config import RFConfig, load_config
+from modules.rf.rf_database import RFDatabase
+from modules.rf.rf_demod import Demodulator
+from modules.rf.rf_mock import MockSDRManager, SyntheticSignal
+from modules.rf.rf_recorder import RFRecorder
+from modules.rf.rf_storage import SignalDB, CSVExporter, SigMFWriter
+
+log = logging.getLogger("sentinel.rf.scanner")
 
 # ════════════════════════════════════════════════════════════════════
-# DETECCIÓN DE HARDWARE
+# DETECCIÓN DE DRIVER SDR
 # ════════════════════════════════════════════════════════════════════
 
-SDR_TIPO = None   # "RTL-SDR" | "HackRF" | None
-SDR_CLASE = None   # Clase del driver
+_SDR_DRIVER: Optional[str] = None
+_SDR_CLASS                 = None
 
 try:
     from rtlsdr import RtlSdr as _RtlSdr
-    SDR_TIPO = "RTL-SDR"
-    SDR_CLASE = _RtlSdr
+    _SDR_DRIVER = "RTL-SDR"
+    _SDR_CLASS  = _RtlSdr
 except ImportError:
     pass
 
-if SDR_TIPO is None:
+if _SDR_DRIVER is None:
     try:
         import SoapySDR as _SoapySDR
-        devs = _SoapySDR.Device.enumerate()
-        if devs:
-            SDR_TIPO = devs[0].get("driver", "SoapySDR").upper()
-            SDR_CLASE = _SoapySDR.Device
+        _devs = _SoapySDR.Device.enumerate()
+        if _devs:
+            _SDR_DRIVER = _devs[0].get("driver", "SoapySDR").upper()
+            _SDR_CLASS  = _SoapySDR.Device
     except Exception:
         pass
 
 # ════════════════════════════════════════════════════════════════════
-# BASE DE DATOS DE BANDAS DE FRECUENCIA
+# CONSTANTES VISUALES
 # ════════════════════════════════════════════════════════════════════
 
-BANDAS = [
-    # (freq_min_MHz, freq_max_MHz, nombre, tipo, descripcion, color_rich)
-    (26.9,   27.4,   "CB Radio",         "PMR",
-     "Banda ciudadana 27MHz",             "yellow"),
-    (87.5,   108.0,  "FM Radio",         "BROADCAST",
-     "Radiodifusión FM comercial",         "cyan"),
-    (108.0,  118.0,  "VOR/ILS",          "AVIATION",
-     "Radionavegación VOR e ILS",          "blue"),
-    (118.0,  137.0,  "ATC Voice",        "AVIATION",
-     "Control de tráfico aéreo — voz",     "blue"),
-    (137.0,  138.0,  "NOAA/MetSat",      "SATELLITE",
-     "Imágenes meteorológicas NOAA",       "magenta"),
-    (138.0,  144.0,  "Militar VHF",      "MILITARY",
-     "Comunicaciones militares VHF",       "red"),
-    (144.0,  148.0,  "VHF Amateur",      "AMATEUR",
-     "Radio amateur VHF (2m)",             "green"),
-    (150.0,  174.0,  "VHF PMR",          "PMR",
-     "Radio móvil profesional VHF",        "yellow"),
-    (162.0,  162.55, "NOAA Weather",     "BROADCAST",
-     "Radio meteorológica NOAA",           "cyan"),
-    (315.0,  315.1,  "ISM 315MHz",       "ISM",
-     "Mandos a distancia 315MHz",          "orange3"),
-    (406.0,  406.1,  "EPIRB/ELT",        "SAFETY",
-     "Balizas de emergencia COSPAS-SARSAT", "bright_red"),
-    (430.0,  440.0,  "UHF Amateur",      "AMATEUR",
-     "Radio amateur UHF (70cm)",           "green"),
-    (433.05, 434.79, "ISM 433MHz",       "ISM",
-     "IoT, sensores, LoRa EU, mandos",     "orange3"),
-    (446.0,  446.2,  "PMR446",           "PMR",
-     "Walkie-talkies civiles sin licencia", "yellow"),
-    (450.0,  470.0,  "UHF PMR",          "PMR",
-     "Radio móvil profesional UHF",        "yellow"),
-    (462.5,  462.7,  "GMRS/FRS",         "PMR",
-     "Servicio móvil general USA",         "yellow"),
-    (470.0,  694.0,  "TDT",              "BROADCAST",
-     "Televisión digital terrestre",       "cyan"),
-    (806.0,  869.0,  "TETRA/LMR",        "PMR",
-     "Radio digital TETRA, Motorola",      "yellow"),
-    (862.0,  870.0,  "ISM 868MHz",       "ISM",
-     "LoRa EU, Sigfox, Zigbee, Z-Wave",   "orange3"),
-    (902.0,  928.0,  "ISM 915MHz",       "ISM",
-     "LoRa US, RFID, DSSS",                "orange3"),
-    (929.0,  932.0,  "Paging",           "PAGING",
-     "Servicio de búsqueda de personas",   "dim"),
-    (935.0,  960.0,  "GSM 900 DL",       "CELLULAR",
-     "Downlink GSM 900 MHz",               "red"),
-    (1090.0, 1090.1, "ADS-B",            "AVIATION",
-     "Transponder aeronaves — posición",   "bright_blue"),
-    (1215.0, 1300.0, "GPS L2 / GNSS",    "GNSS",
-     "GPS L2, GLONASS, Galileo",           "bright_cyan"),
-    (1525.0, 1559.0, "Inmarsat",         "SATELLITE",
-     "Satélite Inmarsat — marítimo/aéreo", "magenta"),
-    (1559.0, 1610.0, "GPS L1 / GNSS",    "GNSS",
-     "GPS L1 (1575.42MHz), Galileo E1",   "bright_cyan"),
-    (1710.0, 1785.0, "LTE Band 4 UL",    "CELLULAR",
-     "Uplink LTE AWS-1",                   "red"),
-    (1805.0, 1880.0, "GSM/LTE 1800 DL",  "CELLULAR",
-     "Downlink DCS-1800 / LTE B3",         "red"),
-    (1920.0, 1980.0, "UMTS/LTE UL",      "CELLULAR",
-     "Uplink 3G/4G banda IMT",             "red"),
-    (2110.0, 2170.0, "UMTS/LTE DL",      "CELLULAR",
-     "Downlink 3G/4G banda IMT",           "red"),
-    (2400.0, 2484.0, "Wi-Fi / BT 2.4G",  "WIRELESS",
-     "Wi-Fi 802.11b/g/n, Bluetooth",      "bright_green"),
-    (2483.5, 2500.0, "ISM 2.4GHz",       "ISM",
-     "Cordless phones, ZigBee",            "orange3"),
-    (3400.0, 3800.0, "5G NR n78",        "CELLULAR",
-     "5G banda media C-band",              "bright_red"),
-    (5150.0, 5850.0, "Wi-Fi 5GHz",       "WIRELESS",
-     "Wi-Fi 802.11a/n/ac/ax",             "bright_green"),
-]
+_WF_CHARS        = " ·░▒▓█"
+_RTL_FREQ_MIN    =  24.0   # MHz
+_RTL_FREQ_MAX    = 1766.0  # MHz
 
 
 # ════════════════════════════════════════════════════════════════════
-# CONFIGURACIÓN DE HARDWARE
+# RENDERIZADOR — visualización Rich en terminal
 # ════════════════════════════════════════════════════════════════════
-
-class ConfigSDR:
-    # RTL-SDR
-    RTLSDR_SAMPLE_RATE = 2.048e6    # Hz  — máximo estable para RTL-SDR
-    RTLSDR_GAIN_DEFAULT = 40.2       # dB  — ganancia moderada en campo
-    # ppm — corrección de cristal (calibrar con kalibrate-rtl)
-    RTLSDR_PPM = 0
-
-    # FFT
-    FFT_SIZE = 2048              # Resolución del espectro (potencia de 2)
-    SAMPLES_N = 512 * 1024        # Muestras por captura
-    VENTANA = "blackman"        # blackman > hann > hamming para rechazo de lóbulos
-    PROMEDIO_N = 3                 # Capturas a promediar (reduce ruido)
-
-    # Detección de señales
-    UMBRAL_MARGEN_DB = 12.0          # dB sobre el piso de ruido para detección
-    UMBRAL_ABS_DBM = -85.0         # dBm mínimo absoluto
-    PICOS_MAX = 20            # Máximo de picos a reportar por captura
-
-    # Waterfall
-    WATERFALL_ROWS = 15            # Historial de capturas mostradas
-    WATERFALL_ANCHO = 64            # Columnas del waterfall
-
-    # Exportación
-    EXPORT_PATH = "data/evidence/rf"
-
-
-# ════════════════════════════════════════════════════════════════════
-# MOTOR DSP — PROCESAMIENTO DE SEÑAL DIGITAL
-# ════════════════════════════════════════════════════════════════════
-
-class MotorDSP:
-
-    VENTANAS = {
-        "blackman": np.blackman,   # Mejor rechazo de lóbulos laterales
-        "hann":     np.hanning,    # Balance entre resolución y rechazo
-        "hamming":  np.hamming,    # Buena resolución de frecuencia
-        "flat_top":  None,         # Mejor para medición de amplitud
-    }
-
-    def __init__(self, fft_size: int = ConfigSDR.FFT_SIZE,
-                 ventana: str = ConfigSDR.VENTANA):
-        self.fft_size = fft_size
-        self.ventana_n = ventana
-        self._ventana = self._crear_ventana(ventana, fft_size)
-        self._factor_ventana = np.sum(self._ventana ** 2)
-
-    def _crear_ventana(self, nombre: str, n: int) -> np.ndarray:
-        if nombre == "flat_top":
-            # Ventana Flat-top para medición precisa de amplitud
-            a = [0.21557895, 0.41663158, 0.27726316, 0.08357895, 0.00694737]
-            w = np.zeros(n)
-            for k, ak in enumerate(a):
-                w += ak * np.cos(2 * np.pi * k * np.arange(n) / n)
-            return w
-        fn = self.VENTANAS.get(nombre, np.blackman)
-        return fn(n)
-
-    def calcular_psd(self, muestras: np.ndarray,
-                     sample_rate: float) -> tuple[np.ndarray, np.ndarray]:
-        n = self.fft_size
-
-        # Extraer bloque central (evitar transitorios de inicio/fin)
-        centro = len(muestras) // 2
-        bloque = muestras[centro - n//2: centro + n//2]
-
-        if len(bloque) < n:
-            bloque = np.pad(bloque, (0, n - len(bloque)))
-
-        # Aplicar ventana
-        bloque_ventana = bloque[:n] * self._ventana
-
-        # FFT y centrar en DC
-        espectro = np.fft.fftshift(np.fft.fft(bloque_ventana, n=n))
-
-        # Potencia normalizada por factor de ventana y número de puntos
-        potencia = (np.abs(espectro) ** 2) / self._factor_ventana
-
-        # Convertir a dBm (referencia: 1 mW en impedancia normalizada)
-        potencia = np.maximum(potencia, 1e-15)  # Evitar log(0)
-        psd_dbm = 10.0 * np.log10(potencia) + 30.0
-
-        # Eje de frecuencias relativas
-        freqs_hz = np.fft.fftshift(
-            np.fft.fftfreq(n, d=1.0 / sample_rate)
-        )
-
-        return freqs_hz, psd_dbm
-
-    def promediar_capturas(self, capturas: list[np.ndarray]) -> np.ndarray:
-        lineales = [10 ** (c / 10.0) for c in capturas]
-        promedio = np.mean(lineales, axis=0)
-        return 10.0 * np.log10(np.maximum(promedio, 1e-15))
-
-    def estimar_piso_ruido(self, psd_dbm: np.ndarray) -> float:
-        n = len(psd_dbm)
-        excl = int(n * 0.05)
-        datos = np.concatenate([psd_dbm[:n//2 - excl],
-                                psd_dbm[n//2 + excl:]])
-        return float(np.median(datos))
-
-    def detectar_picos(self, freqs_hz: np.ndarray,
-                       psd_dbm: np.ndarray,
-                       freq_centro_hz: float,
-                       sample_rate: float) -> list[dict]:
-
-        # Suavizado leve: reduce falsos positivos por bins ruidosos individuales
-        psd_dbm = np.convolve(psd_dbm, np.ones(3) / 3.0, mode="same")
-        piso = self.estimar_piso_ruido(psd_dbm)
-        umbral = max(piso + ConfigSDR.UMBRAL_MARGEN_DB,
-                     ConfigSDR.UMBRAL_ABS_DBM)
-
-        resolucion_hz = sample_rate / self.fft_size
-        min_separacion = int(10e3 / resolucion_hz)  # 10 kHz mínimo entre picos
-
-        picos = []
-        n = len(psd_dbm)
-        i = 1
-
-        while i < n - 1 and len(picos) < ConfigSDR.PICOS_MAX:
-            # Máximo local sobre umbral
-            if psd_dbm[i] >= umbral and \
-               psd_dbm[i] > psd_dbm[i-1] and \
-               psd_dbm[i] > psd_dbm[i+1]:
-
-                # Refinar posición del pico (interpolación cuadrática)
-                idx_fino = self._refinar_pico(psd_dbm, i)
-
-                # Frecuencia absoluta
-                freq_rel_hz = float(np.interp(idx_fino,
-                                              np.arange(n), freqs_hz))
-                freq_abs_hz = freq_centro_hz + freq_rel_hz
-                freq_abs_mhz = freq_abs_hz / 1e6
-
-                # Ancho de banda a -3dB
-                bw_hz = self._bw_3db(psd_dbm, i, freqs_hz)
-
-                # SNR
-                snr_db = float(psd_dbm[i]) - piso
-
-                picos.append({
-                    "freq_mhz":  round(freq_abs_mhz, 4),
-                    "freq_hz":   freq_abs_hz,
-                    "potencia":  round(float(psd_dbm[i]), 1),
-                    "snr_db":    round(snr_db, 1),
-                    "bw_hz":     round(bw_hz, 0),
-                    "bw_khz":    round(bw_hz / 1e3, 2),
-                    "piso_dbm":  round(piso, 1),
-                    "timestamp": datetime.now().isoformat(),
-                })
-
-                # Avanzar más allá del ancho de la señal
-                i += max(min_separacion,
-                         int(bw_hz / resolucion_hz) // 2 + 1)
-            else:
-                i += 1
-
-        # Ordenar por SNR descendente
-        return sorted(picos, key=lambda p: p["snr_db"], reverse=True)
-
-    def _refinar_pico(self, psd: np.ndarray, idx: int) -> float:
-
-        if idx <= 0 or idx >= len(psd) - 1:
-            return float(idx)
-        a = psd[idx - 1]
-        b = psd[idx]
-        c = psd[idx + 1]
-        denom = 2 * (2 * b - a - c)
-        if abs(denom) < 1e-10:
-            return float(idx)
-        return idx + (a - c) / denom
-
-    def _bw_3db(self, psd: np.ndarray, idx_pico: int,
-                freqs_hz: np.ndarray) -> float:
-        """Calcula ancho de banda a -3dB del pico."""
-        nivel_3db = psd[idx_pico] - 3.0
-        n = len(psd)
-
-        izq = idx_pico
-        while izq > 0 and psd[izq] > nivel_3db:
-            izq -= 1
-
-        der = idx_pico
-        while der < n - 1 and psd[der] > nivel_3db:
-            der += 1
-
-        return abs(float(freqs_hz[der]) - float(freqs_hz[izq]))
-
-
-# ════════════════════════════════════════════════════════════════════
-# RENDERIZADOR — VISUALIZACIÓN EN TERMINAL
-# ════════════════════════════════════════════════════════════════════
-
-WATERFALL_CHARS = " ·░▒▓█"
-BARRA_INTENSIDAD = " ▁▂▃▄▅▆▇█"
-
 
 class Renderizador:
 
-    def __init__(self, console: Console):
+    def __init__(self, console: Console, cfg: RFConfig):
         self.console = console
+        self.cfg     = cfg
+
+    # ── Espectro de potencia ──────────────────────────────────────────
 
     def espectro(self, freqs_hz: np.ndarray, psd_dbm: np.ndarray,
-                 freq_centro_mhz: float, picos: list,
+                 freq_centro_mhz: float, picos: list[Signal],
                  sample_rate: float, hw: str) -> Panel:
-        ancho = ConfigSDR.WATERFALL_ANCHO
-        alto = 14
-        db_min = -110.0
-        db_max = -20.0
+        disp   = self.cfg.display
+        ancho  = disp.spectrum_width
+        alto   = disp.spectrum_height
+        db_min = disp.dbm_floor
+        db_max = disp.dbm_ceil
 
-        # Remuestrear PSD al ancho de pantalla
-        idx = np.linspace(0, len(psd_dbm) - 1, ancho).astype(int)
+        idx   = np.linspace(0, len(psd_dbm) - 1, ancho).astype(int)
         psd_d = psd_dbm[idx]
 
-        def y(val):
+        def _y(val: float) -> int:
             return int(np.clip(
                 (val - db_min) / (db_max - db_min) * alto, 0, alto
             ))
 
-        alturas = [y(v) for v in psd_d]
-        piso = np.median(psd_dbm)
-        umbral_y = y(piso + ConfigSDR.UMBRAL_MARGEN_DB)
-
-        texto = Text()
+        alturas  = [_y(v) for v in psd_d]
+        piso     = float(np.median(psd_dbm))
+        umbral_y = _y(piso + self.cfg.dsp.snr_threshold)
+        texto    = Text()
 
         for fila in range(alto, -1, -1):
             db_label = db_min + (fila / alto) * (db_max - db_min)
             texto.append(f"{db_label:>6.0f} │", style="dim green")
-
-            for col, h in enumerate(alturas):
+            for h in alturas:
                 if h >= fila:
                     ratio = h / alto
-                    if ratio >= 0.85:
-                        texto.append("█", style="bold red")
-                    elif ratio >= 0.65:
-                        texto.append("█", style="red")
-                    elif ratio >= 0.45:
-                        texto.append("█", style="yellow")
-                    elif ratio >= 0.25:
-                        texto.append("█", style="green")
-                    else:
-                        texto.append("▄", style="dim green")
+                    if   ratio >= 0.85: style = "bold red"
+                    elif ratio >= 0.65: style = "red"
+                    elif ratio >= 0.45: style = "yellow"
+                    elif ratio >= 0.25: style = "green"
+                    else:               style = "dim green"
+                    texto.append("█", style=style)
                 elif fila == umbral_y:
                     texto.append("─", style="dim red")
                 else:
                     texto.append(" ")
             texto.append("\n")
 
-        # Eje X
-        bw_mhz = sample_rate / 1e6
+        bw_mhz   = sample_rate / 1e6
         freq_ini = freq_centro_mhz - bw_mhz / 2
         freq_fin = freq_centro_mhz + bw_mhz / 2
+        pad_l    = max(0, ancho // 2 - 9)
+        pad_r    = max(0, ancho // 2 - 11)
 
         texto.append("       └" + "─" * ancho + "\n", style="dim green")
-        etiqueta = (f"  {freq_ini:.3f}"
-                    + " " * (ancho // 2 - 8)
-                    + f"{freq_centro_mhz:.3f} [centro]"
-                    + " " * (ancho // 2 - 10)
-                    + f"{freq_fin:.3f} MHz\n")
-        texto.append(etiqueta, style="dim green")
-
-        # Info de picos en el gráfico
+        texto.append(
+            f"  {freq_ini:.3f}" + " " * pad_l
+            + f"{freq_centro_mhz:.3f} [centro]" + " " * pad_r
+            + f"{freq_fin:.3f} MHz\n",
+            style="dim green",
+        )
         if picos:
             texto.append(
-                f"\n  [dim red]▲ umbral: piso({piso:.0f}) + "
-                f"{ConfigSDR.UMBRAL_MARGEN_DB}dB = "
-                f"{piso + ConfigSDR.UMBRAL_MARGEN_DB:.0f} dBm[/dim red]\n"
+                f"\n  [dim red]▲ umbral = piso({piso:.0f} dBm) + "
+                f"{self.cfg.dsp.snr_threshold:.0f} dB = "
+                f"{piso + self.cfg.dsp.snr_threshold:.0f} dBm[/dim red]\n"
             )
 
-        hw_tag = f"[dim]{hw}[/dim]"
-        ts = datetime.now().strftime("%H:%M:%S")
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
         return Panel(
             texto,
-            title=(f"[bold green]ESPECTRO RF — "
-                   f"{freq_centro_mhz:.4f} MHz[/bold green]  "
-                   f"{hw_tag}  [dim]{ts}[/dim]"),
+            title=(f"[bold green]ESPECTRO RF — {freq_centro_mhz:.4f} MHz"
+                   f"[/bold green]  [dim]{hw}[/dim]  [dim]{ts}[/dim]"),
             border_style="green",
             box=box.HEAVY_HEAD,
         )
 
-    def waterfall(self, historial: deque,
-                  freq_centro_mhz: float) -> Panel:
+    # ── Waterfall ─────────────────────────────────────────────────────
 
+    def waterfall(self, historial: deque, freq_centro_mhz: float) -> Panel:
         if not historial:
-            return Panel("[dim]Sin datos de waterfall.[/dim]",
+            return Panel("[dim]Sin datos.[/dim]",
                          title="WATERFALL", border_style="dim green")
 
-        ancho = ConfigSDR.WATERFALL_ANCHO
-        texto = Text()
-        db_min, db_max = -110.0, -20.0
+        ancho  = self.cfg.display.spectrum_width
+        db_min = self.cfg.display.dbm_floor
+        db_max = self.cfg.display.dbm_ceil
+        texto  = Text()
 
         for i, psd in enumerate(historial):
-            idx = np.linspace(0, len(psd) - 1, ancho).astype(int)
+            idx  = np.linspace(0, len(psd) - 1, ancho).astype(int)
             fila = psd[idx]
-            antigüedad = i / max(len(historial) - 1, 1)  # 0=nuevo, 1=viejo
-
+            age  = i / max(len(historial) - 1, 1)
             texto.append("  ")
             for val in fila:
-                v = np.clip((val - db_min) / (db_max - db_min), 0, 1)
-                cidx = int(v * (len(WATERFALL_CHARS) - 1))
-                char = WATERFALL_CHARS[cidx]
-
-                if v > 0.75:
-                    style = "bold red" if antigüedad < 0.3 else "red"
-                elif v > 0.50:
-                    style = "yellow" if antigüedad < 0.3 else "dark_orange"
-                elif v > 0.25:
-                    style = "green" if antigüedad < 0.3 else "dark_green"
-                else:
-                    style = "dim"
-
+                v    = float(np.clip((val - db_min) / (db_max - db_min), 0, 1))
+                char = _WF_CHARS[int(v * (len(_WF_CHARS) - 1))]
+                if   v > 0.75: style = "bold red"    if age < 0.3 else "red"
+                elif v > 0.50: style = "yellow"       if age < 0.3 else "dark_orange"
+                elif v > 0.25: style = "green"        if age < 0.3 else "dark_green"
+                else:          style = "dim"
                 texto.append(char, style=style)
             texto.append("\n")
 
         return Panel(
             texto,
-            title=(f"[bold green]WATERFALL — "
-                   f"{freq_centro_mhz:.3f} MHz[/bold green]  "
-                   f"[dim]{len(historial)} capturas[/dim]"),
+            title=(f"[bold green]WATERFALL — {freq_centro_mhz:.3f} MHz"
+                   f"[/bold green]  [dim]{len(historial)} capturas[/dim]"),
             border_style="dim green",
             box=box.SIMPLE,
         )
 
-    def tabla_picos(self, picos: list) -> Panel:
+    # ── Tabla de señales ──────────────────────────────────────────────
 
+    def tabla_picos(self, picos: list[Signal]) -> Panel:
         if not picos:
             return Panel(
-                "[dim]No se detectaron señales sobre el umbral de detección.[/dim]",
+                "[dim]No se detectaron señales sobre el umbral.[/dim]",
                 title="[green]SEÑALES DETECTADAS[/green]",
                 border_style="dim green",
             )
 
         tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
                    show_edge=False, expand=True)
-        tb.add_column("Frecuencia",  style="cyan",  min_width=15, no_wrap=True)
-        tb.add_column("Potencia",    justify="right", min_width=11)
-        tb.add_column("SNR",         justify="right", min_width=8)
-        tb.add_column("BW",          justify="right", min_width=10)
-        tb.add_column("Banda",       min_width=16)
-        tb.add_column("Tipo",        min_width=10)
-        tb.add_column("Descripción", style="dim", min_width=20)
+        tb.add_column("Frecuencia", style="cyan",  min_width=15, no_wrap=True)
+        tb.add_column("Potencia",   justify="right", min_width=11)
+        tb.add_column("SNR",        justify="right", min_width=8)
+        tb.add_column("BW",         justify="right", min_width=10)
+        tb.add_column("Mod.",       min_width=10)
+        tb.add_column("Kurtosis",   justify="right", min_width=9)
+        tb.add_column("Banda",      min_width=16)
+        tb.add_column("Tipo",       min_width=10)
 
-        for p in picos:
-            # Estilo según potencia
-            if p["potencia"] > -50:
-                pot_t = Text(f"{p['potencia']:.1f} dBm", style="bold red")
-            elif p["potencia"] > -70:
-                pot_t = Text(f"{p['potencia']:.1f} dBm", style="yellow")
+        for s in picos:
+            if   s.potencia > -50: pot_style = "bold red"
+            elif s.potencia > -70: pot_style = "yellow"
+            else:                  pot_style = "green"
+
+            if s.banda:
+                col   = s.banda.get("color", "dim")
+                b_str = f"[{col}]{s.banda['nombre']}[/{col}]"
+                t_str = f"[{col}]{s.banda['tipo']}[/{col}]"
             else:
-                pot_t = Text(f"{p['potencia']:.1f} dBm", style="green")
-
-            banda = p.get("banda")
-            b_str = "—"
-            t_str = "—"
-            d_str = "—"
-            if banda:
-                col = banda["color"]
-                b_str = f"[{col}]{banda['nombre']}[/{col}]"
-                t_str = f"[{col}]{banda['tipo']}[/{col}]"
-                d_str = banda["desc"][:28]
+                b_str = t_str = "—"
 
             tb.add_row(
-                f"{p['freq_mhz']:.4f} MHz",
-                pot_t,
-                f"{p['snr_db']:.1f} dB",
-                f"{p['bw_khz']:.2f} kHz",
-                b_str, t_str, d_str,
+                f"{s.freq_mhz:.4f} MHz",
+                Text(f"{s.potencia:.1f} dBm", style=pot_style),
+                f"{s.snr_db:.1f} dB",
+                f"{s.bw_khz:.2f} kHz",
+                s.mod_hint or "—",
+                f"{s.kurtosis:+.2f}",
+                b_str,
+                t_str,
             )
 
         return Panel(
@@ -496,372 +233,520 @@ class Renderizador:
             box=box.HEAVY_HEAD,
         )
 
-    def resumen_escaneo(self, freq_mhz: float, picos: list,
-                        duracion: float, hw: str,
-                        iteraciones: int) -> Panel:
-        snr_max = max((p["snr_db"] for p in picos), default=0)
-        pot_max = max((p["potencia"] for p in picos), default=-999)
-        bw_med = (sum(p["bw_khz"] for p in picos) / len(picos)
-                  if picos else 0)
+    # ── Resumen de escaneo ────────────────────────────────────────────
 
-        bandas = set()
-        for p in picos:
-            if p.get("banda"):
-                bandas.add(p["banda"]["nombre"])
+    def resumen_escaneo(self, freq_mhz: float, picos: list[Signal],
+                        duracion: float, hw: str, iteraciones: int) -> Panel:
+        snr_max = max((s.snr_db   for s in picos), default=0.0)
+        pot_max = max((s.potencia for s in picos), default=-999.0)
+        bw_med  = sum(s.bw_khz for s in picos) / len(picos) if picos else 0.0
+        bandas  = {s.banda["nombre"] for s in picos if s.banda}
 
         g = Table.grid(padding=(0, 3))
         g.add_column(style="dim green", justify="right", min_width=22)
         g.add_column(style="white")
+        g.add_row("Frecuencia",          f"{freq_mhz:.4f} MHz")
+        g.add_row("Hardware",            hw)
+        g.add_row("Duración real",       f"{duracion:.1f} s")
+        g.add_row("Iteraciones FFT",     str(iteraciones))
+        g.add_row("Señales detectadas",  str(len(picos)))
+        g.add_row("Potencia máxima",     f"{pot_max:.1f} dBm")
+        g.add_row("SNR máximo",          f"{snr_max:.1f} dB")
+        g.add_row("BW promedio",         f"{bw_med:.2f} kHz")
+        g.add_row("Bandas",              ", ".join(bandas) if bandas else "—")
 
-        g.add_row("Frecuencia",        f"{freq_mhz:.4f} MHz")
-        g.add_row("Hardware",          hw)
-        g.add_row("Duración",          f"{duracion:.1f} s")
-        g.add_row("Iteraciones FFT",   str(iteraciones))
-        g.add_row("Señales detectadas", str(len(picos)))
-        g.add_row("Potencia máxima",   f"{pot_max:.1f} dBm")
-        g.add_row("SNR máximo",        f"{snr_max:.1f} dB")
-        g.add_row("BW promedio",       f"{bw_med:.2f} kHz")
-        g.add_row("Bandas",            ", ".join(bandas) if bandas else "—")
-
-        return Panel(g,
-                     title="[bold green]RESUMEN DEL ESCANEO[/bold green]",
+        return Panel(g, title="[bold green]RESUMEN[/bold green]",
                      border_style="green")
 
-    def mapa_barrido(self, resultados: list) -> Panel:
+    # ── Mapa de barrido ───────────────────────────────────────────────
 
+    def mapa_barrido(self, resultados: list[dict]) -> Panel:
         tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
                    show_edge=False, expand=True)
-        tb.add_column("Frecuencia",  style="cyan",  min_width=14, no_wrap=True)
-        tb.add_column("Actividad",   min_width=18)
-        tb.add_column("Pot. máx",    justify="right", min_width=11)
-        tb.add_column("SNR",         justify="right", min_width=8)
-        tb.add_column("Piso RF",     justify="right", min_width=10)
-        tb.add_column("Banda",       min_width=18)
+        tb.add_column("Frecuencia", style="cyan",  min_width=14, no_wrap=True)
+        tb.add_column("Actividad",  min_width=20)
+        tb.add_column("Pot. máx",   justify="right", min_width=11)
+        tb.add_column("SNR",        justify="right", min_width=8)
+        tb.add_column("Piso RF",    justify="right", min_width=10)
+        tb.add_column("Banda",      min_width=18)
 
-        ordenados = sorted(resultados,
-                           key=lambda x: x["snr"], reverse=True)
+        for r in sorted(resultados, key=lambda x: x["snr"], reverse=True)[:35]:
+            nivel = int(np.clip(r["snr"] / 35 * 20, 0, 20))
+            barra = "█" * nivel + "·" * (20 - nivel)
+            if   r["snr"] > 25: sty = "bold red"
+            elif r["snr"] > 15: sty = "yellow"
+            elif r["snr"] > 8:  sty = "green"
+            else:               sty = "dim"
 
-        for r in ordenados[:30]:
-            nivel = int(np.clip(r["snr"] / 35 * 16, 0, 16))
-            barra = "█" * nivel + "·" * (16 - nivel)
-
-            if r["snr"] > 25:
-                b_sty = "bold red"
-                p_sty = "bold red"
-            elif r["snr"] > 15:
-                b_sty = "yellow"
-                p_sty = "yellow"
-            elif r["snr"] > 8:
-                b_sty = "green"
-                p_sty = "green"
+            banda = r.get("banda")
+            if banda:
+                col   = banda.get("color", "dim")
+                b_str = f"[{col}]{banda['nombre']}[/{col}]"
             else:
-                b_sty = "dim"
-                p_sty = "dim"
-
-            banda_n = "—"
-            if r.get("banda"):
-                col = r["banda"]["color"]
-                banda_n = f"[{col}]{r['banda']['nombre']}[/{col}]"
+                b_str = "—"
 
             tb.add_row(
                 f"{r['freq_mhz']:.3f} MHz",
-                Text(barra, style=b_sty),
-                Text(f"{r['pot_max']:.1f} dBm", style=p_sty),
+                Text(barra, style=sty),
+                Text(f"{r['pot_max']:.1f} dBm", style=sty),
                 f"{r['snr']:.1f} dB",
                 f"{r['piso']:.1f} dBm",
-                banda_n,
+                b_str,
             )
 
-        return Panel(tb,
-                     title="[bold green]MAPA DE ACTIVIDAD RF[/bold green]",
-                     border_style="green",
-                     box=box.HEAVY_HEAD)
+        return Panel(tb, title="[bold green]MAPA DE ACTIVIDAD RF[/bold green]",
+                     border_style="green", box=box.HEAVY_HEAD)
 
 
 # ════════════════════════════════════════════════════════════════════
-# RF SCANNER — CLASE PRINCIPAL
+# RF SCANNER — orquestador principal
 # ════════════════════════════════════════════════════════════════════
 
 class RFScanner:
 
-    def __init__(self, sentinel):
+    def __init__(self, sentinel, config_path: Optional[str] = None):
         self.sentinel = sentinel
-        self.console = getattr(sentinel, "console", Console())
-        self.log = getattr(sentinel, "log",     None)
-        self.gp = getattr(sentinel, "gp",      None)
+        self.console: Console = getattr(sentinel, "console", Console())
+        self.gp               = getattr(sentinel, "gp",      None)
+
+        # Configuración centralizada (TOML + env vars)
+        self.cfg: RFConfig = load_config(config_path)
+
+        # Submódulos
+        self.dsp      = DSPEngine(self.cfg.dsp, self.cfg.hardware.sample_rate)
+        self.render   = Renderizador(self.console, self.cfg)
+        self.db       = RFDatabase(self.cfg.storage.db_path)   # DB heredada (barridos, escaneos)
+        self.signal_db = SignalDB(self.cfg.storage)             # DB de señales con sesiones
+        self.csv       = CSVExporter(self.cfg.storage)          # Exportación CSV desacoplada
+        self.sigmf     = SigMFWriter(self.cfg.storage)          # Grabación IQ streaming SigMF
+        self.recorder  = RFRecorder(self)
+        self._demod:   Optional[Demodulator] = None
 
         # Hardware
-        self.sdr = None
-        self._soapy_stream = None   # stream persistente para SoapySDR
-        self.sample_rate = ConfigSDR.RTLSDR_SAMPLE_RATE
-        self.gain = ConfigSDR.RTLSDR_GAIN_DEFAULT
-        self.hw_nombre = "No inicializado"
-        self._lock = threading.Lock()
-
-        # Motores
-        self.dsp = MotorDSP()
-        self.render = Renderizador(self.console)
+        self.sdr           = None
+        self._soapy_stream = None
+        self._mock:        Optional[MockSDRManager] = None
+        self.hw_nombre     = "No inicializado"
+        self._lock         = threading.Lock()
 
         # Estado de sesión
-        self._waterfall = deque(maxlen=ConfigSDR.WATERFALL_ROWS)
-        self._senales_sesion: deque = deque(
-            maxlen=2000)  # evitar crecimiento ilimitado
-        self._capturas_sesion = 0
+        self._waterfall:       deque = deque(maxlen=self.cfg.display.waterfall_rows)
+        self._senales_sesion:  deque = deque(maxlen=5_000)
+        self._capturas_sesion: int   = 0
 
-        # Inicializar hardware
+        self._setup_logging()
         self._conectar_hardware()
 
-    # ── HARDWARE ─────────────────────────────────────────────────────
+    # ── Logging con rotación ──────────────────────────────────────────
+
+    def _setup_logging(self):
+        lc   = self.cfg.logging
+        root = logging.getLogger("sentinel.rf")
+        if root.handlers:
+            return
+        root.setLevel(getattr(logging, lc.level.upper(), logging.INFO))
+        Path(lc.file).parent.mkdir(parents=True, exist_ok=True)
+        fh = logging.handlers.RotatingFileHandler(
+            lc.file,
+            maxBytes=lc.max_mb * 1_048_576,
+            backupCount=lc.backup_count,
+            encoding="utf-8",
+        )
+        fh.setFormatter(logging.Formatter(
+            "%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        ))
+        root.addHandler(fh)
+
+    # ── Hardware ──────────────────────────────────────────────────────
 
     def _conectar_hardware(self):
-        if SDR_TIPO == "RTL-SDR" and SDR_CLASE:
-            try:
-                self.sdr = SDR_CLASE()
-                self.sdr.sample_rate = self.sample_rate
-                self.sdr.gain = self.gain
-                self.sdr.set_bias_tee(False)   # Bias-T apagado por defecto
-                if ConfigSDR.RTLSDR_PPM != 0:
-                    self.sdr.freq_correction = ConfigSDR.RTLSDR_PPM
-                self.hw_nombre = f"RTL-SDR  gain={self.gain}dB"
-                self._print(f"[green][+] RTL-SDR conectado — "
-                            f"SR: {self.sample_rate/1e6:.3f} MHz  "
-                            f"Gain: {self.gain} dB[/green]")
-                return
-            except Exception as e:
-                self._print(f"[red][!] RTL-SDR error: {e}[/red]")
+        hw = self.cfg.hardware
 
-        if SDR_TIPO and SDR_CLASE and "SOAPY" in SDR_TIPO.upper():
+        if _SDR_DRIVER == "RTL-SDR" and _SDR_CLASS:
+            try:
+                sdr = _SDR_CLASS(device_index=hw.device_index)
+                sdr.sample_rate     = hw.sample_rate
+                sdr.gain            = "auto" if hw.agc else hw.gain_db
+                sdr.freq_correction = hw.ppm_correction
+                if hw.bias_tee:
+                    try:
+                        sdr.set_bias_tee(True)
+                    except Exception:
+                        log.debug("bias_tee no soportado en este dispositivo")
+                self.sdr       = sdr
+                self.hw_nombre = (f"RTL-SDR idx={hw.device_index} "
+                                  f"gain={hw.gain_db}dB "
+                                  f"sr={hw.sample_rate/1e6:.3f}MHz")
+                self._print(f"[green][+] RTL-SDR conectado — {self.hw_nombre}[/green]")
+                return
+            except Exception as exc:
+                self._print(f"[red][!] RTL-SDR error: {exc}[/red]")
+                log.error("RTL-SDR init: %s", exc)
+
+        if _SDR_DRIVER and _SDR_CLASS and "SOAPY" in _SDR_DRIVER.upper():
             try:
                 import SoapySDR
-                self.sdr = SoapySDR.Device({"driver": SDR_TIPO.lower()})
-                self.sdr.setSampleRate(SoapySDR.SOAPY_SDR_RX, 0,
-                                       self.sample_rate)
-                self.sdr.setGain(SoapySDR.SOAPY_SDR_RX, 0, self.gain)
-                # Abrir el stream UNA sola vez y reutilizarlo en cada captura
+                self.sdr = SoapySDR.Device({"driver": _SDR_DRIVER.lower()})
+                self.sdr.setSampleRate(SoapySDR.SOAPY_SDR_RX, 0, hw.sample_rate)
+                self.sdr.setGain(SoapySDR.SOAPY_SDR_RX, 0, hw.gain_db)
+                self.sdr.setFreqCorrection(SoapySDR.SOAPY_SDR_RX, 0, hw.ppm_correction)
                 self._soapy_stream = self.sdr.setupStream(
-                    SoapySDR.SOAPY_SDR_RX, SoapySDR.SOAPY_SDR_CF32)
+                    SoapySDR.SOAPY_SDR_RX, SoapySDR.SOAPY_SDR_CF32
+                )
                 self.sdr.activateStream(self._soapy_stream)
-                self.hw_nombre = SDR_TIPO
-                self._print(f"[green][+] {SDR_TIPO} conectado.[/green]")
+                self.hw_nombre = f"{_SDR_DRIVER} sr={hw.sample_rate/1e6:.3f}MHz"
+                self._print(f"[green][+] {_SDR_DRIVER} conectado.[/green]")
                 return
-            except Exception as e:
+            except Exception as exc:
                 self._soapy_stream = None
-                self._print(f"[red][!] {SDR_TIPO} error: {e}[/red]")
+                self._print(f"[red][!] {_SDR_DRIVER} error: {exc}[/red]")
+                log.error("SoapySDR init: %s", exc)
 
-        # Sin hardware
-        self.hw_nombre = "SIN HARDWARE SDR"
+        # Fallback MockSDR
+        self._mock     = MockSDRManager(sample_rate=hw.sample_rate)
+        self.hw_nombre = f"MockSDR sr={hw.sample_rate/1e6:.3f}MHz"
         self._print(
-            "[red][!] No se detectó hardware SDR. "
-            "Conecta un RTL-SDR o HackRF.[/red]\n"
-            "[dim]    Instala los drivers: pip install pyrtlsdr[/dim]\n"
-            "[dim]    RTL-SDR: https://www.rtl-sdr.com/[/dim]"
+            "[yellow][!] Sin hardware SDR físico — MockSDR activo.[/yellow]\n"
+            "[dim]    pip install pyrtlsdr  |  https://www.rtl-sdr.com/[/dim]"
         )
+        log.warning("Hardware SDR no encontrado — MockSDR activo")
+
+    # ── Propiedades públicas ──────────────────────────────────────────
+
+    @property
+    def sample_rate(self) -> int:
+        return self.cfg.hardware.sample_rate
+
+    @property
+    def _hw_disponible(self) -> bool:
+        return self.sdr is not None or self._mock is not None
+
+    # ── Configuración en caliente ─────────────────────────────────────
 
     def configurar_ganancia(self, ganancia):
-
-        if self.sdr is None:
+        if not self._hw_disponible:
             self._print("[red][!] Sin hardware conectado.[/red]")
             return
         try:
-            if SDR_TIPO == "RTL-SDR":
-                self.sdr.gain = ganancia
-            elif SDR_TIPO and "SOAPY" in SDR_TIPO.upper():
+            val = "auto" if str(ganancia).lower() == "auto" else float(ganancia)
+            if self._mock:
+                self._mock.set_gain(0.0 if val == "auto" else float(val))
+            elif _SDR_DRIVER == "RTL-SDR":
+                self.sdr.gain = val
+            elif _SDR_DRIVER and "SOAPY" in _SDR_DRIVER.upper():
                 import SoapySDR
-                self.sdr.setGain(SoapySDR.SOAPY_SDR_RX, 0, ganancia)
-            self.gain = ganancia
-            self.hw_nombre = (self.hw_nombre.split("gain=")[0]
-                              + f"gain={ganancia}dB")
-            self._print(
-                f"[green][+] Ganancia ajustada a {ganancia} dB[/green]")
-        except Exception as e:
-            self._print(f"[red][!] Error ajustando ganancia: {e}[/red]")
+                self.sdr.setGain(SoapySDR.SOAPY_SDR_RX, 0, float(val))
+            if val != "auto":
+                self.cfg.hardware.gain_db = float(val)
+            self._print(f"[green][+] Ganancia → {ganancia} dB[/green]")
+            log.info("Ganancia ajustada a %s dB", ganancia)
+        except Exception as exc:
+            self._print(f"[red][!] Error ajustando ganancia: {exc}[/red]")
+            log.error("set_gain: %s", exc)
 
-    # ── CAPTURA ───────────────────────────────────────────────────────
+    def cargar_iq_archivo(self, path: str):
+        self._mock     = MockSDRManager.from_file(path, self.sample_rate)
+        self.hw_nombre = f"FILE:{Path(path).name}"
+        self._print(f"[cyan][RF] IQ cargado desde: {path}[/cyan]")
 
-    def _capturar(self, freq_hz: float) -> np.ndarray | None:
+    def agregar_senal_mock(self, freq_offset_hz: float,
+                           power_dbm: float = -60.0,
+                           mode: str = "tone",
+                           bw_hz: float = 12_500.0):
+        if self._mock is None:
+            self._mock     = MockSDRManager(sample_rate=self.sample_rate)
+            self.hw_nombre = f"MockSDR sr={self.sample_rate/1e6:.3f}MHz"
+        self._mock.add_signal(
+            SyntheticSignal(freq_offset=freq_offset_hz,
+                            power_dbm=power_dbm,
+                            mode=mode, bw_hz=bw_hz)
+        )
+        self._print(
+            f"[cyan][RF] Señal sintética añadida: "
+            f"offset={freq_offset_hz/1e3:.1f}kHz "
+            f"pwr={power_dbm:.0f}dBm modo={mode}[/cyan]"
+        )
 
-        if self.sdr is None:
-            self._print(
-                "[red][!] Sin hardware SDR. "
-                "Conecta un RTL-SDR o HackRF para operar.[/red]"
-            )
+    # ── Captura IQ ────────────────────────────────────────────────────
+
+    def _capturar(self, freq_hz: float) -> Optional[np.ndarray]:
+        n = self.cfg.dsp.samples_per_read
+        if not self._hw_disponible:
+            self._print("[red][!] Sin hardware SDR disponible.[/red]")
             return None
 
         with self._lock:
             try:
-                if SDR_TIPO == "RTL-SDR":
-                    self.sdr.center_freq = freq_hz
-                    muestras = self.sdr.read_samples(ConfigSDR.SAMPLES_N)
+                if self._mock is not None:
+                    data = self._mock.capture(freq_hz, n)
                     self._capturas_sesion += 1
-                    return np.array(muestras, dtype=np.complex64)
+                    return data
 
-                # SoapySDR genérico — reutiliza stream persistente abierto en _conectar_hardware
-                import SoapySDR
-                self.sdr.setFrequency(SoapySDR.SOAPY_SDR_RX, 0, freq_hz)
-                buff = np.zeros(ConfigSDR.SAMPLES_N, dtype=np.complex64)
-                sr2 = self.sdr.readStream(
-                    self._soapy_stream, [buff],
-                    ConfigSDR.SAMPLES_N, timeoutUs=5_000_000
+                if _SDR_DRIVER == "RTL-SDR":
+                    self.sdr.center_freq = freq_hz
+                    data = np.array(
+                        self.sdr.read_samples(n), dtype=np.complex64
+                    )
+                    self._capturas_sesion += 1
+                    return data
+
+                if _SDR_DRIVER and "SOAPY" in _SDR_DRIVER.upper():
+                    import SoapySDR
+                    self.sdr.setFrequency(SoapySDR.SOAPY_SDR_RX, 0, freq_hz)
+                    buf = np.zeros(n, dtype=np.complex64)
+                    sr  = self.sdr.readStream(
+                        self._soapy_stream, [buf], n, timeoutUs=5_000_000
+                    )
+                    self._capturas_sesion += 1
+                    return buf[:sr.ret] if sr.ret > 0 else buf
+
+            except Exception as exc:
+                self._print(
+                    f"[red][!] Error capturando @ {freq_hz/1e6:.3f} MHz: {exc}[/red]"
                 )
-                self._capturas_sesion += 1
-                return buff[:sr2.ret] if sr2.ret > 0 else buff
-
-            except Exception as e:
-                self._print(f"[red][!] Error capturando muestras: {e}[/red]")
-                if self.log:
-                    self.log.error(f"Captura SDR: {e}", "RFScanner")
+                log.error("Captura IQ @ %.3f MHz: %s", freq_hz / 1e6, exc)
                 return None
 
-    def _identificar_banda(self, freq_mhz: float) -> dict | None:
-        for fmin, fmax, nombre, tipo, desc, color in BANDAS:
-            if fmin <= freq_mhz <= fmax:
-                return {"nombre": nombre, "tipo": tipo,
-                        "desc": desc, "color": color}
         return None
 
-    def _enriquecer_picos(self, picos: list) -> list:
-        for p in picos:
-            p["banda"] = self._identificar_banda(p["freq_mhz"])
-        return picos
+    def _verificar_rango_rtl(self, freq_mhz: float) -> bool:
+        if _SDR_DRIVER == "RTL-SDR" and self._mock is None:
+            if not (_RTL_FREQ_MIN <= freq_mhz <= _RTL_FREQ_MAX):
+                self._print(
+                    f"[yellow][!] {freq_mhz:.3f} MHz fuera del rango RTL-SDR "
+                    f"({_RTL_FREQ_MIN}–{_RTL_FREQ_MAX} MHz). Omitida.[/yellow]"
+                )
+                return False
+        return True
 
-    # ── API PÚBLICA ───────────────────────────────────────────────────
+    # ── Demodulación ──────────────────────────────────────────────────
+
+    def _get_demod(self) -> Demodulator:
+        if self._demod is None:
+            self._demod = Demodulator(self.cfg.demod, self.sample_rate)
+        return self._demod
+
+    # ── Base de datos ─────────────────────────────────────────────────
+
+    def _guardar_senales_db(self, senales: list[Signal], escaneo_id: int):
+        # RFDatabase (escaneos/barridos legacy)
+        rows = []
+        for s in senales:
+            d = s.to_dict()
+            d["banda"] = s.banda
+            rows.append(d)
+        self.db.insertar_senales_bulk(rows, escaneo_id)
+        # SignalDB (sesiones con campo táctica)
+        self.signal_db.insert_signals_batch(senales)
+
+    # ── Exportación CSV ───────────────────────────────────────────────
+
+    def _exportar_csv_picos(self, picos: list[Signal], freq_mhz: float):
+        try:
+            fn = self.csv.export_signals(picos, freq_mhz, self.hw_nombre)
+            self._print(f"[green][+] CSV → {fn}[/green]")
+            log.info("CSV exportado: %s (%d señales)", fn, len(picos))
+        except OSError as exc:
+            self._print(f"[red][!] Error exportando CSV: {exc}[/red]")
+            log.error("CSV export: %s", exc)
+
+    def _exportar_csv_barrido(self, resultados: list[dict],
+                               freq_ini: float, freq_fin: float):
+        try:
+            fn = self.csv.export_sweep(resultados, freq_ini, freq_fin)
+            self._print(f"[green][+] CSV barrido → {fn}[/green]")
+        except OSError as exc:
+            self._print(f"[red][!] Error exportando CSV: {exc}[/red]")
+
+    # ── Integración gp (proyecto activo) ─────────────────────────────
+
+    def _registrar_evidencia(self, freq_mhz: float,
+                              picos: list[Signal], duracion: float):
+        if not self.gp or not picos:
+            return
+        try:
+            self.gp.registrar_evidencia(
+                "rf_scan",
+                f"Escaneo RF {freq_mhz:.3f} MHz: {len(picos)} señales",
+                {
+                    "freq_mhz":   freq_mhz,
+                    "duracion_s": round(duracion, 1),
+                    "hardware":   self.hw_nombre,
+                    "senales":    [s.to_dict() for s in picos],
+                },
+            )
+            for s in picos:
+                if not s.banda and s.snr_db > 20:
+                    self.gp.registrar_hallazgo(
+                        "MEDIO",
+                        f"Señal no clasificada en {s.freq_mhz:.3f} MHz",
+                        f"Potencia: {s.potencia:.1f} dBm  "
+                        f"SNR: {s.snr_db:.1f} dB  BW: {s.bw_khz:.2f} kHz",
+                        "Investigar origen. Posible dispositivo ilícito "
+                        "o interferencia no autorizada.",
+                    )
+        except Exception as exc:
+            log.warning("registrar_evidencia: %s", exc)
+
+    # ════════════════════════════════════════════════════════════════
+    # API PÚBLICA
+    # ════════════════════════════════════════════════════════════════
 
     def escanear_frecuencia(self, freq_mhz: float, duracion: int = 10):
-        if self.sdr is None:
-            self._print(
-                "[red][!] Operación cancelada: sin hardware SDR.[/red]")
+        if not self._hw_disponible:
+            self._print("[red][!] Sin hardware SDR disponible.[/red]")
             return
 
         freq_hz = freq_mhz * 1e6
-        banda = self._identificar_banda(freq_mhz)
+        banda   = identify_band(freq_mhz)
 
         self._print()
         if banda:
-            col = banda["color"]
+            col = banda.get("color", "white")
             self._print(
                 f"[bold green][RF] Sintonizando {freq_mhz:.4f} MHz — "
                 f"[{col}]{banda['nombre']}[/{col}]  "
                 f"[dim]{banda['desc']}[/dim][/bold green]"
             )
         else:
-            self._print(f"[bold green][RF] Sintonizando {freq_mhz:.4f} MHz "
-                        f"— Banda no clasificada[/bold green]")
+            self._print(
+                f"[bold green][RF] Sintonizando {freq_mhz:.4f} MHz "
+                f"— Banda no clasificada[/bold green]"
+            )
 
         self._print(
-            f"[dim]  Hardware: {self.hw_nombre}  |  "
+            f"[dim]  HW: {self.hw_nombre}  |  "
             f"BW: {self.sample_rate/1e6:.3f} MHz  |  "
-            f"FFT: {self.dsp.fft_size} pts  |  "
-            f"Duración: {duracion}s  |  "
-            f"Ctrl+C para detener[/dim]\n"
+            f"FFT: {self.cfg.dsp.fft_size} pts  |  "
+            f"Ventana: {self.cfg.dsp.window}  |  "
+            f"Res: {self.dsp.freq_resolution_khz:.2f} kHz/bin  |  "
+            f"Duración: {duracion}s  |  Ctrl+C para detener[/dim]\n"
         )
-        time.sleep(0.5)
+        time.sleep(0.3)
 
-        # El eje de frecuencias es fijo para una sample_rate dada; calcularlo una sola vez
-        _dummy = np.zeros(ConfigSDR.FFT_SIZE, dtype=np.complex64)
-        freqs_hz, _ = self.dsp.calcular_psd(_dummy, self.sample_rate)
-
-        inicio = time.time()
-        iteracion = 0
-        todos_picos = []
+        escaneo_id     = self.db.iniciar_escaneo(
+            freq_mhz=freq_mhz, hardware=self.hw_nombre,
+            sample_rate=self.sample_rate, fft_size=self.cfg.dsp.fft_size,
+        )
+        self.signal_db.open_session(
+            hw_type=self.hw_nombre,
+            sample_rate=self.sample_rate,
+            notes=f"escanear_frecuencia {freq_mhz:.4f} MHz {duracion}s",
+        )
+        inicio         = time.monotonic()
+        iteracion      = 0
+        todos_picos:   list[Signal] = []
+        demod          = (self._get_demod()
+                          if self.cfg.demod.mode != "none" else None)
 
         try:
-            while time.time() - inicio < duracion:
-                # Captura con promediado para reducir ruido
-                capturas_psd = []
-                for _ in range(ConfigSDR.PROMEDIO_N):
-                    muestras = self._capturar(freq_hz)
-                    if muestras is None:
-                        return
-                    _, psd = self.dsp.calcular_psd(muestras, self.sample_rate)
-                    capturas_psd.append(psd)
+            while time.monotonic() - inicio < duracion:
+                muestras = self._capturar(freq_hz)
+                if muestras is None:
+                    break
 
-                psd_prom = self.dsp.promediar_capturas(capturas_psd)
+                freqs_hz, psd_dbm = self.dsp.compute_psd(muestras)
+                picos             = self.dsp.detect_peaks(freqs_hz, psd_dbm, freq_hz)
 
-                # Detectar y enriquecer picos
-                picos = self.dsp.detectar_picos(
-                    freqs_hz, psd_prom, freq_hz, self.sample_rate
-                )
-                picos = self._enriquecer_picos(picos)
                 todos_picos.extend(picos)
                 self._senales_sesion.extend(picos)
+                self._waterfall.appendleft(psd_dbm.copy())
 
-                # Waterfall
-                self._waterfall.appendleft(psd_prom.copy())
+                if picos:
+                    self._guardar_senales_db(picos, escaneo_id)
 
-                # Renderizar
+                if demod:
+                    try:
+                        audio = demod.demodulate(muestras)
+                        if audio is not None and len(audio) > 0:
+                            squelch = self.cfg.demod.squelch_db
+                            if not picos or picos[0].snr_db >= squelch:
+                                demod.play(audio)
+                            if self.cfg.demod.save_audio:
+                                ts_a = datetime.now(timezone.utc).strftime("%H%M%S")
+                                demod.save_wav(
+                                    audio,
+                                    str(self.cfg.storage.iq_path /
+                                        f"audio_{freq_mhz:.3f}MHz_{ts_a}.wav")
+                                )
+                    except Exception as exc:
+                        log.debug("Demod error: %s", exc)
+
                 os.system("cls" if os.name == "nt" else "clear")
+                elapsed = time.monotonic() - inicio
                 self.console.print(self.render.espectro(
-                    freqs_hz, psd_prom, freq_mhz, picos,
-                    self.sample_rate, self.hw_nombre
+                    freqs_hz, psd_dbm, freq_mhz, picos,
+                    self.sample_rate, self.hw_nombre,
                 ))
-                self.console.print(self.render.waterfall(
-                    self._waterfall, freq_mhz
-                ))
+                self.console.print(self.render.waterfall(self._waterfall, freq_mhz))
                 self.console.print(self.render.tabla_picos(picos))
-
-                elapsed = time.time() - inicio
                 self.console.print(
-                    f"[dim]  Iteración {iteracion+1}  |  "
-                    f"{elapsed:.1f}s / {duracion}s  |  "
-                    f"Picos: {len(picos)}  |  "
-                    f"Capturas totales: {self._capturas_sesion}[/dim]"
+                    f"[dim]  iter {iteracion + 1}  |  "
+                    f"{elapsed:.1f}s/{duracion}s  |  "
+                    f"picos: {len(picos)}  |  "
+                    f"sesión: {len(self._senales_sesion)}  |  "
+                    f"capturas: {self._capturas_sesion}[/dim]"
                 )
                 iteracion += 1
 
         except KeyboardInterrupt:
             self._print(
-                "\n[yellow][!] Escaneo interrumpido por el operador.[/yellow]")
+                "\n[yellow][!] Escaneo interrumpido por el operador.[/yellow]"
+            )
 
-        duracion_real = time.time() - inicio
+        duracion_real = time.monotonic() - inicio
+        self.db.finalizar_escaneo(escaneo_id, duracion_real)
+        self.signal_db.close_session()
 
-        # Resumen
         self.console.print()
         self.console.print(self.render.resumen_escaneo(
-            freq_mhz, todos_picos, duracion_real,
-            self.hw_nombre, iteracion
+            freq_mhz, todos_picos, duracion_real, self.hw_nombre, iteracion,
         ))
 
-        # Exportar evidencia
         if todos_picos:
             self._exportar_csv_picos(todos_picos, freq_mhz)
 
-        # Registrar en proyecto
         self._registrar_evidencia(freq_mhz, todos_picos, duracion_real)
 
-        if self.log:
-            self.log.info(
-                f"Escaneo RF {freq_mhz:.3f} MHz: "
-                f"{len(todos_picos)} señales en {duracion_real:.0f}s",
-                "RFScanner"
-            )
+        if self.cfg.storage.db_retention_days > 0:
+            self.db.limpiar_antiguas(self.cfg.storage.db_retention_days)
+            self.signal_db.purge_old(self.cfg.storage.db_retention_days)
+
+        log.info(
+            "Escaneo %.3f MHz — %d señales en %.0fs  hw=%s",
+            freq_mhz, len(todos_picos), duracion_real, self.hw_nombre,
+        )
 
     def barrido_espectro(self, freq_ini_mhz: float,
                          freq_fin_mhz: float,
                          paso_mhz: float = 1.0):
-        if self.sdr is None:
-            self._print(
-                "[red][!] Operación cancelada: sin hardware SDR.[/red]")
+        if not self._hw_disponible:
+            self._print("[red][!] Sin hardware SDR disponible.[/red]")
             return
 
-        freqs = np.arange(freq_ini_mhz, freq_fin_mhz + paso_mhz, paso_mhz)
+        freqs = np.arange(freq_ini_mhz, freq_fin_mhz + paso_mhz * 0.5, paso_mhz)
         self._print(
-            f"\n[bold green][RF] Barrido de espectro: "
+            f"\n[bold green][RF] Barrido: "
             f"{freq_ini_mhz:.1f} → {freq_fin_mhz:.1f} MHz  "
-            f"(paso: {paso_mhz:.2f} MHz  |  {len(freqs)} puntos)[/bold green]\n"
+            f"paso={paso_mhz:.3f} MHz  {len(freqs)} puntos[/bold green]\n"
         )
 
-        resultados = []
+        resultados: list[dict] = []
         try:
             for i, freq in enumerate(freqs):
-                muestras = self._capturar(freq * 1e6)
+                if not self._verificar_rango_rtl(float(freq)):
+                    continue
+
+                muestras = self._capturar(float(freq) * 1e6)
                 if muestras is None:
                     break
 
-                _, psd = self.dsp.calcular_psd(muestras, self.sample_rate)
-                piso = self.dsp.estimar_piso_ruido(psd)
+                _, psd  = self.dsp.compute_psd(muestras)
+                piso    = self.dsp.noise_floor(psd)
                 pot_max = float(np.max(psd))
-                snr = pot_max - piso
-                banda = self._identificar_banda(freq)
+                snr     = pot_max - piso
+                banda   = identify_band(float(freq))
 
                 resultados.append({
                     "freq_mhz": round(float(freq), 3),
@@ -871,109 +756,329 @@ class RFScanner:
                     "banda":    banda,
                 })
 
-                pct = int((i + 1) / len(freqs) * 50)
+                pct   = int((i + 1) / len(freqs) * 50)
                 barra = "█" * pct + "─" * (50 - pct)
-                banda_n = banda["nombre"] if banda else "—"
+                b_nom = banda["nombre"] if banda else "—"
                 print(
                     f"\r  [{barra}] {freq:.2f} MHz  "
-                    f"{pot_max:.1f}dBm  SNR:{snr:.1f}dB  {banda_n:<20}",
-                    end=""
+                    f"{pot_max:.1f}dBm  SNR:{snr:.1f}dB  {b_nom:<22}",
+                    end="", flush=True,
                 )
 
         except KeyboardInterrupt:
             self._print("\n[yellow][!] Barrido interrumpido.[/yellow]")
 
-        print()  # cerrar línea de progreso inline
+        print()
         self._print()
 
         if resultados:
             self.console.print(self.render.mapa_barrido(resultados))
             self._exportar_csv_barrido(resultados, freq_ini_mhz, freq_fin_mhz)
-
+            self.db.insertar_barrido(
+                freq_ini=freq_ini_mhz, freq_fin=freq_fin_mhz,
+                paso_mhz=paso_mhz, hardware=self.hw_nombre,
+                resultados=resultados,
+            )
+            activas = sum(1 for r in resultados
+                          if r["snr"] >= self.cfg.dsp.snr_threshold)
+            self.signal_db.insert_sweep(
+                freq_ini=freq_ini_mhz, freq_fin=freq_fin_mhz,
+                paso=paso_mhz, puntos=len(resultados), activas=activas,
+            )
             if self.gp:
-                self.gp.registrar_evidencia(
-                    "rf_sweep",
-                    f"Barrido RF {freq_ini_mhz:.0f}–{freq_fin_mhz:.0f} MHz: "
-                    f"{len(resultados)} puntos",
-                    {"ini_mhz": freq_ini_mhz, "fin_mhz": freq_fin_mhz,
-                     "paso_mhz": paso_mhz, "puntos": len(resultados),
-                     "hardware": self.hw_nombre}
-                )
+                try:
+                    self.gp.registrar_evidencia(
+                        "rf_sweep",
+                        f"Barrido RF {freq_ini_mhz:.0f}–{freq_fin_mhz:.0f} MHz: "
+                        f"{len(resultados)} puntos",
+                        {"ini_mhz": freq_ini_mhz, "fin_mhz": freq_fin_mhz,
+                         "paso_mhz": paso_mhz, "puntos": len(resultados),
+                         "hardware": self.hw_nombre},
+                    )
+                except Exception as exc:
+                    log.warning("gp barrido: %s", exc)
+
+        log.info(
+            "Barrido %.1f–%.1f MHz paso=%.3f — %d puntos hw=%s",
+            freq_ini_mhz, freq_fin_mhz, paso_mhz,
+            len(resultados), self.hw_nombre,
+        )
 
     def escaneo_bandas_conocidas(self):
-
-        if self.sdr is None:
-            self._print(
-                "[red][!] Operación cancelada: sin hardware SDR.[/red]")
+        if not self._hw_disponible:
+            self._print("[red][!] Sin hardware SDR disponible.[/red]")
             return
 
+        todas = [
+            {
+                "nombre":   n,
+                "tipo":     t,
+                "desc":     d,
+                "color":    COLORES_TIPO.get(t, "dim"),
+                "freq_min": fmin,
+                "freq_max": fmax,
+            }
+            for fmin, fmax, n, t, d, _ in BANDAS_RF
+        ]
+
         self._print(
-            f"\n[bold green][RF] Escaneo de {len(BANDAS)} "
-            f"bandas conocidas...[/bold green]\n"
+            f"\n[bold green][RF] Escaneo de {len(todas)} bandas conocidas...[/bold green]\n"
         )
-        resultados = []
+        resultados: list[dict] = []
 
-        for fmin, fmax, nombre, tipo, desc, color in BANDAS:
-            freq = (fmin + fmax) / 2.0
-            # Verificar rango del hardware
-            if SDR_TIPO == "RTL-SDR" and (freq < 24 or freq > 1766):
-                continue
+        try:
+            for b in todas:
+                freq = (b["freq_min"] + b["freq_max"]) / 2.0
+                if not self._verificar_rango_rtl(freq):
+                    continue
 
-            muestras = self._capturar(freq * 1e6)
-            if muestras is None:
-                break
+                muestras = self._capturar(freq * 1e6)
+                if muestras is None:
+                    break
 
-            _, psd = self.dsp.calcular_psd(muestras, self.sample_rate)
-            piso = self.dsp.estimar_piso_ruido(psd)
-            pot_max = float(np.max(psd))
-            snr = pot_max - piso
+                _, psd  = self.dsp.compute_psd(muestras)
+                piso    = self.dsp.noise_floor(psd)
+                pot_max = float(np.max(psd))
+                snr     = pot_max - piso
 
-            resultados.append({
-                "freq_mhz": round(freq, 3),
-                "pot_max":  round(pot_max, 1),
-                "piso":     round(piso, 1),
-                "snr":      round(snr, 1),
-                "banda":    {"nombre": nombre, "tipo": tipo,
-                             "desc": desc, "color": color},
-            })
-            print(
-                f"\r  {nombre:<25} {freq:>8.2f} MHz  "
-                f"{pot_max:>6.1f} dBm  SNR: {snr:>5.1f} dB",
-                end=""
-            )
+                resultados.append({
+                    "freq_mhz": round(freq, 3),
+                    "pot_max":  round(pot_max, 1),
+                    "piso":     round(piso, 1),
+                    "snr":      round(snr, 1),
+                    "banda":    b,
+                })
+                print(
+                    f"\r  {b['nombre']:<26} {freq:>9.3f} MHz  "
+                    f"{pot_max:>7.1f} dBm  SNR: {snr:>5.1f} dB",
+                    end="", flush=True,
+                )
 
-        print()  # cerrar línea de progreso inline
+        except KeyboardInterrupt:
+            self._print("\n[yellow][!] Escaneo de bandas interrumpido.[/yellow]")
+
+        print()
         self._print()
+
         if resultados:
             self.console.print(self.render.mapa_barrido(resultados))
             self._exportar_csv_barrido(resultados, 0.0, 0.0)
             if self.gp:
-                self.gp.registrar_evidencia(
-                    "rf_bands_scan",
-                    f"Escaneo de bandas conocidas: {len(resultados)} bandas",
-                    {"hardware": self.hw_nombre, "bandas": len(resultados)},
-                )
-            if self.log:
-                self.log.info(
-                    f"Escaneo bandas: {len(resultados)} mediciones", "RFScanner")
+                try:
+                    self.gp.registrar_evidencia(
+                        "rf_bands_scan",
+                        f"Escaneo bandas: {len(resultados)} mediciones",
+                        {"hardware": self.hw_nombre, "bandas": len(resultados)},
+                    )
+                except Exception as exc:
+                    log.warning("gp bandas: %s", exc)
+
+        log.info("Escaneo bandas: %d mediciones hw=%s",
+                 len(resultados), self.hw_nombre)
+
+    # ── Consultas de base de datos ────────────────────────────────────
+
+    def estadisticas_db(self):
+        stats = self.db.estadisticas()
+        st2   = self.signal_db.stats()
+        g = Table.grid(padding=(0, 3))
+        g.add_column(style="dim green", justify="right", min_width=22)
+        g.add_column(style="white")
+        g.add_row("[bold]RFDatabase[/bold]", "")
+        for k, v in stats.items():
+            g.add_row(k.replace("_", " ").title(), str(v) if v is not None else "—")
+        g.add_row("", "")
+        g.add_row("[bold]SignalDB[/bold]", "")
+        for k, v in st2.items():
+            g.add_row(k.replace("_", " ").title(), str(v) if v is not None else "—")
+        self.console.print(Panel(
+            g,
+            title="[bold green]ESTADÍSTICAS DB[/bold green]",
+            border_style="green",
+        ))
+
+    def top_senales(self, n: int = 10):
+        rows = self.db.top_senales(n)
+        tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
+                   show_edge=False, expand=True)
+        tb.add_column("Frecuencia", style="cyan",  min_width=14)
+        tb.add_column("Potencia",   justify="right", min_width=11)
+        tb.add_column("SNR",        justify="right", min_width=8)
+        tb.add_column("BW",         justify="right", min_width=9)
+        tb.add_column("Mod.",       min_width=10)
+        tb.add_column("Banda",      min_width=16)
+        tb.add_column("Timestamp",  style="dim", min_width=22)
+        for r in rows:
+            tb.add_row(
+                f"{r['freq_mhz']:.4f} MHz",
+                f"{r['potencia']:.1f} dBm",
+                f"{r['snr_db']:.1f} dB",
+                f"{r.get('bw_khz', 0):.2f} kHz",
+                r.get("mod_hint") or "—",
+                r.get("banda")    or "—",
+                r.get("timestamp", "")[:19],
+            )
+        self.console.print(Panel(
+            tb,
+            title=f"[bold green]TOP {n} SEÑALES[/bold green]",
+            border_style="green",
+        ))
+
+    def frecuencias_activas(self, snr_min: float = 10.0, horas: int = 24):
+        rows = self.db.frecuencias_activas(snr_min=snr_min, horas=horas)
+        if not rows:
+            self._print(
+                f"[dim]Sin frecuencias activas en las últimas {horas}h "
+                f"con SNR ≥ {snr_min} dB.[/dim]"
+            )
+            return
+
+        tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
+                   show_edge=False, expand=True)
+        tb.add_column("Frecuencia",  style="cyan",  min_width=14)
+        tb.add_column("Detecciones", justify="right", min_width=12)
+        tb.add_column("SNR máx",     justify="right", min_width=9)
+        tb.add_column("Pot. media",  justify="right", min_width=11)
+        tb.add_column("Banda",       min_width=16)
+        for r in rows:
+            tb.add_row(
+                f"{r['freq_mhz']:.3f} MHz",
+                str(r["detecciones"]),
+                f"{r['snr_max']:.1f} dB",
+                f"{r.get('pot_media', 0):.1f} dBm",
+                r.get("banda") or "—",
+            )
+        self.console.print(Panel(
+            tb,
+            title=(f"[bold green]FRECUENCIAS ACTIVAS "
+                   f"(últimas {horas}h  SNR≥{snr_min}dB)[/bold green]"),
+            border_style="green",
+        ))
+
+    # ── Grabación y reproducción IQ ───────────────────────────────────
+
+    def grabar_iq(self, freq_mhz: float, duracion: int = 10,
+                  formato: str = "sigmf"):
+        if not self._hw_disponible:
+            self._print("[red][!] Sin hardware SDR disponible.[/red]")
+            return
+
+        freq_hz = freq_mhz * 1e6
+
+        if formato == "sigmf":
+            recording = self.sigmf.open(
+                freq_hz=freq_hz,
+                sample_rate=self.sample_rate,
+                hw_type=self.hw_nombre,
+                notes=f"Grabacion campo {freq_mhz:.3f} MHz",
+            )
+            self._print(
+                f"[bold cyan][RF] Grabando {freq_mhz:.3f} MHz · "
+                f"{duracion}s · SigMF streaming[/bold cyan]"
+            )
+            inicio = time.monotonic()
+            muestras_total = 0
+            with recording:
+                while time.monotonic() - inicio < duracion:
+                    bloque = self._capturar(freq_hz)
+                    if bloque is None:
+                        break
+                    recording.write(bloque)
+                    muestras_total += len(bloque)
+                    elapsed = time.monotonic() - inicio
+                    print(
+                        f"\r  {elapsed:.1f}s/{duracion}s  "
+                        f"{muestras_total:,} muestras  "
+                        f"{recording.data_path.stat().st_size/1e6:.1f} MB",
+                        end="", flush=True,
+                    )
+            print()
+            size_mb = recording.data_path.stat().st_size / 1e6
+            dur_real = muestras_total / self.sample_rate
+            self.signal_db.register_iq(
+                freq_mhz=freq_mhz,
+                duration_s=dur_real,
+                sample_rate=self.sample_rate,
+                hw_type=self.hw_nombre,
+                filename=str(recording.data_path),
+                size_mb=round(size_mb, 2),
+            )
+            self._print(
+                f"[green][+] IQ grabado → {recording.data_path.name}  "
+                f"({dur_real:.1f}s  {size_mb:.1f} MB)[/green]"
+            )
+            log.info(
+                "IQ grabado: %s  %.1fs  %.1fMB",
+                recording.data_path.name, dur_real, size_mb,
+            )
+        else:
+            # Fallback a RFRecorder para formato raw/legacy
+            self.recorder.grabar(
+                freq_mhz=freq_mhz,
+                duracion_seg=duracion,
+                sample_rate=self.sample_rate,
+                formato=formato,
+            )
+
+    def reproducir_iq(self, archivo: str, modo: str = "wfm"):
+        self.recorder.reproducir(
+            archivo, modo=modo, sample_rate=self.sample_rate
+        )
+
+    # ── Estado y menú ─────────────────────────────────────────────────
+
+    def estado(self):
+        stats    = self.db.estadisticas()
+        st2      = self.signal_db.stats()
+        g = Table.grid(padding=(0, 3))
+        g.add_column(style="dim green", justify="right", min_width=24)
+        g.add_column(style="white")
+        g.add_row("Hardware",          self.hw_nombre)
+        g.add_row("Driver detectado",  _SDR_DRIVER or "MockSDR")
+        g.add_row("Sample rate",       f"{self.sample_rate/1e6:.3f} MHz")
+        g.add_row("Ganancia",          f"{self.cfg.hardware.gain_db} dB")
+        g.add_row("PPM corrección",    str(self.cfg.hardware.ppm_correction))
+        g.add_row("Tamaño FFT",        str(self.cfg.dsp.fft_size))
+        g.add_row("Ventana DSP",       self.cfg.dsp.window)
+        g.add_row("SNR umbral",        f"{self.cfg.dsp.snr_threshold} dB")
+        g.add_row("Resolución",        f"{self.dsp.freq_resolution_khz:.2f} kHz/bin")
+        g.add_row("Modo demod",        self.cfg.demod.mode)
+        g.add_row("DB path",           str(self.cfg.storage.db_path))
+        g.add_row("Capturas sesión",   str(self._capturas_sesion))
+        g.add_row("Señales sesión",    str(len(self._senales_sesion)))
+        g.add_row("─" * 22,            "─" * 18)
+        g.add_row("Señales DB total",  str(stats.get("total_senales", 0)))
+        g.add_row("Escaneos DB",       str(stats.get("escaneos", 0)))
+        g.add_row("Sesiones SignalDB",  str(st2.get("sessions", 0)))
+        g.add_row("Señales SignalDB",   str(st2.get("signals", 0)))
+        g.add_row("Barridos SignalDB",  str(st2.get("sweeps", 0)))
+        g.add_row("Grabaciones IQ",     str(st2.get("iq_files", 0)))
+        g.add_row("Tamaño DB",          f"{st2.get('db_size_mb', 0):.2f} MB")
+        self.console.print(Panel(
+            g,
+            title="[bold green]ESTADO RF SCANNER[/bold green]",
+            border_style="green",
+        ))
 
     def menu(self):
         self.console.print()
         self.console.print(Panel(
             f"[bold green]RF SCANNER — {self.hw_nombre}[/bold green]\n\n"
-            "[green][1][/green] Escanear frecuencia específica\n"
-            "[green][2][/green] Barrido de espectro (rango)\n"
-            "[green][3][/green] Escaneo de bandas conocidas\n"
-            "[green][4][/green] Ajustar ganancia\n"
-            "[green][5][/green] Ver señales de esta sesión\n"
-            "[green][6][/green] Estado del hardware",
+            " [green][1][/green]  Escanear frecuencia específica\n"
+            " [green][2][/green]  Barrido de espectro (rango)\n"
+            " [green][3][/green]  Escaneo de bandas conocidas\n"
+            " [green][4][/green]  Ajustar ganancia\n"
+            " [green][5][/green]  Ver señales de esta sesión\n"
+            " [green][6][/green]  Estado del hardware\n"
+            " [green][7][/green]  Grabar IQ\n"
+            " [green][8][/green]  Reproducir IQ\n"
+            " [green][9][/green]  Frecuencias activas (DB)\n"
+            " [green][10][/green] Top señales (DB)",
             border_style="green",
             title="[bold green]RF SCANNER[/bold green]",
         ))
 
-        opt = self.console.input(
-            "[bold green][?] Opción: [/bold green]"
-        ).strip()
+        opt = self.console.input("[bold green][?] Opción: [/bold green]").strip()
 
         if opt == "1":
             freq_s = self.console.input(
@@ -984,24 +1089,25 @@ class RFScanner:
             ).strip()
             try:
                 self.escanear_frecuencia(
-                    float(freq_s),
-                    int(dur_s) if dur_s else 10
+                    float(freq_s), int(dur_s) if dur_s else 10
                 )
             except ValueError:
                 self._print("[red][!] Valor inválido.[/red]")
 
         elif opt == "2":
-            ini_s = self.console.input(
-                "[bold cyan][?] Freq. inicial (MHz): [/bold cyan]").strip()
-            fin_s = self.console.input(
-                "[bold cyan][?] Freq. final (MHz): [/bold cyan]").strip()
+            ini_s  = self.console.input(
+                "[bold cyan][?] Freq. inicial (MHz): [/bold cyan]"
+            ).strip()
+            fin_s  = self.console.input(
+                "[bold cyan][?] Freq. final (MHz): [/bold cyan]"
+            ).strip()
             paso_s = self.console.input(
-                "[bold cyan][?] Paso MHz [1.0]: [/bold cyan]").strip()
+                "[bold cyan][?] Paso MHz [1.0]: [/bold cyan]"
+            ).strip()
             try:
                 self.barrido_espectro(
-                    float(ini_s),
-                    float(fin_s),
-                    float(paso_s) if paso_s else 1.0
+                    float(ini_s), float(fin_s),
+                    float(paso_s) if paso_s else 1.0,
                 )
             except ValueError:
                 self._print("[red][!] Valores inválidos.[/red]")
@@ -1011,167 +1117,130 @@ class RFScanner:
 
         elif opt == "4":
             gan_s = self.console.input(
-                "[bold cyan][?] Ganancia dB (0-49, 'auto'): [/bold cyan]"
+                "[bold cyan][?] Ganancia dB (0-80, 'auto'): [/bold cyan]"
             ).strip()
-            if gan_s.lower() == "auto":
-                self.configurar_ganancia("auto")
-            else:
-                try:
-                    self.configurar_ganancia(float(gan_s))
-                except ValueError:
-                    self._print("[red][!] Valor inválido.[/red]")
+            try:
+                self.configurar_ganancia(
+                    "auto" if gan_s.lower() == "auto" else float(gan_s)
+                )
+            except ValueError:
+                self._print("[red][!] Valor inválido.[/red]")
 
         elif opt == "5":
-            if self._senales_sesion:
-                self.console.print(
-                    self.render.tabla_picos(self._senales_sesion[-50:])
-                )
-            else:
-                self._print(
-                    "[dim]Sin señales registradas en esta sesión.[/dim]")
+            self.console.print(
+                self.render.tabla_picos(list(self._senales_sesion)[-50:])
+            )
 
         elif opt == "6":
             self.estado()
 
-    def estado(self):
-        g = Table.grid(padding=(0, 3))
-        g.add_column(style="dim green", justify="right", min_width=20)
-        g.add_column(style="white")
+        elif opt == "7":
+            freq_s = self.console.input(
+                "[bold cyan][?] Frecuencia a grabar (MHz): [/bold cyan]"
+            ).strip()
+            dur_s  = self.console.input(
+                "[bold cyan][?] Duración segundos [10]: [/bold cyan]"
+            ).strip()
+            fmt_s  = self.console.input(
+                "[bold cyan][?] Formato (sigmf/raw) [sigmf]: [/bold cyan]"
+            ).strip() or "sigmf"
+            try:
+                self.grabar_iq(float(freq_s), int(dur_s) if dur_s else 10, fmt_s)
+            except ValueError:
+                self._print("[red][!] Valor inválido.[/red]")
 
-        g.add_row("Hardware",          self.hw_nombre)
-        g.add_row("Driver detectado",  SDR_TIPO or "Ninguno")
-        g.add_row("Sample rate",       f"{self.sample_rate/1e6:.3f} MHz")
-        g.add_row("Ganancia",          str(self.gain))
-        g.add_row("Tamaño FFT",        str(self.dsp.fft_size))
-        g.add_row("Ventana",           self.dsp.ventana_n)
-        g.add_row("Umbral margen",     f"{ConfigSDR.UMBRAL_MARGEN_DB} dB")
-        g.add_row("Umbral absoluto",   f"{ConfigSDR.UMBRAL_ABS_DBM} dBm")
-        g.add_row("Capturas sesión",   str(self._capturas_sesion))
-        g.add_row("Señales sesión",    str(len(self._senales_sesion)))
-        g.add_row("Bandas en DB",      str(len(BANDAS)))
+        elif opt == "8":
+            arch = self.console.input(
+                "[bold cyan][?] Archivo IQ (ruta): [/bold cyan]"
+            ).strip()
+            modo = self.console.input(
+                "[bold cyan][?] Modo demod (wfm/nfm/am/usb/lsb) [wfm]: [/bold cyan]"
+            ).strip() or "wfm"
+            self.reproducir_iq(arch, modo)
 
-        self.console.print(Panel(g, title="[bold green]ESTADO RF SCANNER[/bold green]",
-                                 border_style="green"))
+        elif opt == "9":
+            snr_s = self.console.input(
+                "[bold cyan][?] SNR mínimo dB [10]: [/bold cyan]"
+            ).strip()
+            hrs_s = self.console.input(
+                "[bold cyan][?] Horas hacia atrás [24]: [/bold cyan]"
+            ).strip()
+            try:
+                self.frecuencias_activas(
+                    snr_min=float(snr_s) if snr_s else 10.0,
+                    horas=int(hrs_s) if hrs_s else 24,
+                )
+            except ValueError:
+                self._print("[red][!] Valor inválido.[/red]")
+
+        elif opt == "10":
+            n_s = self.console.input(
+                "[bold cyan][?] Cuántas señales [10]: [/bold cyan]"
+            ).strip()
+            try:
+                self.top_senales(int(n_s) if n_s else 10)
+            except ValueError:
+                self._print("[red][!] Valor inválido.[/red]")
+
+        else:
+            self._print("[yellow][!] Opción no reconocida.[/yellow]")
+
+    # ── Ciclo de vida ─────────────────────────────────────────────────
 
     def cerrar(self):
+        if self._demod:
+            try:
+                self._demod.stop_audio()
+            except Exception:
+                pass
+
         if self.sdr is not None:
             try:
-                if SDR_TIPO == "RTL-SDR":
+                if _SDR_DRIVER == "RTL-SDR":
                     self.sdr.close()
-                elif SDR_TIPO and "SOAPY" in SDR_TIPO.upper():
-                    # Cerrar stream persistente antes de destruir el dispositivo
-                    stream = getattr(self, "_soapy_stream", None)
-                    if stream is not None:
+                elif _SDR_DRIVER and "SOAPY" in _SDR_DRIVER.upper():
+                    if self._soapy_stream is not None:
                         try:
-                            self.sdr.deactivateStream(stream)
-                            self.sdr.closeStream(stream)
+                            self.sdr.deactivateStream(self._soapy_stream)
+                            self.sdr.closeStream(self._soapy_stream)
                         except Exception:
                             pass
                         self._soapy_stream = None
-                self._print(
-                    "[green][+] SDR desconectado correctamente.[/green]")
-            except Exception as e:
-                self._print(f"[yellow][!] Error al cerrar SDR: {e}[/yellow]")
+                self._print("[green][+] SDR desconectado.[/green]")
+                log.info("SDR cerrado correctamente")
+            except Exception as exc:
+                self._print(f"[yellow][!] Error cerrando SDR: {exc}[/yellow]")
             finally:
                 self.sdr = None
 
-    # ── EXPORTACIÓN ──────────────────────────────────────────────────
+        if self._mock:
+            try:
+                self._mock.close()
+            except Exception:
+                pass
+            self._mock = None
 
-    def _exportar_csv_picos(self, picos: list, freq_mhz: float):
-        os.makedirs(ConfigSDR.EXPORT_PATH, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fn = (f"{ConfigSDR.EXPORT_PATH}/"
-              f"scan_{freq_mhz:.0f}MHz_{ts}.csv")
         try:
-            with open(fn, "w", newline="", encoding="utf-8") as f:
-                w = csv.DictWriter(f, fieldnames=[
-                    "freq_mhz", "potencia", "snr_db",
-                    "bw_khz", "piso_dbm", "banda", "timestamp"
-                ])
-                w.writeheader()
-                for p in picos:
-                    w.writerow({
-                        "freq_mhz":  p["freq_mhz"],
-                        "potencia":  p["potencia"],
-                        "snr_db":    p["snr_db"],
-                        "bw_khz":    p["bw_khz"],
-                        "piso_dbm":  p["piso_dbm"],
-                        "banda":     p["banda"]["nombre"] if p.get("banda") else "—",
-                        "timestamp": p["timestamp"],
-                    })
-            self._print(f"[green][+] Evidencia exportada → {fn}[/green]")
-        except OSError as e:
-            self._print(f"[red][!] Error exportando CSV: {e}[/red]")
+            self.signal_db.close_session()
+        except Exception:
+            pass
 
-    def _exportar_csv_barrido(self, resultados: list,
-                              freq_ini: float, freq_fin: float):
-        """Exporta resultados de barrido a CSV."""
-        os.makedirs(ConfigSDR.EXPORT_PATH, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fn = (f"{ConfigSDR.EXPORT_PATH}/"
-              f"sweep_{freq_ini:.0f}-{freq_fin:.0f}MHz_{ts}.csv")
         try:
-            with open(fn, "w", newline="", encoding="utf-8") as f:
-                w = csv.DictWriter(f, fieldnames=[
-                    "freq_mhz", "pot_max", "piso", "snr", "banda"
-                ])
-                w.writeheader()
-                for r in resultados:
-                    w.writerow({
-                        "freq_mhz": r["freq_mhz"],
-                        "pot_max":  r["pot_max"],
-                        "piso":     r["piso"],
-                        "snr":      r["snr"],
-                        "banda":    r["banda"]["nombre"] if r.get("banda") else "—",
-                    })
-            self._print(f"[green][+] Barrido exportado → {fn}[/green]")
-        except OSError as e:
-            self._print(f"[red][!] Error exportando CSV: {e}[/red]")
+            self.db.cerrar()
+        except Exception:
+            pass
 
-    def _registrar_evidencia(self, freq_mhz: float,
-                             picos: list, duracion: float):
-        if not self.gp or not picos:
-            return
+    def __enter__(self):
+        return self
 
-        self.gp.registrar_evidencia(
-            "rf_scan",
-            f"Escaneo RF en {freq_mhz:.3f} MHz: {len(picos)} señales",
-            {
-                "freq_mhz":  freq_mhz,
-                "duracion_s": round(duracion, 1),
-                "hardware":  self.hw_nombre,
-                "señales":   [
-                    {
-                        "freq": p["freq_mhz"],
-                        "pot":  p["potencia"],
-                        "snr":  p["snr_db"],
-                        "bw":   p["bw_khz"],
-                        "banda": p["banda"]["nombre"] if p.get("banda") else "—",
-                    }
-                    for p in picos
-                ],
-            }
-        )
+    def __exit__(self, *_):
+        self.cerrar()
 
-        # Hallazgo si hay señal fuerte no clasificada
-        no_clasificadas = [p for p in picos
-                           if not p.get("banda") and p["snr_db"] > 20]
-        for p in no_clasificadas:
-            self.gp.registrar_hallazgo(
-                "MEDIO",
-                f"Señal no clasificada en {p['freq_mhz']:.3f} MHz",
-                f"Potencia: {p['potencia']:.1f} dBm  "
-                f"SNR: {p['snr_db']:.1f} dB  "
-                f"BW: {p['bw_khz']:.2f} kHz",
-                "Investigar origen. Puede ser dispositivo ilícito o "
-                "interferencia no autorizada."
-            )
-
-    # ── HELPER ───────────────────────────────────────────────────────
+    # ── Helper interno ────────────────────────────────────────────────
 
     def _print(self, msg: str = ""):
         if self.console:
             self.console.print(msg)
         else:
             import re
-            print(re.sub(r"\[.*?\]", "", msg))
+            print(re.sub(r"\[/?[^\]]*\]", "", msg))

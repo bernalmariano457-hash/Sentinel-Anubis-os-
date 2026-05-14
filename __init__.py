@@ -1,7 +1,7 @@
 import sys as _sys
 from pathlib import Path
 
-__version__ = "2.2"
+__version__ = "2.3"
 __author__ = "AnubisOS"
 __all__ = [
     "RFScanner",
