@@ -2,9 +2,14 @@
 
 > Un OS táctico para terminal que estoy construyendo para la ClockworkPi uConsole. Sin GUI, sin mouse. Solo Python, hardware RF y un teclado.
 
-![Python](https://img.shields.io/badge/Python-3.13-blue) ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Android%20%7C%20uConsole-green) ![Status](https://img.shields.io/badge/Status-In%20Development-orange) ![License](https://img.shields.io/badge/License-MIT-yellow)
 
----
+[![CI](https://github.com/bernalmariano457/Sentinel-Anubis-os/actions/workflows/ci.yml/badge.svg)](https://github.com/bernalmariano457/Sentinel-Anubis-os/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/TU_USUARIO/Sentinel-Anubis-os/branch/main/graph/badge.svg)](https://codecov.io/gh/bernalmariano457/Sentinel-Anubis-os)
+[![Python](https://img.shields.io/badge/Python-3.13-blue)](https://python.org)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Platform](https://img.shields.io/badge/Platform-uConsole%20%7C%20Kali%20%7C%20Termux-green)](https://github.com/bernalmariano457/Sentinel-Anubis-os)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+
 
 ## ¿Qué es esto?
 

@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"   # ejemplo: v2.3.0, v2.4.0-beta.1
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Crear Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # necesario para el changelog automático
+
+      - name: Configurar Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -e ".[dev]" --quiet
+
+      # Corre todos los tests antes de publicar — si fallan, cancela el release
+      - name: Tests de verificación pre-release
+        run: |
+          mkdir -p data/logs data/evidence/rf core/data/logs core/data/security
+          pytest \
+            test_sentinel.py tools/test_sentinel.py tools/test_rfscanner.py \
+            -m "not hardware and not root" \
+            -k "not RealHardware" \
+            -q --tb=short
+
+      # Extrae la versión del tag (quita la "v" inicial)
+      - name: Extraer versión
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # Genera el changelog automático desde los commits desde el tag anterior
+      - name: Generar changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [[ -n "$PREV_TAG" ]]; then
+            LOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          else
+            LOG=$(git log --pretty=format:"- %s (%h)" --no-merges | head -20)
+          fi
+          echo "CHANGELOG<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$LOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Crear GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Apex Sentinel v${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## Cambios en esta versión
+
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ---
+
+            **Instalación:**
+            ```bash
+            git clone https://github.com/bernalmariano457-hash/Sentinel-Anubis-os
+            cd Sentinel-Anubis-os
+            chmod +x install.sh && ./install.sh
+            ```
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
