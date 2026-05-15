@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+
 
 import numpy as np
 from rich.console import Console
@@ -39,12 +39,12 @@ except ImportError:
 class Aeronave:
     icao:       str                   # Código ICAO de 24 bits (hex)
     callsign:   str = ""             # Indicativo de vuelo
-    latitud:    Optional[float] = None
-    longitud:   Optional[float] = None
-    altitud_ft: Optional[int] = None
-    velocidad:  Optional[int] = None  # nudos
-    rumbo:      Optional[int] = None  # grados
-    squawk:     Optional[str] = None
+    latitud:    float | None = None
+    longitud:   float | None = None
+    altitud_ft: int | None = None
+    velocidad:  int | None = None  # nudos
+    rumbo:      int | None = None  # grados
+    squawk:     str | None = None
     msgs:       int = 0
     ultima_vez: float = field(default_factory=time.time)
 
@@ -54,7 +54,7 @@ class Aeronave:
         return (time.time() - self.ultima_vez) < 60
 
     @property
-    def posicion(self) -> Optional[str]:
+    def posicion(self) -> str | None:
         if self.latitud and self.longitud:
             return f"{self.latitud:.4f}°, {self.longitud:.4f}°"
         return None
@@ -127,7 +127,7 @@ def _extraer_callsign_basico(hex_str: str) -> str:
         return ""
 
 
-def _extraer_altitud_basico(hex_str: str) -> Optional[int]:
+def _extraer_altitud_basico(hex_str: str) -> int | None:
     try:
         data = bytes.fromhex(hex_str)
         tc = (data[4] >> 3) & 0x1F
@@ -149,7 +149,7 @@ class ADSBDecoder:
     TTL_AERONAVE = 60    # segundos sin mensaje para considerar fuera de rango
     MAX_AERONAVES = 50   # máximo en pantalla
 
-    def __init__(self, sentinel):
+    def __init__(self, sentinel) -> None:
         self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
         self._aeronaves: dict[str, Aeronave] = {}
@@ -160,7 +160,7 @@ class ADSBDecoder:
 
     # ── API pública ────────────────────────────────────────────────
 
-    def iniciar(self, duracion_seg: Optional[int] = None):
+    def iniciar(self, duracion_seg: int | None = None) -> None:
         if not self._verificar_hardware():
             return
 
@@ -205,7 +205,7 @@ class ADSBDecoder:
 
     # ── Captura y decodificación ───────────────────────────────────
 
-    def _bucle_captura(self, duracion: Optional[int], inicio: float):
+    def _bucle_captura(self, duracion: int | None, inicio: float) -> None:
         sdr = getattr(self.sentinel, "rf_scanner", None)
 
         if sdr is None or not hasattr(sdr, "_capturar"):
@@ -276,7 +276,7 @@ class ADSBDecoder:
         except Exception:
             return ""
 
-    def _procesar_mensaje(self, hex_str: str):
+    def _procesar_mensaje(self, hex_str: str) -> None:
         try:
             icao = _extraer_icao(hex_str)
             if not icao or icao == "??????":
@@ -299,7 +299,7 @@ class ADSBDecoder:
         except Exception as e:
             log.debug(f"Error procesando mensaje {hex_str}: {e}")
 
-    def _decodificar_pymodes(self, hex_str: str, aeronave: Aeronave):
+    def _decodificar_pymodes(self, hex_str: str, aeronave: Aeronave) -> None:
         try:
             df = pms.df(hex_str)
             if df == 17:
@@ -320,7 +320,7 @@ class ADSBDecoder:
         except Exception:
             pass
 
-    def _decodificar_basico(self, hex_str: str, aeronave: Aeronave):
+    def _decodificar_basico(self, hex_str: str, aeronave: Aeronave) -> None:
         if not aeronave.callsign:
             cs = _extraer_callsign_basico(hex_str)
             if cs:
@@ -332,7 +332,7 @@ class ADSBDecoder:
 
     # ── Demo sin hardware ──────────────────────────────────────────
 
-    def _modo_demo(self, duracion: Optional[int], inicio: float):
+    def _modo_demo(self, duracion: int | None, inicio: float) -> None:
         demos = [
             ("ABC123", "AMX001", 35000, 450, 270),
             ("DEF456", "UAL320", 28000, 480, 90),
@@ -418,7 +418,7 @@ class ADSBDecoder:
             border_style="cyan",
         )
 
-    def _mostrar_resumen(self):
+    def _mostrar_resumen(self) -> None:
         activas = self.aeronaves_activas()
         self.console.print(Panel(
             f"[bold green]Monitoreo ADS-B completado[/bold green]\n\n"

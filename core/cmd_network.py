@@ -16,7 +16,7 @@ class NetworkCommands(_DomainBase):
 
     # ── ARP Scan ──────────────────────────────────────────────────────
 
-    def scan(self):
+    def scan(self) -> None:
         s = self.s
         if s._ARP is None:
             self.console.print("[red][!] Scapy no disponible.[/red]")
@@ -54,7 +54,7 @@ class NetworkCommands(_DomainBase):
 
     # ── Port Scan ─────────────────────────────────────────────────────
 
-    def portscan(self):
+    def portscan(self) -> None:
         s = self.s
         objetivo = Validador.pedir_ip(
             self.console, f"\n{s.nombre} [TARGET IP]")
@@ -99,13 +99,13 @@ class NetworkCommands(_DomainBase):
 
     # ── Sweep / Sniff / AdvScan ───────────────────────────────────────
 
-    def sweep(self):
+    def sweep(self) -> None:
         if not self._modulo_ok("sweep"):
             return
         rango = Validador.pedir_rango(self.console)
         self.s.sweep.escanear_perimetro(rango)
 
-    def sniff(self):
+    def sniff(self) -> None:
         if not self._modulo_ok("sniffer"):
             return
         filtro = self.console.input(
@@ -113,7 +113,7 @@ class NetworkCommands(_DomainBase):
         segundos = Validador.pedir_segundos(self.console, default=30)
         self.s.sniffer.iniciar_captura(filtro=filtro, duracion=segundos)
 
-    def advscan(self):
+    def advscan(self) -> None:
         if not self._modulo_ok("adv_scanner"):
             return
         ip = Validador.pedir_ip(self.console, "[?] IP del objetivo")
@@ -122,7 +122,7 @@ class NetworkCommands(_DomainBase):
 
     # ── Radar ─────────────────────────────────────────────────────────
 
-    def radar(self):
+    def radar(self) -> None:
         s = self.s
         if not self._modulo_ok("radar") or not self._modulo_ok("geomap"):
             return
@@ -140,7 +140,7 @@ class NetworkCommands(_DomainBase):
 
     # ── Auditoría / Hydra ─────────────────────────────────────────────
 
-    def audit(self):
+    def audit(self) -> None:
         s = self.s
         if not self._modulo_ok("hydra") or not self._modulo_ok("dict_manager"):
             return
@@ -168,7 +168,7 @@ class NetworkCommands(_DomainBase):
 
     # ── Vuln Scan / SQL Check ─────────────────────────────────────────
 
-    def vulnscan(self):
+    def vulnscan(self) -> None:
         s = self.s
         if not self._modulo_ok("audit_engine"):
             return
@@ -187,7 +187,7 @@ class NetworkCommands(_DomainBase):
             s.log.warning(resultado.stderr[:200], "AuditEngine")
         s.log.audit(f"Vulnscan en {target}", "AuditEngine")
 
-    def sqlcheck(self):
+    def sqlcheck(self) -> None:
         s = self.s
         if not self._modulo_ok("audit_engine"):
             return

@@ -13,7 +13,7 @@ from collections import deque
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+
 
 import requests
 from rich import box
@@ -194,7 +194,7 @@ class GeoLocalizador:
     # FIX: HTTPS en lugar de HTTP
     _API = "https://ip-api.com/json/{ip}?fields=status,city,country,countryCode,lat,lon,org,isp,query"
 
-    def __init__(self, mmdb_path: Optional[str] = None):
+    def __init__(self, mmdb_path: str | None = None):
         self._cache:  dict[str, GeoIP] = {}
         self._lock = threading.Lock()
         self._bucket = TokenBucket(rate=45, per=60.0)
@@ -221,7 +221,7 @@ class GeoLocalizador:
         except ValueError:
             return False
 
-    def obtener(self, ip: str) -> Optional[GeoIP]:
+    def obtener(self, ip: str) -> GeoIP | None:
 
         with self._lock:
             cached = self._cache.get(ip)
@@ -265,7 +265,7 @@ class GeoLocalizador:
         except Exception:
             pass
 
-    def _fetch_local(self, ip: str) -> Optional[GeoIP]:
+    def _fetch_local(self, ip: str) -> GeoIP | None:
         """Geolocaliza con GeoLite2 local (0 ms de latencia, sin red)."""
         try:
             resp = self._reader.city(ip)  # type: ignore[union-attr]
@@ -651,7 +651,7 @@ class RadarSentinel:
         demo_mode: bool = False,
         modo: str = "dual",
         beep: bool = False,
-        mmdb_path: Optional[str] = None,
+        mmdb_path: str | None = None,
     ) -> None:
         self.interface = interface
         self.demo_mode = demo_mode or not _SCAPY_OK

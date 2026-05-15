@@ -6,7 +6,7 @@ from core.validators import Validador
 
 class RFCommands(_DomainBase):
 
-    def rfscan(self):
+    def rfscan(self) -> None:
         if not self._modulo_ok("rf"):
             return
         freq = Validador.pedir_frecuencia(self.console)
@@ -15,12 +15,12 @@ class RFCommands(_DomainBase):
                 self.console, "[?] Duración (segundos)", 1, 300, 10)
             self.s.rf.escanear_frecuencia(freq, duracion)
 
-    def rfmenu(self):
+    def rfmenu(self) -> None:
         if not self._modulo_ok("rf"):
             return
         self.s.rf.menu()
 
-    def rfbarrido(self):
+    def rfbarrido(self) -> None:
         if not self._modulo_ok("rf"):
             return
         ini = Validador.pedir_frecuencia(
@@ -38,27 +38,27 @@ class RFCommands(_DomainBase):
             paso = 1.0
         self.s.rf.barrido_espectro(ini, fin, paso)
 
-    def rfbandas(self):
+    def rfbandas(self) -> None:
         if not self._modulo_ok("rf"):
             return
         self.s.rf.escaneo_bandas_conocidas()
 
-    def rfdb(self):
+    def rfdb(self) -> None:
         if not self._modulo_ok("rf"):
             return
         self.s.rf.db_consultar()
 
-    def rfstats(self):
+    def rfstats(self) -> None:
         if not self._modulo_ok("rf"):
             return
         self.s.rf.db_estadisticas()
 
-    def rfestado(self):
+    def rfestado(self) -> None:
         if not self._modulo_ok("rf"):
             return
         self.s.rf.estado()
 
-    def radio(self):
+    def radio(self) -> None:
         if not self._modulo_ok("rf"):
             return
         freq = Validador.pedir_frecuencia(self.console, "[?] Frecuencia (MHz)")
@@ -128,7 +128,7 @@ class RFCommands(_DomainBase):
         except Exception as e:
             self.console.print(f"[red][!] Error: {e}[/red]")
 
-    def rfgrabar(self):
+    def rfgrabar(self) -> None:
         if not self._modulo_ok("rf"):
             return
         freq = Validador.pedir_frecuencia(
@@ -143,7 +143,7 @@ class RFCommands(_DomainBase):
         except ImportError:
             self.console.print("[red][!] rf_recorder.py no encontrado.[/red]")
 
-    def rfplay(self):
+    def rfplay(self) -> None:
         try:
             from modules.rf.rf_recorder import RFRecorder
             rec = RFRecorder(self.s)
@@ -161,7 +161,7 @@ class RFCommands(_DomainBase):
         except ImportError:
             self.console.print("[red][!] rf_recorder.py no encontrado.[/red]")
 
-    def adsb(self):
+    def adsb(self) -> None:
         """Monitor ADS-B — decodifica transponders de aeronaves en 1090 MHz."""
         duracion_s = self.console.input(
             "\n[bold cyan][?] Duración segundos (Enter = indefinido): [/bold cyan]"

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 import logging.handlers
 import sys
 from pathlib import Path
-from typing import Optional
+
 
 _RICH_OK = False
 try:
@@ -16,7 +18,7 @@ _ROOT_LOGGER = "rfscanner"
 
 def setup_logger(
     level:        str = "INFO",
-    log_file:     Optional[str] = None,
+    log_file:     str | None = None,
     max_bytes:    int = 5_242_880,
     backup_count: int = 3,
     rich:         bool = True,

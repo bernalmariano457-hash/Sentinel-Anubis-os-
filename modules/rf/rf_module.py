@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+
 
 from rich.console import Console
 from rich.panel import Panel
@@ -33,7 +33,7 @@ log = logging.getLogger("sentinel.rf.module")
 
 class RFModuleIntegrado:
 
-    def __init__(self, sentinel, config_path: Optional[str] = None):
+    def __init__(self, sentinel, config_path: str | None = None):
         self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
         self.gp               = getattr(sentinel, "gp",      None)
@@ -188,10 +188,10 @@ class RFModuleIntegrado:
             )
             self._scanner.escanear_frecuencia(freq, duracion_por_banda)
 
-    def db_consultar(self, freq_min: Optional[float] = None,
-                     freq_max: Optional[float] = None,
-                     snr_min:  Optional[float] = None,
-                     horas:    Optional[int]   = None):
+    def db_consultar(self, freq_min: float | None = None,
+                     freq_max: float | None = None,
+                     snr_min:  float | None = None,
+                     horas:    int | None   = None):
         try:
             resultados = self._db.consultar_senales(
                 freq_min=freq_min, freq_max=freq_max,

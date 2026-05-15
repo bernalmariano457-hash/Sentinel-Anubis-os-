@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+
 
 from rich import box
 from rich.console import Console
@@ -206,7 +206,7 @@ class SweepModule:
         timeout:   int = _ARP_TIMEOUT_DEFAULT,
         exportar:  bool = False,
         resolver:  bool = False,
-    ) -> Optional[ResultadoSweep]:
+    ) -> ResultadoSweep | None:
         if not _SCAPY_OK:
             self.console.print(
                 "[red][!] Scapy no disponible.[/red]\n"
@@ -260,7 +260,7 @@ class SweepModule:
 
     def _arp_scan(
         self, ip_rango: str, timeout: int
-    ) -> Optional[list[dict]]:
+    ) -> list[dict[str, Any]] | None:
         paquete = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip_rango)
 
         with Progress(
@@ -353,7 +353,7 @@ class SweepModule:
 
     # ── Exportación CSV ───────────────────────────────────────────────
 
-    def _exportar_csv(self, resultado: ResultadoSweep) -> Optional[Path]:
+    def _exportar_csv(self, resultado: ResultadoSweep) -> Path | None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         out = _EVIDENCE_DIR / f"sweep_{ts}.csv"
         try:

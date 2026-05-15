@@ -1,0 +1,47 @@
+# .pre-commit-config.yaml
+# Install: pip install pre-commit --break-system-packages && pre-commit install
+# Run now: pre-commit run --all-files
+
+repos:
+  # ── Formateo ────────────────────────────────────────────────────────
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3.13
+
+  # ── Imports ─────────────────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  # ── Linting rápido ──────────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args:
+          - "--select=E,F,W,I,UP"   # pycodestyle + pyflakes + isort + pyupgrade
+          - "--fix"
+          - "--ignore=E402"          # Module-level import not at top (Main.py legacy)
+
+  # ── Tipos: mypy ─────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        args: ["--config-file=mypy.ini"]
+        additional_dependencies:
+          - types-requests
+          - types-Pillow
+        exclude: "^(tools/|plugins/|test_)"
+
+  # ── Seguridad ───────────────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml"]
+        exclude: "^(tests?/|tools/)"

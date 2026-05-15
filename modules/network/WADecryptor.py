@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import zlib
 from Crypto.Cipher import AES

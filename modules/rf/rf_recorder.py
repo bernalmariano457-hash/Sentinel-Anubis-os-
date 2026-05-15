@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import json
 import logging
@@ -6,7 +7,7 @@ import time
 import wave
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+
 
 import numpy as np
 from rich.console import Console
@@ -23,7 +24,7 @@ _IQ_DIR = Path("data/evidence/rf/iq")
 
 class RFRecorder:
 
-    def __init__(self, sentinel):
+    def __init__(self, sentinel) -> None:
         self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
         _IQ_DIR.mkdir(parents=True, exist_ok=True)
@@ -35,9 +36,9 @@ class RFRecorder:
         freq_mhz: float,
         duracion_seg: int = 10,
         sample_rate: int = 2_048_000,
-        nombre: Optional[str] = None,
+        nombre: str | None = None,
         formato: str = "sigmf",
-    ) -> Optional[Path]:
+    ) -> Path | None:
         rf = getattr(self.sentinel, "rf_scanner", None)
         if rf is None:
             self.console.print("[red][!] rf_scanner no disponible.[/red]")
@@ -205,7 +206,7 @@ class RFRecorder:
         demod.stop_audio()
         self.console.print("[green][RF] Reproduccion completada.[/green]")
 
-    def listar(self):
+    def listar(self) -> None:
         archivos = sorted(
             list(_IQ_DIR.glob("*.iq")) + list(_IQ_DIR.glob("*.sigmf-data")),
             key=lambda f: f.stat().st_mtime,
@@ -258,7 +259,7 @@ class RFRecorder:
 
         self.console.print(tabla)
 
-    def eliminar(self, archivo: str):
+    def eliminar(self, archivo: str) -> None:
         ruta = (
             _IQ_DIR / archivo
             if not Path(archivo).is_absolute()
@@ -277,7 +278,7 @@ class RFRecorder:
     # ── Helpers privados ───────────────────────────────────────────
 
     def _escribir_meta_sigmf(self, ruta: Path, meta: dict,
-                              freq_mhz: float, sample_rate: int, ts: str):
+                              freq_mhz: float, sample_rate: int, ts: str) -> None:
         sigmf_meta = {
             "global": {
                 "core:datatype":       "cf32_le",
@@ -303,7 +304,7 @@ class RFRecorder:
         )
 
     def _registrar_en_db(self, freq_mhz: float, sample_rate: int,
-                          total_muestras: int, ruta: Path, meta: dict):
+                          total_muestras: int, ruta: Path, meta: dict) -> None:
         try:
             db = getattr(
                 getattr(self.sentinel, "rf_module", None), "_db", None

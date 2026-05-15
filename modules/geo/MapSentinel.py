@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import folium
 from flask import Flask, render_template_string
 import threading

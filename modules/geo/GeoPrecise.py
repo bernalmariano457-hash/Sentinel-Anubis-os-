@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+
 
 import requests
 from rich.panel import Panel
@@ -90,8 +90,7 @@ class GeoPrecise:
         self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
         self._google_key = os.getenv("GOOGLE_GEO_KEY", "")
-        self._cache: Optional[tuple[float, ResultadoGeo]
-                              ] = None   # (timestamp, resultado)
+        self._cache: tuple[float, ResultadoGeo] | None
         _RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # ── API pública ────────────────────────────────────────────────────
@@ -100,7 +99,7 @@ class GeoPrecise:
         self,
         redes: list[PuntoAcceso | dict],
         forzar: bool = False,
-    ) -> Optional[ResultadoGeo]:
+    ) -> ResultadoGeo | None:
         # Normalizar a PuntoAcceso
         puntos = self._normalizar(redes)
 
@@ -162,7 +161,7 @@ class GeoPrecise:
             border_style="green",
         ))
 
-    def exportar(self, r: ResultadoGeo, ruta: Optional[str] = None) -> Path:
+    def exportar(self, r: ResultadoGeo, ruta: str | None = None) -> Path:
 
         ts_safe = r.timestamp.replace(":", "-").replace(" ", "_")
         nombre = f"geo_{ts_safe}_{r.proveedor}.json"
@@ -178,7 +177,7 @@ class GeoPrecise:
 
     # ── Proveedores ────────────────────────────────────────────────────
 
-    def _consultar_mozilla(self, puntos: list[PuntoAcceso]) -> Optional[ResultadoGeo]:
+    def _consultar_mozilla(self, puntos: list[PuntoAcceso]) -> ResultadoGeo | None:
         payload = {"wifiAccessPoints": [p.to_dict() for p in puntos]}
         log.debug(f"Consultando Mozilla MLS con {len(puntos)} redes...")
         try:
@@ -204,7 +203,7 @@ class GeoPrecise:
             log.warning(f"Mozilla MLS: error de red — {e}")
         return None
 
-    def _consultar_google(self, puntos: list[PuntoAcceso]) -> Optional[ResultadoGeo]:
+    def _consultar_google(self, puntos: list[PuntoAcceso]) -> ResultadoGeo | None:
         if not self._google_key:
             return None
         url = _PROVEEDORES["google"].format(key=self._google_key)
@@ -229,7 +228,7 @@ class GeoPrecise:
             log.warning(f"Google Geolocation: error de red — {e}")
         return None
 
-    def _consultar_ipapi(self) -> Optional[ResultadoGeo]:
+    def _consultar_ipapi(self) -> ResultadoGeo | None:
         log.info("Usando fallback ip-api (geolocalización por IP)...")
         try:
             resp = requests.get(_PROVEEDORES["ipapi"], timeout=_TIMEOUT_SEG)

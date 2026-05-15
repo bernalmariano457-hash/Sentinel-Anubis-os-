@@ -9,7 +9,7 @@ from core._base import _DomainBase
 
 class OfensivoCommands(_DomainBase):
 
-    def phishing(self):
+    def phishing(self) -> None:
         s = self.s
         s._limpiar()
         self.console.print(
@@ -35,18 +35,18 @@ class OfensivoCommands(_DomainBase):
             self.console.print(f"[red]Error al lanzar: {e}[/red]")
             s.log.error(f"Phishing: {e}", "PhishingModule")
 
-    def ducky(self):
+    def ducky(self) -> None:
         if not self._modulo_ok("ducky"):
             return
         with self.s.ducky:
             self.s.ducky.ejecutar_payload()
 
-    def stealth(self):
+    def stealth(self) -> None:
         if not self._modulo_ok("stealth"):
             return
         self.s.stealth.verificar_identidad()
 
-    def panic(self):
+    def panic(self) -> None:
         if not self._modulo_ok("stealth"):
             return
         self.s.stealth.activar_panico()

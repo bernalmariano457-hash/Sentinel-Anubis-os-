@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # modules/forensics/db_extractor.py
 import subprocess
 import os

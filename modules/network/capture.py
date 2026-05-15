@@ -5,7 +5,7 @@ import signal
 import threading
 import time
 import logging
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 
@@ -41,7 +41,7 @@ class CaptureThread(threading.Thread):
 
         self._running = threading.Event()
         self._running.set()
-        self._error:     Optional[Exception] = None
+        self._error:     Exception | None = None
         self._samples_total = 0
         self._reads_ok = 0
         self._reads_fail = 0
@@ -53,7 +53,7 @@ class CaptureThread(threading.Thread):
         self._running.clear()
 
     @property
-    def last_error(self) -> Optional[Exception]:
+    def last_error(self) -> Exception | None:
         return self._error
 
     @property
@@ -138,7 +138,7 @@ class CapturePipeline:
         self._mgr = sdr_manager
         self._dsp = dsp_engine
         self._queue: queue.Queue = queue.Queue(maxsize=queue_maxsize)
-        self._capture: Optional[CaptureThread] = None
+        self._capture: CaptureThread | None = None
         self._callbacks: list[Callable] = []
         self._running = False
 
@@ -154,7 +154,7 @@ class CapturePipeline:
         freq_hz:    float,
         duration_s: float = 0,      # 0 = indefinido hasta stop()
         n_muestras: int = 524_288,
-        gain_db:    Optional[float] = None,
+        gain_db:    float | None = None,
     ) -> None:
 
         if self._running:

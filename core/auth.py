@@ -7,7 +7,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+
 
 from rich.console import Console
 from rich.panel import Panel
@@ -179,7 +179,7 @@ class _CredentialStore:
         self._config = config
         _CREDS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    def leer(self) -> Optional[str]:
+    def leer(self) -> str | None:
         # 1. Variable de entorno (máxima prioridad)
         env_hash = os.getenv("SENTINEL_PASSWORD_HASH")
         if env_hash:

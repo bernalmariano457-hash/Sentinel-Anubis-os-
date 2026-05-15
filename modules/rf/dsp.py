@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+
 
 import numpy as np
 
@@ -24,12 +24,12 @@ class Signal:
     snr_db:     float
     bw_khz:     float
     piso_dbm:   float
-    banda:      Optional[dict]
+    banda:      dict | None
     timestamp:  str
     kurtosis:   float = 0.0
     mod_hint:   str   = field(default="", init=True)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.mod_hint:
             self.mod_hint = self._estimar_mod()
 
@@ -75,7 +75,7 @@ class DSPEngine:
         "flattop":  13.33,
     }
 
-    def __init__(self, cfg: DspConfig, sample_rate: int):
+    def __init__(self, cfg: DspConfig, sample_rate: int) -> None:
         self.cfg         = cfg
         self.sample_rate = sample_rate
         self._window     = self._build_window(cfg.fft_size, cfg.window)

@@ -29,9 +29,9 @@ class Tarea:
     def __init__(
         self,
         nombre: str,
-        funcion: Callable,
+        funcion: Callable[..., Any],
         args: tuple = (),
-        kwargs: dict | None = None,
+        kwargs: dict[str, Any] | None = None,
         prioridad: int = 3,
     ):
         self.id = str(uuid.uuid4())[:8].upper()
@@ -103,9 +103,9 @@ class ColaTareas:
     def agregar(
         self,
         nombre: str,
-        funcion: Callable,
+        funcion: Callable[..., Any],
         args: tuple = (),
-        kwargs: dict | None = None,
+        kwargs: dict[str, Any] | None = None,
         autostart: bool = True,
         prioridad: int = 3,
     ) -> Tarea:

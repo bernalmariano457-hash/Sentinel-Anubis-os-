@@ -8,7 +8,7 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional, Iterator
+from typing import Iterator
 
 import numpy as np
 
@@ -80,16 +80,16 @@ SCHEMA_SQL = (
 
 class SignalDB:
 
-    def __init__(self, cfg: StorageConfig):
+    def __init__(self, cfg: StorageConfig) -> None:
         self.cfg      = cfg
         self.db_path  = cfg.db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock       = threading.Lock()
         self._local      = threading.local()
-        self._session_id: Optional[int] = None
+        self._session_id: int | None = None
         self._init_db()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         conn = sqlite3.connect(str(self.db_path))
         try:
             conn.executescript(SCHEMA_SQL)
@@ -141,7 +141,7 @@ class SignalDB:
         log.info("Sesion RF abierta — ID=%d", self._session_id)
         return self._session_id
 
-    def close_session(self):
+    def close_session(self) -> None:
         if not self._session_id:
             return
         with self._lock, self._connect() as conn:
@@ -216,7 +216,7 @@ class SignalDB:
             )
         return len(rows)
 
-    def get_signals(self, session_id: Optional[int] = None,
+    def get_signals(self, session_id: int | None = None,
                     freq_min: float = 0, freq_max: float = 99999,
                     snr_min: float = 0, limit: int = 1000) -> list[dict]:
         sid = session_id or self._session_id
@@ -232,7 +232,7 @@ class SignalDB:
             return [dict(row) for row in cur.fetchall()]
 
     def insert_sweep(self, freq_ini: float, freq_fin: float,
-                     paso: float, puntos: int, activas: int):
+                     paso: float, puntos: int, activas: int) -> None:
         with self._lock, self._connect() as conn:
             conn.execute(
                 "INSERT INTO sweeps "
@@ -244,7 +244,7 @@ class SignalDB:
 
     def register_iq(self, freq_mhz: float, duration_s: float,
                     sample_rate: int, hw_type: str, filename: str,
-                    size_mb: float, notes: str = ""):
+                    size_mb: float, notes: str = "") -> None:
         with self._lock, self._connect() as conn:
             conn.execute(
                 "INSERT INTO iq_recordings "
@@ -258,7 +258,7 @@ class SignalDB:
 
     # ── Mantenimiento ────────────────────────────────────────────────
 
-    def purge_old(self, retention_days: int):
+    def purge_old(self, retention_days: int) -> None:
         if retention_days <= 0:
             return
         cutoff = (datetime.now(timezone.utc)
@@ -300,7 +300,7 @@ class CSVExporter:
     ]
     SWEEP_FIELDS = ["freq_mhz", "pot_max", "piso", "snr", "banda"]
 
-    def __init__(self, cfg: StorageConfig):
+    def __init__(self, cfg: StorageConfig) -> None:
         self.path = cfg.csv_path
 
     def export_signals(self, signals: list, freq_mhz: float,
@@ -367,7 +367,7 @@ class SigMFWriter:
     SIGMF_VERSION  = "1.0.0"
     SIGMF_DATATYPE = "cf32_le"
 
-    def __init__(self, cfg: StorageConfig):
+    def __init__(self, cfg: StorageConfig) -> None:
         self.iq_path = cfg.iq_path
 
     def open(self, freq_hz: float, sample_rate: int,
@@ -380,7 +380,7 @@ class SigMFWriter:
 class SigMFRecording:
 
     def __init__(self, base_path: Path, freq_hz: float,
-                 sample_rate: int, hw_type: str, notes: str):
+                 sample_rate: int, hw_type: str, notes: str) -> None:
         self._base        = base_path
         self._data_path   = Path(str(base_path) + ".sigmf-data")
         self._meta_path   = Path(str(base_path) + ".sigmf-meta")
@@ -398,7 +398,7 @@ class SigMFRecording:
         log.info("Grabacion SigMF iniciada → %s", self._data_path.name)
         return self
 
-    def write(self, samples: np.ndarray):
+    def write(self, samples: np.ndarray) -> None:
         if self._file is None:
             raise RuntimeError("SigMFRecording no esta abierta")
         data = samples.astype(np.complex64)
@@ -406,7 +406,7 @@ class SigMFRecording:
         self._samples += len(samples)
 
     def annotate(self, sample_start: int, sample_count: int,
-                 label: str, comment: str = ""):
+                 label: str, comment: str = "") -> None:
         self._annotations.append({
             "core:sample_start": sample_start,
             "core:sample_count": sample_count,
@@ -414,7 +414,7 @@ class SigMFRecording:
             "core:comment":      comment,
         })
 
-    def __exit__(self, *_):
+    def __exit__(self, *_) -> None:
         if self._file:
             self._file.flush()
             self._file.close()
@@ -426,7 +426,7 @@ class SigMFRecording:
             self._samples, size_mb, self._data_path.name,
         )
 
-    def _write_meta(self):
+    def _write_meta(self) -> None:
         duration_s = self._samples / self._sample_rate if self._sample_rate else 0
         meta = {
             "global": {

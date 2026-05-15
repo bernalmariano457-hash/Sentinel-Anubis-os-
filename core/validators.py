@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from typing import Optional
+from typing import Any, Callable
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -45,9 +45,16 @@ class Validador:
             return False
 
     @classmethod
-    def pedir(cls, console: Console, prompt: str, validador=None,
-              error: str = "Valor inválido.", default=None,
-              password: bool = False, intentos: Optional[int] = None):
+    def pedir(
+        cls,
+        console: Console,
+        prompt: str,
+        validador: Callable[[str], bool] | None = None,
+        error: str = "Valor inválido.",
+        default: Any = None,
+        password: bool = False,
+        intentos: int | None = None,
+    ) -> Any:
         max_i = intentos or cls.MAX_INTENTOS
         prompt_fmt = f"\n[bold cyan]{prompt}[/bold cyan]"
         if default is not None:
@@ -67,7 +74,10 @@ class Validador:
                 restantes = max_i - i - 1
                 msg = f"  [red][!] {error}[/red]"
                 if restantes > 0:
-                    msg += f" [dim]({restantes} intento{'s' if restantes != 1 else ''} restante)[/dim]"
+                    msg += (
+                        f" [dim]({restantes} "
+                        f"intento{'s' if restantes != 1 else ''} restante)[/dim]"
+                    )
                 console.print(msg)
             except KeyboardInterrupt:
                 console.print("\n[yellow][!] Cancelado.[/yellow]")
@@ -75,37 +85,55 @@ class Validador:
         return default
 
     @classmethod
-    def pedir_ip(cls, console: Console, prompt: str = "[?] IP objetivo"):
+    def pedir_ip(
+        cls, console: Console, prompt: str = "[?] IP objetivo"
+    ) -> str | None:
         return cls.pedir(console, prompt, cls.es_ip, "IP inválida. Ej: 192.168.1.1")
 
     @classmethod
-    def pedir_rango(cls, console: Console, prompt: str = "[?] Rango de red",
-                    default: str = "192.168.1.0/24"):
+    def pedir_rango(
+        cls,
+        console: Console,
+        prompt: str = "[?] Rango de red",
+        default: str = "192.168.1.0/24",
+    ) -> str | None:
         return cls.pedir(console, prompt, cls.es_rango_cidr,
                          "CIDR inválido. Ej: 192.168.1.0/24", default=default)
 
     @classmethod
-    def pedir_url(cls, console: Console, prompt: str = "[?] URL objetivo"):
+    def pedir_url(
+        cls, console: Console, prompt: str = "[?] URL objetivo"
+    ) -> str | None:
         return cls.pedir(console, prompt, cls.es_url,
                          "URL inválida. Debe empezar con http:// o https://")
 
     @classmethod
-    def pedir_frecuencia(cls, console: Console, prompt: str = "[?] Frecuencia (MHz)"):
-        v = cls.pedir(console, prompt, cls.es_frecuencia,
-                      "Frecuencia inválida. Rango: 1.0 - 6000.0 MHz")
+    def pedir_frecuencia(
+        cls, console: Console, prompt: str = "[?] Frecuencia (MHz)"
+    ) -> float | None:
+        v: str | None = cls.pedir(
+            console, prompt, cls.es_frecuencia,
+            "Frecuencia inválida. Rango: 1.0 - 6000.0 MHz",
+        )
         return float(v) if v else None
 
     @classmethod
-    def pedir_segundos(cls, console: Console, prompt: str = "[?] Duración (segundos)",
-                       minimo: int = 1, maximo: int = 300,
-                       default: int = 30) -> int:
-        def validar(v):
+    def pedir_segundos(
+        cls,
+        console: Console,
+        prompt: str = "[?] Duración (segundos)",
+        minimo: int = 1,
+        maximo: int = 300,
+        default: int = 30,
+    ) -> int:
+        def validar(v: str) -> bool:
             try:
                 return minimo <= int(v) <= maximo
             except ValueError:
                 return False
+
         v = cls.pedir(
             console, f"{prompt} [{minimo}-{maximo}]", validar,
-            f"Número entre {minimo} y {maximo}.", default=str(default)
+            f"Número entre {minimo} y {maximo}.", default=str(default),
         )
         return int(v) if v else default

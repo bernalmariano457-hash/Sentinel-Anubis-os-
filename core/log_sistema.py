@@ -9,7 +9,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from rich import box
 from rich.console import Console
@@ -97,8 +97,8 @@ class LogSistema:
     def __init__(
         self,
         console: Console,
-        base_dir: Optional[Path] = None,
-        session_id: Optional[str] = None,
+        base_dir: Path | None = None,
+        session_id: str | None = None,
     ) -> None:
         # ── Rutas absolutas ──────────────────────────────────────────
         self._base = (base_dir or Path(
@@ -356,8 +356,8 @@ class LogSistema:
     def mostrar_historial(
         self,
         ultimas: int = 50,
-        nivel: Optional[str] = None,
-        modulo: Optional[str] = None,
+        nivel: str | None = None,
+        modulo: str | None = None,
     ) -> None:
         """
         Muestra las últimas `ultimas` entradas, con filtros opcionales
@@ -449,7 +449,7 @@ class LogSistema:
             box=box.HEAVY_EDGE,
         ))
 
-    def exportar_jsonl(self, destino: Optional[Path] = None) -> Path:
+    def exportar_jsonl(self, destino: Path | None = None) -> Path:
         """
         Exporta todos los eventos de la sesión actual a un archivo
         JSONL (JSON Lines). Ideal para ingestar en ELK/Splunk/Graylog.

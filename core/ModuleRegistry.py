@@ -9,19 +9,22 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from Main import ApexSentinel
 
 
 @dataclass
 class ModuleSpec:
-    attr:           str    # atributo en el sentinel (self.radar, self.rf…)
-    cls_name:       str    # nombre de la clase
-    module_path:    str    # ruta Python: "modules.network.RadarSentinel"
-    needs_sentinel: bool = True   # True → Cls(sentinel) | False → Cls()
-    display_name:   str  = ""     # nombre en bootscreen
+    attr:           str          # atributo en el sentinel (self.radar, self.rf…)
+    cls_name:       str          # nombre de la clase
+    module_path:    str          # ruta Python: "modules.network.RadarSentinel"
+    needs_sentinel: bool = True  # True → Cls(sentinel) | False → Cls()
+    display_name:   str  = ""    # nombre en bootscreen
     critico:        bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.display_name:
             self.display_name = self.cls_name
 
@@ -101,7 +104,7 @@ class ModuleRegistry:
     como atributos en el sentinel.
     """
 
-    def __init__(self, sentinel):
+    def __init__(self, sentinel: ApexSentinel) -> None:
         self._sentinel = sentinel
         self._log = getattr(sentinel, "log", None)
         self._resultados: dict[str, tuple[bool, ModuleSpec]] = {}
@@ -115,10 +118,10 @@ class ModuleRegistry:
             self._log.warning(msg, "Registry")
 
     @staticmethod
-    def _importar(module_path: str, cls_name: str):
+    def _importar(module_path: str, cls_name: str) -> type[Any] | None:
         try:
             mod = importlib.import_module(module_path)
-            return getattr(mod, cls_name, None)
+            return getattr(mod, cls_name, None)  # type: ignore[no-any-return]
         except Exception:
             return None
 
@@ -250,7 +253,8 @@ class ModuleRegistry:
         # 4. MotorReportes (depende de gp)
         ok = self._cargar_motor_rep()
         resultados["motor_rep"] = ok
-        mr_spec = ModuleSpec("motor_rep", "MotorReportes", "modules.reporte.MotorReportes",
+        mr_spec = ModuleSpec("motor_rep", "MotorReportes",
+                             "modules.reporte.MotorReportes",
                              display_name="MotorReportes")
         self._resultados["motor_rep"] = (ok, mr_spec)
 
@@ -268,7 +272,7 @@ class ModuleRegistry:
     def estados(self) -> dict[str, bool]:
         """Para el bootscreen: {display_name: bool}"""
         return {spec.display_name: ok
-                for attr, (ok, spec) in self._resultados.items()}
+                for _attr, (ok, spec) in self._resultados.items()}
 
     def disponible(self, attr: str) -> bool:
         return getattr(self._sentinel, attr, None) is not None

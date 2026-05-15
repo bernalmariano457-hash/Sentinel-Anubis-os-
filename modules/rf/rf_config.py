@@ -4,7 +4,7 @@ import logging
 import os
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional
+
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class HardwareConfig:
     bias_tee:       bool  = False
     agc:            bool  = False
 
-    def validate(self):
+    def validate(self) -> None:
         if not (0 <= self.device_index <= 7):
             raise ValueError(f"device_index fuera de rango: {self.device_index}")
         if not (-200 <= self.ppm_correction <= 200):
@@ -104,7 +104,7 @@ class DspConfig:
     dc_spike_remove:  bool  = True
     welch_overlap:    float = 0.5
 
-    def validate(self):
+    def validate(self) -> None:
         if self.fft_size not in _VALID_FFT:
             raise ValueError(f"fft_size debe ser potencia de 2: {self.fft_size}")
         if self.window not in _VALID_WINDOWS:
@@ -123,7 +123,7 @@ class DemodConfig:
     save_audio: bool  = False
     squelch_db: float = 0.0
 
-    def validate(self):
+    def validate(self) -> None:
         if self.mode not in _VALID_MODES:
             raise ValueError(f"modo demodulacion desconocido: {self.mode}")
         if not (0.0 <= self.volume <= 1.0):
@@ -190,7 +190,7 @@ class RFConfig:
 # CARGADOR
 # ════════════════════════════════════════════════════════════════════
 
-def load_config(path: Optional[str] = None) -> RFConfig:
+def load_config(path: str | None = None) -> RFConfig:
     cfg_path = Path(path) if path else _find_config()
 
     raw: dict = {}
@@ -289,7 +289,7 @@ def load_config(path: Optional[str] = None) -> RFConfig:
     return cfg
 
 
-def _find_config() -> Optional[Path]:
+def _find_config() -> Path | None:
     candidates = [
         Path("config.toml"),
         Path("rfscanner/config.toml"),

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from __future__ import annotations
+
 import logging
 import os
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+
 
 import numpy as np
 
@@ -109,7 +111,7 @@ class SDRManager:
     def __init__(self, hw_cfg):
         self._cfg = hw_cfg
         self._sdr = None
-        self._hw_tipo:    Optional[str] = None
+        self._hw_tipo:    str | None = None
         self._hw_info:    dict = {}
         self._lock = threading.Lock()
         self._sample_rate: float = float(hw_cfg.__class__.__dict__.get(
@@ -335,7 +337,7 @@ class SDRManager:
         return self._connected
 
     @property
-    def hw_tipo(self) -> Optional[str]:
+    def hw_tipo(self) -> str | None:
         return self._hw_tipo
 
     @property

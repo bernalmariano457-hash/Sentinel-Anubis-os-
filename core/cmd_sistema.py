@@ -7,7 +7,7 @@ from core._base import _DomainBase
 
 class SistemaCommands(_DomainBase):
 
-    def proyecto(self, args: list):
+    def proyecto(self, args: list) -> None:
         if not self._modulo_ok("gp"):
             return
         sub = args[0] if args else ""
@@ -27,7 +27,7 @@ class SistemaCommands(_DomainBase):
                 "[dim]Subcomandos: [bold white]nuevo | cargar | lista | estado | cerrar"
                 "[/bold white][/dim]")
 
-    def reporte(self, args: list):
+    def reporte(self, args: list) -> None:
         if not self._modulo_ok("motor_rep"):
             return
         sub = args[0] if args else ""
@@ -38,7 +38,7 @@ class SistemaCommands(_DomainBase):
         else:
             self.s.motor_rep.generar_reporte_completo()
 
-    def jobs(self, args: list):
+    def jobs(self, args: list) -> None:
         if not self._modulo_ok("cola"):
             return
         sub = args[0] if args else ""
@@ -51,7 +51,7 @@ class SistemaCommands(_DomainBase):
         else:
             self.s.cola.listar()
 
-    def plugins(self, args: list):
+    def plugins(self, args: list) -> None:
         s = self.s
         if not self._modulo_ok("plugins"):
             return

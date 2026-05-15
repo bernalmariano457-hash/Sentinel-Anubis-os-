@@ -8,7 +8,7 @@ import sys
 import tempfile
 import wave
 from pathlib import Path
-from typing import Optional
+
 
 import numpy as np
 
@@ -75,7 +75,7 @@ except ImportError:
 
 class Demodulator:
 
-    def __init__(self, cfg: DemodConfig, sample_rate: int):
+    def __init__(self, cfg: DemodConfig, sample_rate: int) -> None:
         self.cfg         = cfg
         self.sample_rate = sample_rate
         self._prev_phase = 0.0
@@ -101,7 +101,7 @@ class Demodulator:
 
     # ── API pública ────────────────────────────────────────────────
 
-    def demodulate(self, iq: np.ndarray) -> Optional[np.ndarray]:
+    def demodulate(self, iq: np.ndarray) -> np.ndarray | None:
         mode = self.cfg.mode.lower()
         if mode == "none":
             return None
@@ -143,7 +143,7 @@ class Demodulator:
                  len(audio) / self.audio_rate_actual)
         return dest
 
-    def stop_audio(self):
+    def stop_audio(self) -> None:
         if self._pa_stream:
             try:
                 self._pa_stream.stop_stream()
@@ -306,5 +306,5 @@ class Demodulator:
             log.error("pyaudio error: %s", e)
             return False
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.stop_audio()

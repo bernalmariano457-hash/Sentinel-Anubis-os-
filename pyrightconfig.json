@@ -1,16 +1,28 @@
 {
     "pythonVersion": "3.13",
-    "include": [
-        "."
+    "include": ["."],
+    "exclude": [
+        "**/__pycache__",
+        "tools/test_*.py",
+        "test_sentinel.py",
+        "plugins/ejemplo_plugin.py"
     ],
-    "extraPaths": [
-        ".",
-        "./test_"
-    ],
+    "extraPaths": ["."],
+    "typeCheckingMode": "strict",
+
     "reportMissingImports": "warning",
     "reportMissingModuleSource": "none",
-    "reportAttributeAccessIssue": "none",
-    "reportOptionalMemberAccess": "warning",
-    "reportPossiblyUnbound": "warning",
-    "typeCheckingMode": "basic"
+
+    "reportUnknownVariableType":    "none",
+    "reportUnknownMemberType":      "none",
+    "reportUnknownParameterType":   "none",
+    "reportUnknownArgumentType":    "none",
+    "reportUnknownLambdaType":      "none",
+
+    "reportAttributeAccessIssue":   "none",
+    "reportOptionalMemberAccess":   "warning",
+    "reportPossiblyUnbound":        "warning",
+
+    "reportMissingTypeArgument":    "warning",
+    "reportUntypedFunctionDecorator": "none"
 }

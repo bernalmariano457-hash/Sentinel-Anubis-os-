@@ -8,7 +8,7 @@ from core.validators import Validador
 
 class WirelessCommands(_DomainBase):
 
-    def wifi(self):
+    def wifi(self) -> None:
         s = self.s
         if not self._modulo_ok("bt"):
             return
@@ -27,7 +27,7 @@ class WirelessCommands(_DomainBase):
             if mac_vic and mac_ap:
                 s.bt.deauth(mac_vic, mac_ap)
 
-    def eviltwin(self):
+    def eviltwin(self) -> None:
         s = self.s
         if not self._modulo_ok("wifi_attack"):
             return

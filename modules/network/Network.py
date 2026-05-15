@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from scapy.all import ARP, Ether, srp
 
 class NetworkModule:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import logging
 import sqlite3
@@ -6,7 +7,7 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+
 
 log = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ SCHEMA_VERSION = 3
 
 class RFDatabase:
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
@@ -42,7 +43,7 @@ class RFDatabase:
         return self._local.conn
 
     @contextmanager
-    def _tx(self):
+    def _tx(self) -> None:
         conn = self._conn()
         conn.execute("BEGIN IMMEDIATE")
         try:
@@ -54,7 +55,7 @@ class RFDatabase:
 
     # ── Esquema ───────────────────────────────────────────────────────
 
-    def _schema_init(self):
+    def _schema_init(self) -> None:
         ddl = [
             """CREATE TABLE IF NOT EXISTS schema_version (
                 id      INTEGER PRIMARY KEY CHECK (id = 1),
@@ -127,7 +128,7 @@ class RFDatabase:
             )
             return cur.lastrowid
 
-    def finalizar_escaneo(self, escaneo_id: int, duracion_s: float):
+    def finalizar_escaneo(self, escaneo_id: int, duracion_s: float) -> None:
         with self._tx() as db:
             db.execute(
                 "UPDATE escaneos SET duracion_s=?, "
@@ -136,7 +137,7 @@ class RFDatabase:
                 (duracion_s, escaneo_id, escaneo_id)
             )
 
-    def insertar_senal(self, pico: dict, escaneo_id: Optional[int] = None):
+    def insertar_senal(self, pico: dict[str, Any], escaneo_id: int | None = None) -> None:
         banda = pico.get("banda")
         with self._tx() as db:
             db.execute(
@@ -160,8 +161,8 @@ class RFDatabase:
                 )
             )
 
-    def insertar_senales_bulk(self, picos: list,
-                               escaneo_id: Optional[int] = None):
+    def insertar_senales_bulk(self, picos: list[dict[str, Any]],
+                               escaneo_id: int | None = None) -> None:
         if not picos:
             return
         ts_now = datetime.now(timezone.utc).isoformat()
@@ -188,7 +189,7 @@ class RFDatabase:
             )
 
     def insertar_barrido(self, freq_ini: float, freq_fin: float,
-                          paso_mhz: float, hardware: str, resultados: list):
+                          paso_mhz: float, hardware: str, resultados: list) -> None:
         import json
         datos = [
             {
@@ -215,12 +216,12 @@ class RFDatabase:
     # ── Consultas ────────────────────────────────────────────────────
 
     def consultar_senales(self,
-                          freq_min: Optional[float] = None,
-                          freq_max: Optional[float] = None,
-                          snr_min:  Optional[float] = None,
-                          banda:    Optional[str]   = None,
-                          horas:    Optional[int]   = None,
-                          limit:    int = 200) -> list[dict]:
+                          freq_min: float | None = None,
+                          freq_max: float | None = None,
+                          snr_min:  float | None = None,
+                          banda:    str | None   = None,
+                          horas:    int | None   = None,
+                          limit:    int = 200) -> list[dict[str, Any]]:
         condiciones: list[str] = []
         params:      list      = []
 
@@ -274,7 +275,7 @@ class RFDatabase:
 
         return {**dict(row), "escaneos": escaneos, "barridos": barridos}
 
-    def top_senales(self, n: int = 10) -> list[dict]:
+    def top_senales(self, n: int = 10) -> list[dict[str, Any]]:
         rows = self._conn().execute(
             "SELECT freq_mhz, potencia, snr_db, bw_khz, kurtosis, "
             "mod_hint, banda, timestamp FROM senales "
@@ -284,7 +285,7 @@ class RFDatabase:
         return [dict(r) for r in rows]
 
     def frecuencias_activas(self, snr_min: float = 10.0,
-                            horas: int = 24) -> list[dict]:
+                            horas: int = 24) -> list[dict[str, Any]]:
         desde = (datetime.now(timezone.utc)
                  - timedelta(hours=horas)).isoformat()
         rows  = self._conn().execute("""
@@ -305,7 +306,7 @@ class RFDatabase:
 
     # ── Mantenimiento ────────────────────────────────────────────────
 
-    def limpiar_antiguas(self, dias: int):
+    def limpiar_antiguas(self, dias: int) -> None:
         if dias <= 0:
             return
         limite = (datetime.now(timezone.utc)
@@ -321,8 +322,8 @@ class RFDatabase:
         self._conn().execute("VACUUM")
 
     def exportar_csv(self, ruta: Path,
-                     freq_min: Optional[float] = None,
-                     freq_max: Optional[float] = None):
+                     freq_min: float | None = None,
+                     freq_max: float | None = None) -> None:
         import csv
         senales = self.consultar_senales(
             freq_min=freq_min, freq_max=freq_max, limit=100_000
@@ -343,7 +344,7 @@ class RFDatabase:
 
     # ── Cierre ───────────────────────────────────────────────────────
 
-    def cerrar(self):
+    def cerrar(self) -> None:
         conn = getattr(self._local, "conn", None)
         if conn:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -351,8 +352,8 @@ class RFDatabase:
             self._local.conn = None
             log.debug("RFDatabase cerrada")
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, *_) -> None:
         self.cerrar()

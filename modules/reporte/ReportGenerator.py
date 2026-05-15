@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fpdf import FPDF
 from datetime import datetime
 import os

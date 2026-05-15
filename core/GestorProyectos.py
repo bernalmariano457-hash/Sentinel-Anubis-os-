@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Any
+
 import os
 import json
 import time
@@ -29,7 +32,7 @@ class Proyecto:
         self.hallazgos: list[dict] = []
         self.ruta = os.path.join(PROYECTOS_PATH, f"{self.id}_{nombre}")
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id":         self.id,
             "nombre":     self.nombre,
@@ -45,7 +48,7 @@ class Proyecto:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Proyecto":
+    def from_dict(cls, d: dict[str, Any]) -> "Proyecto":
         p = cls.__new__(cls)
         p.id = d["id"]
         p.nombre = d["nombre"]

@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import os
 import copy
 import logging
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
@@ -100,14 +102,14 @@ class Config:
         Path(__file__).parent.parent / "config_default.toml",
     ]
 
-    def __init__(self, path: Optional[str] = None):
+    def __init__(self, path: str | None = None):
         self.hardware = HardwareConfig()
         self.dsp = DspConfig()
         self.demod = DemodConfig()
         self.storage = StorageConfig()
         self.ui = UiConfig()
         self.logging = LoggingConfig()
-        self._path: Optional[Path] = None
+        self._path: Path | None = None
 
         if path:
             self._path = Path(path)
@@ -123,7 +125,7 @@ class Config:
 
     # ── Carga ───────────────────────────────────────────────────────
 
-    def _load(self, path: Path):
+    def _load(self, path: Path) -> None:
         if _TOML_READ is None:
             log.warning(
                 "tomllib/tomli no disponible — install: pip install tomli tomli-w")
@@ -138,7 +140,7 @@ class Config:
         except Exception as e:
             log.error(f"Error leyendo config {path}: {e}")
 
-    def _apply(self, data: dict):
+    def _apply(self, data: dict[str, Any]) -> None:
         """Aplica un dict TOML sobre los dataclasses, ignorando claves desconocidas."""
         def merge(dc, section: dict):
             for k, v in section.items():
@@ -159,7 +161,7 @@ class Config:
 
     # ── Guardado ────────────────────────────────────────────────────
 
-    def save(self, path: Optional[str] = None):
+    def save(self, path: str | None = None):
         """Guarda la configuración actual en TOML."""
         target = Path(path) if path else self._path
         if target is None:
@@ -187,7 +189,7 @@ class Config:
         except Exception as e:
             log.error(f"Error guardando config: {e}")
 
-    def _save_manual(self, target: Path):
+    def _save_manual(self, target: Path) -> None:
         """Escritura TOML manual sin dependencias (solo tipos básicos)."""
         lines = []
 

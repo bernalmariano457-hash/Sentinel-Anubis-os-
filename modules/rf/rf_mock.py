@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+
 
 import numpy as np
 
@@ -139,7 +139,7 @@ class MockSDRManager:
         self.sample_rate    = sample_rate
         self.noise_floor    = noise_floor_dbm
         self._signals:      list[SyntheticSignal] = []
-        self._iq_data:      Optional[np.ndarray]  = None
+        self._iq_data:      np.ndarray | None  = None
         self._iq_pos:       int   = 0
         self._current_freq: float = 0.0
         self._t_offset:     float = 0.0
@@ -205,7 +205,7 @@ class MockSDRManager:
         )
 
     def capture(self, freq_hz: float,
-                n_samples: Optional[int] = None) -> np.ndarray:
+                n_samples: int | None = None) -> np.ndarray:
         if n_samples is None:
             n_samples = getattr(self.cfg, "samples_per_read", 524_288)
 

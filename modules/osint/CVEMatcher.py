@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 import requests
 from rich.console import Console

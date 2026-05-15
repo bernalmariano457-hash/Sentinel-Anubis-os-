@@ -1,0 +1,176 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ══════════════════════════════════════════════════════════════════════
+#  APEX SENTINEL — pyproject.toml
+#  Reemplaza requirements.txt + setup.py + setup.cfg en un solo archivo
+# ══════════════════════════════════════════════════════════════════════
+
+[project]
+name = "sentinel-anubis-os"
+version = "2.3.0"
+description = "Tactical terminal OS for field security operations — uConsole / Kali / Termux"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "AnubisOS", url = "https://github.com/bernalmariano457-hash/Sentinel-Anubis-os" }]
+requires-python = ">=3.13"
+
+# ── Dependencias base (siempre requeridas) ─────────────────────────
+dependencies = [
+    "rich>=13.7,<14",             # UI de terminal — pin de major porque cambia API
+    "python-dotenv>=1.0,<2",      # Variables de entorno
+    "requests>=2.31,<3",          # HTTP (OUI lookup, OSINT)
+    "bcrypt>=4.1,<5",             # Hashing de contraseñas
+    "cryptography>=42,<43",       # Fernet — cifrado de evidencias
+    "Pillow>=10.2,<12",           # Análisis EXIF
+    "python-whois>=0.9,<1",       # WHOIS lookups
+    # tomllib está en stdlib desde Python 3.11 — ya no necesitamos el paquete
+]
+
+# ── Extras opcionales por plataforma / hardware ────────────────────
+[project.optional-dependencies]
+
+# Red — no disponible en Termux/Android
+network = [
+    "scapy>=2.5,<3",
+    "netifaces>=0.11,<1",
+]
+
+# RF / SDR — hardware RTL-SDR
+rtlsdr = [
+    "pyrtlsdr>=0.3,<1",
+    "numpy>=1.26,<3",
+    "scipy>=1.12,<2",
+    "sounddevice>=0.4,<1",
+]
+
+# RF / SDR — hardware HackRF, LimeSDR (instalar SoapySDR desde el sistema)
+hackrf = [
+    "numpy>=1.26,<3",
+    "scipy>=1.12,<2",
+    "sounddevice>=0.4,<1",
+    # SoapySDR no está en PyPI — instalar: sudo apt install python3-soapysdr
+]
+
+# ADS-B — decodificación Mode S avanzada
+adsb = [
+    "pyModeS>=2.12,<3",
+]
+
+# uConsole — todo lo necesario para la consola física
+uconsole = [
+    "sentinel-anubis-os[network,rtlsdr,adsb]",
+]
+
+# Termux/Android — solo lo que funciona sin root
+termux = [
+    "sentinel-anubis-os[rtlsdr]",
+    # scapy y netifaces NO se incluyen — requieren root en Android
+]
+
+# Desarrollo — linters, tests, type checker
+dev = [
+    "pytest>=8,<9",
+    "pytest-cov>=5,<6",
+    "pytest-mock>=3.14,<4",
+    "pyright>=1.1.390,<2",
+    "ruff>=0.4,<1",
+]
+
+# Todo incluido (para desarrollo local completo)
+all = [
+    "sentinel-anubis-os[network,rtlsdr,adsb,dev]",
+]
+
+# ── Entry point ────────────────────────────────────────────────────
+[project.scripts]
+sentinel = "Main:main"   # requiere añadir main() en Main.py — ver nota abajo
+
+# ══════════════════════════════════════════════════════════════════════
+#  HATCH — build config
+# ══════════════════════════════════════════════════════════════════════
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "modules", "plugins", "tools"]
+exclude = [
+    "__pycache__",
+    "**/__pycache__",
+    "**/*.pyc",
+    "data/",
+    "*.key",
+    "*.bak",
+]
+
+# ══════════════════════════════════════════════════════════════════════
+#  RUFF — linter y formatter
+# ══════════════════════════════════════════════════════════════════════
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["."]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade — moderniza sintaxis automáticamente
+    "B",    # flake8-bugbear — bugs comunes
+    "SIM",  # flake8-simplify
+    "RUF",  # reglas propias de Ruff
+]
+ignore = [
+    "E501",   # líneas largas — manejado por el formatter
+    "B008",   # llamadas en defaults de función — necesario en algunos patrones
+    "SIM108", # ternary operator — a veces reduce legibilidad
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "modules", "plugins", "tools"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ══════════════════════════════════════════════════════════════════════
+#  PYTEST
+# ══════════════════════════════════════════════════════════════════════
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]           # carpeta dedicada (ver nota abajo)
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--tb=short",
+    "--strict-markers",
+    "-q",
+]
+markers = [
+    "slow: tests que tardan más de 1s (requieren hardware o red)",
+    "hardware: requieren RTL-SDR físico",
+    "root: requieren privilegios de root",
+]
+
+[tool.coverage.run]
+source = ["core", "modules"]
+omit = [
+    "**/__pycache__/**",
+    "**/test_*.py",
+    "tools/**",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 60          # umbral mínimo — subir a 80 cuando haya más tests
+
+# ══════════════════════════════════════════════════════════════════════
+#  PYRIGHT — type checker
+# ══════════════════════════════════════════════════════════════════════
+#  Nota: pyrightconfig.json tiene precedencia sobre esta sección.
+#  Mantenemos la config de pyright en pyrightconfig.json para que
+#  los editores (VS Code, Neovim) la detecten automáticamente.

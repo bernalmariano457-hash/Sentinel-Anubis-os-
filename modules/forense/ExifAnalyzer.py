@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import piexif
 from rich.panel import Panel
 from datetime import datetime

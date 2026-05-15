@@ -14,7 +14,7 @@ from core._base import _DomainBase
 
 class GeneralCommands(_DomainBase):
 
-    def status(self):
+    def status(self) -> None:
         from rich.panel import Panel
         s = self.s
         proy = s.gp.proyecto_activo.nombre if s.gp and s.gp.proyecto_activo else "Ninguno"
@@ -30,7 +30,7 @@ class GeneralCommands(_DomainBase):
             title="STATUS", border_style="cyan"
         ))
 
-    def files(self):
+    def files(self) -> None:
         s = self.s
         s.animar_barra("EXPLORANDO DIRECTORIO LOCAL...")
         tabla = Table(header_style="bold cyan",

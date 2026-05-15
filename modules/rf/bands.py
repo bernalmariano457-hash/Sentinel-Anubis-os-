@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -167,7 +167,7 @@ TACTICAL_SCORE: dict[str, int] = {
 # FUNCIONES DE CLASIFICACIÓN
 # ════════════════════════════════════════════════════════════════════
 
-def identify_band(freq_mhz: float) -> Optional[dict]:
+def identify_band(freq_mhz: float) -> dict | None:
     candidates = []
     for fmin, fmax, nombre, tipo, desc, peligro in BANDAS_RF:
         if fmin <= freq_mhz <= fmax:

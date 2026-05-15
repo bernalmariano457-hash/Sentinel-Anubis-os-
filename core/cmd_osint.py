@@ -6,7 +6,7 @@ from core.validators import Validador
 
 class OsintCommands(_DomainBase):
 
-    def locate(self):
+    def locate(self) -> None:
         s = self.s
         if not self._modulo_ok("locator"):
             return
@@ -15,7 +15,7 @@ class OsintCommands(_DomainBase):
             s.locator.rastrear_ip(ip)
             s.log.info(f"Locate en {ip}", "LocatorModule")
 
-    def locate_p(self):
+    def locate_p(self) -> None:
         s = self.s
         # FIX typo: geopreciose → geoprecise
         if not self._modulo_ok("adv_scanner") or not self._modulo_ok("geoprecise"):
@@ -23,7 +23,7 @@ class OsintCommands(_DomainBase):
         redes = s.adv_scanner.obtener_redes_formateadas()
         s.geoprecise.triangular_posicion(redes)
 
-    def geofoto(self):
+    def geofoto(self) -> None:
         if not self._modulo_ok("exif"):
             return
         ruta = (self.console.input("[bold cyan]Ruta de imagen: [/bold cyan]")
@@ -31,12 +31,12 @@ class OsintCommands(_DomainBase):
         if ruta:
             self.s.exif.analizar_foto(ruta)
 
-    def osint(self):
+    def osint(self) -> None:
         if not self._modulo_ok("osint"):
             return
         self.s.osint.menu()
 
-    def cve(self):
+    def cve(self) -> None:
         if not self._modulo_ok("cve"):
             return
         self.s.cve.busqueda_libre()

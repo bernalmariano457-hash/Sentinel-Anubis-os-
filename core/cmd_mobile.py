@@ -12,7 +12,7 @@ class MobileCommands(_DomainBase):
 
     # ── Triage básico ─────────────────────────────────────────────────
 
-    def mobile(self):
+    def mobile(self) -> None:
         s = self.s
         if not self._modulo_ok("mobile"):
             return
@@ -48,7 +48,7 @@ class MobileCommands(_DomainBase):
 
     # ── Extracción profunda ───────────────────────────────────────────
 
-    def mobile_deep(self):
+    def mobile_deep(self) -> None:
         s = self.s
         path = "./data/evidence/mobile/Deep_Extraction/"
         os.makedirs(path, exist_ok=True)
@@ -106,7 +106,7 @@ class MobileCommands(_DomainBase):
 
     # ── Lector forense ────────────────────────────────────────────────
 
-    def view(self):
+    def view(self) -> None:
         s = self.s
         if not self._modulo_ok("reader"):
             return

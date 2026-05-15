@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import logging
 import logging.handlers
@@ -8,7 +9,7 @@ import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+
 
 import numpy as np
 from rich import box
@@ -37,7 +38,7 @@ log = logging.getLogger("sentinel.rf.scanner")
 # DETECCIÓN DE DRIVER SDR
 # ════════════════════════════════════════════════════════════════════
 
-_SDR_DRIVER: Optional[str] = None
+_SDR_DRIVER: str | None = None
 _SDR_CLASS                 = None
 
 try:
@@ -72,7 +73,7 @@ _RTL_FREQ_MAX    = 1766.0  # MHz
 
 class Renderizador:
 
-    def __init__(self, console: Console, cfg: RFConfig):
+    def __init__(self, console: Console, cfg: RFConfig) -> None:
         self.console = console
         self.cfg     = cfg
 
@@ -260,7 +261,7 @@ class Renderizador:
 
     # ── Mapa de barrido ───────────────────────────────────────────────
 
-    def mapa_barrido(self, resultados: list[dict]) -> Panel:
+    def mapa_barrido(self, resultados: list[dict[str, Any]]) -> Panel:
         tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
                    show_edge=False, expand=True)
         tb.add_column("Frecuencia", style="cyan",  min_width=14, no_wrap=True)
@@ -304,7 +305,7 @@ class Renderizador:
 
 class RFScanner:
 
-    def __init__(self, sentinel, config_path: Optional[str] = None):
+    def __init__(self, sentinel, config_path: str | None = None) -> None:
         self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
         self.gp               = getattr(sentinel, "gp",      None)
@@ -320,12 +321,12 @@ class RFScanner:
         self.csv       = CSVExporter(self.cfg.storage)          # Exportación CSV desacoplada
         self.sigmf     = SigMFWriter(self.cfg.storage)          # Grabación IQ streaming SigMF
         self.recorder  = RFRecorder(self)
-        self._demod:   Optional[Demodulator] = None
+        self._demod:   Demodulator | None = None
 
         # Hardware
         self.sdr           = None
         self._soapy_stream = None
-        self._mock:        Optional[MockSDRManager] = None
+        self._mock:        MockSDRManager | None = None
         self.hw_nombre     = "No inicializado"
         self._lock         = threading.Lock()
 
@@ -339,7 +340,7 @@ class RFScanner:
 
     # ── Logging con rotación ──────────────────────────────────────────
 
-    def _setup_logging(self):
+    def _setup_logging(self) -> None:
         lc   = self.cfg.logging
         root = logging.getLogger("sentinel.rf")
         if root.handlers:
@@ -360,7 +361,7 @@ class RFScanner:
 
     # ── Hardware ──────────────────────────────────────────────────────
 
-    def _conectar_hardware(self):
+    def _conectar_hardware(self) -> None:
         hw = self.cfg.hardware
 
         if _SDR_DRIVER == "RTL-SDR" and _SDR_CLASS:
@@ -424,7 +425,7 @@ class RFScanner:
 
     # ── Configuración en caliente ─────────────────────────────────────
 
-    def configurar_ganancia(self, ganancia):
+    def configurar_ganancia(self, ganancia) -> None:
         if not self._hw_disponible:
             self._print("[red][!] Sin hardware conectado.[/red]")
             return
@@ -445,7 +446,7 @@ class RFScanner:
             self._print(f"[red][!] Error ajustando ganancia: {exc}[/red]")
             log.error("set_gain: %s", exc)
 
-    def cargar_iq_archivo(self, path: str):
+    def cargar_iq_archivo(self, path: str) -> None:
         self._mock     = MockSDRManager.from_file(path, self.sample_rate)
         self.hw_nombre = f"FILE:{Path(path).name}"
         self._print(f"[cyan][RF] IQ cargado desde: {path}[/cyan]")
@@ -453,7 +454,7 @@ class RFScanner:
     def agregar_senal_mock(self, freq_offset_hz: float,
                            power_dbm: float = -60.0,
                            mode: str = "tone",
-                           bw_hz: float = 12_500.0):
+                           bw_hz: float = 12_500.0) -> None:
         if self._mock is None:
             self._mock     = MockSDRManager(sample_rate=self.sample_rate)
             self.hw_nombre = f"MockSDR sr={self.sample_rate/1e6:.3f}MHz"
@@ -470,7 +471,7 @@ class RFScanner:
 
     # ── Captura IQ ────────────────────────────────────────────────────
 
-    def _capturar(self, freq_hz: float) -> Optional[np.ndarray]:
+    def _capturar(self, freq_hz: float) -> np.ndarray | None:
         n = self.cfg.dsp.samples_per_read
         if not self._hw_disponible:
             self._print("[red][!] Sin hardware SDR disponible.[/red]")
@@ -529,7 +530,7 @@ class RFScanner:
 
     # ── Base de datos ─────────────────────────────────────────────────
 
-    def _guardar_senales_db(self, senales: list[Signal], escaneo_id: int):
+    def _guardar_senales_db(self, senales: list[Signal], escaneo_id: int) -> None:
         # RFDatabase (escaneos/barridos legacy)
         rows = []
         for s in senales:
@@ -542,7 +543,7 @@ class RFScanner:
 
     # ── Exportación CSV ───────────────────────────────────────────────
 
-    def _exportar_csv_picos(self, picos: list[Signal], freq_mhz: float):
+    def _exportar_csv_picos(self, picos: list[Signal], freq_mhz: float) -> None:
         try:
             fn = self.csv.export_signals(picos, freq_mhz, self.hw_nombre)
             self._print(f"[green][+] CSV → {fn}[/green]")
@@ -551,8 +552,8 @@ class RFScanner:
             self._print(f"[red][!] Error exportando CSV: {exc}[/red]")
             log.error("CSV export: %s", exc)
 
-    def _exportar_csv_barrido(self, resultados: list[dict],
-                               freq_ini: float, freq_fin: float):
+    def _exportar_csv_barrido(self, resultados: list[dict[str, Any]],
+                               freq_ini: float, freq_fin: float) -> None:
         try:
             fn = self.csv.export_sweep(resultados, freq_ini, freq_fin)
             self._print(f"[green][+] CSV barrido → {fn}[/green]")
@@ -562,7 +563,7 @@ class RFScanner:
     # ── Integración gp (proyecto activo) ─────────────────────────────
 
     def _registrar_evidencia(self, freq_mhz: float,
-                              picos: list[Signal], duracion: float):
+                              picos: list[Signal], duracion: float) -> None:
         if not self.gp or not picos:
             return
         try:
@@ -593,7 +594,7 @@ class RFScanner:
     # API PÚBLICA
     # ════════════════════════════════════════════════════════════════
 
-    def escanear_frecuencia(self, freq_mhz: float, duracion: int = 10):
+    def escanear_frecuencia(self, freq_mhz: float, duracion: int = 10) -> None:
         if not self._hw_disponible:
             self._print("[red][!] Sin hardware SDR disponible.[/red]")
             return
@@ -720,7 +721,7 @@ class RFScanner:
 
     def barrido_espectro(self, freq_ini_mhz: float,
                          freq_fin_mhz: float,
-                         paso_mhz: float = 1.0):
+                         paso_mhz: float = 1.0) -> None:
         if not self._hw_disponible:
             self._print("[red][!] Sin hardware SDR disponible.[/red]")
             return
@@ -732,7 +733,7 @@ class RFScanner:
             f"paso={paso_mhz:.3f} MHz  {len(freqs)} puntos[/bold green]\n"
         )
 
-        resultados: list[dict] = []
+        resultados: list[dict[str, Any]] = []
         try:
             for i, freq in enumerate(freqs):
                 if not self._verificar_rango_rtl(float(freq)):
@@ -804,7 +805,7 @@ class RFScanner:
             len(resultados), self.hw_nombre,
         )
 
-    def escaneo_bandas_conocidas(self):
+    def escaneo_bandas_conocidas(self) -> None:
         if not self._hw_disponible:
             self._print("[red][!] Sin hardware SDR disponible.[/red]")
             return
@@ -824,7 +825,7 @@ class RFScanner:
         self._print(
             f"\n[bold green][RF] Escaneo de {len(todas)} bandas conocidas...[/bold green]\n"
         )
-        resultados: list[dict] = []
+        resultados: list[dict[str, Any]] = []
 
         try:
             for b in todas:
@@ -878,7 +879,7 @@ class RFScanner:
 
     # ── Consultas de base de datos ────────────────────────────────────
 
-    def estadisticas_db(self):
+    def estadisticas_db(self) -> None:
         stats = self.db.estadisticas()
         st2   = self.signal_db.stats()
         g = Table.grid(padding=(0, 3))
@@ -897,7 +898,7 @@ class RFScanner:
             border_style="green",
         ))
 
-    def top_senales(self, n: int = 10):
+    def top_senales(self, n: int = 10) -> None:
         rows = self.db.top_senales(n)
         tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
                    show_edge=False, expand=True)
@@ -924,7 +925,7 @@ class RFScanner:
             border_style="green",
         ))
 
-    def frecuencias_activas(self, snr_min: float = 10.0, horas: int = 24):
+    def frecuencias_activas(self, snr_min: float = 10.0, horas: int = 24) -> None:
         rows = self.db.frecuencias_activas(snr_min=snr_min, horas=horas)
         if not rows:
             self._print(
@@ -958,7 +959,7 @@ class RFScanner:
     # ── Grabación y reproducción IQ ───────────────────────────────────
 
     def grabar_iq(self, freq_mhz: float, duracion: int = 10,
-                  formato: str = "sigmf"):
+                  formato: str = "sigmf") -> None:
         if not self._hw_disponible:
             self._print("[red][!] Sin hardware SDR disponible.[/red]")
             return
@@ -1020,14 +1021,14 @@ class RFScanner:
                 formato=formato,
             )
 
-    def reproducir_iq(self, archivo: str, modo: str = "wfm"):
+    def reproducir_iq(self, archivo: str, modo: str = "wfm") -> None:
         self.recorder.reproducir(
             archivo, modo=modo, sample_rate=self.sample_rate
         )
 
     # ── Estado y menú ─────────────────────────────────────────────────
 
-    def estado(self):
+    def estado(self) -> None:
         stats    = self.db.estadisticas()
         st2      = self.signal_db.stats()
         g = Table.grid(padding=(0, 3))
@@ -1060,7 +1061,7 @@ class RFScanner:
             border_style="green",
         ))
 
-    def menu(self):
+    def menu(self) -> None:
         self.console.print()
         self.console.print(Panel(
             f"[bold green]RF SCANNER — {self.hw_nombre}[/bold green]\n\n"
@@ -1187,7 +1188,7 @@ class RFScanner:
 
     # ── Ciclo de vida ─────────────────────────────────────────────────
 
-    def cerrar(self):
+    def cerrar(self) -> None:
         if self._demod:
             try:
                 self._demod.stop_audio()
@@ -1230,15 +1231,15 @@ class RFScanner:
         except Exception:
             pass
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, *_) -> None:
         self.cerrar()
 
     # ── Helper interno ────────────────────────────────────────────────
 
-    def _print(self, msg: str = ""):
+    def _print(self, msg: str = "") -> None:
         if self.console:
             self.console.print(msg)
         else:

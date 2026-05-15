@@ -1,9 +1,6 @@
 from __future__ import annotations
-from core.validators import Validador
-from core.log_sistema import LogSistema
-from core.ModuleRegistry import ModuleRegistry
-from core.command_handler import CommandHandler
 
+# ── stdlib ────────────────────────────────────────────────────────────
 import json
 import os
 import signal
@@ -11,7 +8,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable
 
+# ── third-party ───────────────────────────────────────────────────────
 from rich.console import Console
 from rich.markup import escape as _esc
 from rich.panel import Panel
@@ -25,6 +24,10 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 # ── Core ──────────────────────────────────────────────────────────────
+from core.validators import Validador
+from core.log_sistema import LogSistema
+from core.ModuleRegistry import ModuleRegistry
+from core.command_handler import CommandHandler
 
 # ── Bootscreen ────────────────────────────────────────────────────────
 try:
@@ -35,24 +38,44 @@ try:
         mostrar_bootloader,
     )
 except ImportError:
-    COMANDOS_HELP = {}
+    COMANDOS_HELP: dict[str, Any] = {}
 
-    def mostrar_bootloader(c, nombre, version, iface, estados_modulos=None):
+    def mostrar_bootloader(  # type: ignore[misc]
+        c: Console,
+        nombre: str,
+        version: str,
+        iface: str,
+        estados_modulos: dict[str, bool] | None = None,
+    ) -> None:
         c.print(Panel(f"[bold green]{nombre} v{version}[/bold green]"))
 
-    def mostrar_banner(c, nombre, version, iface, proyecto=None):
+    def mostrar_banner(  # type: ignore[misc]
+        c: Console,
+        nombre: str,
+        version: str,
+        iface: str,
+        proyecto: str | None = None,
+    ) -> None:
         c.print(Rule(f"[bold green]{nombre} v{version}[/bold green]"))
 
-    def mostrar_ayuda(c, version, cmds=None):
+    def mostrar_ayuda(  # type: ignore[misc]
+        c: Console,
+        version: str,
+        cmds: dict[str, Any] | None = None,
+    ) -> None:
         c.print(Panel("[dim]Sin ayuda.[/dim]", title="AYUDA"))
+
 
 # ── Auth ──────────────────────────────────────────────────────────────
 try:
     from core.auth import GestorAuth
 except ImportError:
-    class GestorAuth:           # type: ignore[misc]
-        def __init__(self, *a, **kw): pass
-        def solicitar_acceso(self) -> bool: return True
+    class GestorAuth:  # type: ignore[misc]
+        def __init__(self, *a: Any, **kw: Any) -> None:
+            pass
+
+        def solicitar_acceso(self) -> bool:
+            return True
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -62,7 +85,7 @@ except ImportError:
 class ApexSentinel:
 
     VERSION = "2.3"
-    NOMBRE = "ApexSentinel"
+    NOMBRE  = "ApexSentinel"
 
     # ── OUI local — caché de fabricantes ─────────────────────────────
     _OUI_LOCAL: dict[str, str] = {
@@ -79,21 +102,21 @@ class ApexSentinel:
     }
     _OUI_CACHE: dict[str, str] = {}
 
-    def __init__(self):
+    def __init__(self) -> None:
         # ── Directorios de trabajo ─────────────────────────────────────
-        for d in ["data/logs", "data/evidence", "data/evidence/rf",
-                  "data/evidence/rf/iq", "data/evidence/mobile",
-                  "core/data/logs", "core/data/security", "plugins"]:
+        for d in [
+            "data/logs", "data/evidence", "data/evidence/rf",
+            "data/evidence/rf/iq", "data/evidence/mobile",
+            "core/data/logs", "core/data/security", "plugins",
+        ]:
             os.makedirs(d, exist_ok=True)
 
         self.console = Console()
-        self.log = LogSistema(self.console)
-        self.config = self._cargar_config()
-        self.nombre = self.config.get(
-            "sistema", {}).get("nombre",  self.NOMBRE)
-        self.version = self.config.get(
-            "sistema", {}).get("version", self.VERSION)
-        self.auth = GestorAuth(self.config, self.console, self.log)
+        self.log     = LogSistema(self.console)
+        self.config  = self._cargar_config()
+        self.nombre  = self.config.get("sistema", {}).get("nombre",  self.NOMBRE)
+        self.version = self.config.get("sistema", {}).get("version", self.VERSION)
+        self.auth    = GestorAuth(self.config, self.console, self.log)
 
         self._registrar_senales()
 
@@ -121,17 +144,16 @@ class ApexSentinel:
     # ── Señales ───────────────────────────────────────────────────────
 
     def _registrar_senales(self) -> None:
-        def _handler(signum, frame):
-            sig = "SIGINT" if signum == getattr(
-                signal, "SIGINT", 2) else "SIGTERM"
-            self.console.print(
-                f"\n[yellow][!] Señal {sig} — cerrando...[/yellow]")
+        def _handler(signum: int, frame: object) -> None:
+            sig = "SIGINT" if signum == getattr(signal, "SIGINT", 2) else "SIGTERM"
+            self.console.print(f"\n[yellow][!] Señal {sig} — cerrando...[/yellow]")
             self._cleanup()
             sys.exit(0)
-        signal.signal(signal.SIGINT, _handler)
+
+        signal.signal(signal.SIGINT, _handler)  # type: ignore[arg-type]
         term = getattr(signal, "SIGTERM", None)
         if term:
-            signal.signal(term, _handler)
+            signal.signal(term, _handler)  # type: ignore[arg-type]
 
     def _cleanup(self) -> None:
         try:
@@ -156,10 +178,10 @@ class ApexSentinel:
 
     # ── Configuración ─────────────────────────────────────────────────
 
-    def _cargar_config(self) -> dict:
+    def _cargar_config(self) -> dict[str, Any]:
         try:
             with open("config.json", "r", encoding="utf-8") as f:
-                return json.load(f)
+                return dict(json.load(f))  # type: ignore[arg-type]
         except FileNotFoundError:
             return {"sistema": {"nombre": "Sentinel",
                                 "version": self.VERSION,
@@ -178,7 +200,7 @@ class ApexSentinel:
     # ── Helpers ───────────────────────────────────────────────────────
 
     def _iface(self) -> str:
-        return getattr(getattr(self, "bt", None), "iface", "wlan0mon")
+        return str(getattr(getattr(self, "bt", None), "iface", "wlan0mon"))
 
     def _modulo_ok(self, nombre_attr: str) -> bool:
         """Verifica si un módulo está disponible; imprime aviso si no."""
@@ -193,8 +215,12 @@ class ApexSentinel:
     def _limpiar(self) -> None:
         os.system("cls" if os.name == "nt" else "clear")
 
-    def _run(self, cmd: list, timeout: int = 30,
-             **kwargs) -> subprocess.CompletedProcess:
+    def _run(
+        self,
+        cmd: list[str],
+        timeout: int = 30,
+        **kwargs: Any,
+    ) -> subprocess.CompletedProcess[bytes]:
         return subprocess.run(cmd, timeout=timeout, check=True, **kwargs)
 
     # ── Fabricante de MAC ─────────────────────────────────────────────
@@ -252,21 +278,21 @@ class ApexSentinel:
 
     # ── Dashboard de éxito ────────────────────────────────────────────
 
-    def mostrar_dashboard_exito(self, ip: str, servicio: str,
-                                credencial: str) -> None:
+    def mostrar_dashboard_exito(
+        self, ip: str, servicio: str, credencial: str
+    ) -> None:
         from rich import box
         from rich.table import Table
         tabla = Table(title="ACCESO OBTENIDO", header_style="bold green")
-        tabla.add_column("Objetivo",           style="cyan",
-                         justify="center")
-        tabla.add_column("Protocolo",          style="yellow",
-                         justify="center")
-        tabla.add_column("Credenciales (U:P)",
-                         style="bold white", justify="center")
+        tabla.add_column("Objetivo",           style="cyan",       justify="center")
+        tabla.add_column("Protocolo",          style="yellow",     justify="center")
+        tabla.add_column("Credenciales (U:P)", style="bold white", justify="center")
         tabla.add_row(ip, servicio.upper(), credencial)
         self.console.print(
-            Panel(tabla, title="[bold green]MISSION ACCOMPLISHED[/bold green]",
-                  border_style="bright_green", expand=False))
+            Panel(tabla,
+                  title="[bold green]MISSION ACCOMPLISHED[/bold green]",
+                  border_style="bright_green",
+                  expand=False))
         self.log.audit(f"Acceso obtenido en {ip} vía {servicio}", "Hydra")
         if getattr(self, "gp", None):
             self.gp.registrar_hallazgo(
@@ -303,24 +329,27 @@ class ApexSentinel:
             return True
 
         # Banner con proyecto activo
-        def _banner():
-            proy = (self.gp.proyecto_actual.nombre
-                    if getattr(self, "gp", None) and
-                    getattr(self.gp, "proyecto_actual", None) else None)
+        def _banner() -> None:
+            proy = (
+                self.gp.proyecto_actual.nombre
+                if getattr(self, "gp", None) and
+                getattr(self.gp, "proyecto_actual", None)
+                else None
+            )
             mostrar_banner(self.console, self.nombre,
                            self.version, self._iface(), proyecto=proy)
 
-        tabla: dict[str, Any] = {
+        tabla: dict[str, Callable[[], None]] = {
             # Sistema
-            "help": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
-            "?": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
-            "status":    c.status,
-            "hora": lambda: self.console.print(
-                f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
-            "clear":     _banner,
-            "cls":       _banner,
-            "logs":      self.log.mostrar_historial,
-            "files":     c.files,
+            "help":   lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
+            "?":      lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
+            "status": c.status,
+            "hora":   lambda: self.console.print(
+                          f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
+            "clear":  _banner,
+            "cls":    _banner,
+            "logs":   self.log.mostrar_historial,
+            "files":  c.files,
             # Red
             "scan":      c.scan,
             "netscan":   c.scan,
@@ -333,10 +362,9 @@ class ApexSentinel:
             "vulnscan":  c.vulnscan,
             "sqlcheck":  c.sqlcheck,
             # Wireless
-            "wifi":      c.wifi,
-            "eviltwin":  c.eviltwin,
-            "btjumper": lambda: (self.bt.iniciar_jumper()
-                                 if self._modulo_ok("bt") else None),
+            "wifi":     c.wifi,
+            "eviltwin": c.eviltwin,
+            "btjumper": lambda: (self.bt.iniciar_jumper() if self._modulo_ok("bt") else None),
             # RF
             "rfscan":    c.rfscan,
             "rfmenu":    c.rfmenu,
@@ -354,14 +382,14 @@ class ApexSentinel:
             "mobile-deep": c.mobile_deep,
             "view":        c.view,
             # OSINT / Geo
-            "geofoto":   c.geofoto,
-            "osint":     c.osint,
-            "cve":       c.cve,
+            "geofoto": c.geofoto,
+            "osint":   c.osint,
+            "cve":     c.cve,
             # Ofensivo
-            "phishing":  c.phishing,
-            "ducky":     c.ducky,
-            "stealth":   c.stealth,
-            "panic":     c.panic,
+            "phishing": c.phishing,
+            "ducky":    c.ducky,
+            "stealth":  c.stealth,
+            "panic":    c.panic,
         }
 
         if cmd in tabla:
@@ -382,10 +410,8 @@ class ApexSentinel:
 
     def ejecutar(self) -> None:
         if not self.auth.solicitar_acceso():
-            self.console.print(
-                "[red][!] Acceso denegado. Sistema bloqueado.[/red]")
-            self.log.warning(
-                "Sistema bloqueado por intentos fallidos.", "GestorAuth")
+            self.console.print("[red][!] Acceso denegado. Sistema bloqueado.[/red]")
+            self.log.warning("Sistema bloqueado por intentos fallidos.", "GestorAuth")
             return
 
         if getattr(self, "checker", None):
@@ -399,15 +425,18 @@ class ApexSentinel:
         self.log.info("Sistema iniciado correctamente.", "ApexSentinel")
 
         if getattr(self, "rf", None):
-            rf_tag = (f"[green]{self.rf.hw_nombre}[/green]"
-                      if self.rf.hw_disponible
-                      else f"[yellow]{self.rf.hw_nombre}[/yellow]")
+            rf_tag = (
+                f"[green]{self.rf.hw_nombre}[/green]"
+                if self.rf.hw_disponible
+                else f"[yellow]{self.rf.hw_nombre}[/yellow]"
+            )
             self.console.print(f"\n[dim][RF] Hardware: {rf_tag}[/dim]")
 
         if getattr(self, "gp", None) and not self.gp.proyecto_activo:
             self.console.print(
                 "\n[dim][tip] Usa [bold white]proyecto nuevo[/bold white] "
-                "para crear un workspace de operación.[/dim]\n")
+                "para crear un workspace de operación.[/dim]\n"
+            )
 
         while True:
             try:
@@ -427,10 +456,8 @@ class ApexSentinel:
                 if not entrada:
                     continue
                 if entrada.lower() == "exit":
-                    self.console.print(
-                        "[yellow][!] Desconectando Sentinel...[/yellow]")
-                    self.log.info(
-                        "Sesión cerrada por el operador.", "ApexSentinel")
+                    self.console.print("[yellow][!] Desconectando Sentinel...[/yellow]")
+                    self.log.info("Sesión cerrada por el operador.", "ApexSentinel")
                     self._cleanup()
                     time.sleep(0.5)
                     break
@@ -438,7 +465,8 @@ class ApexSentinel:
                     self.console.print(
                         f"[yellow][?] Comando '[bold]{entrada}[/bold]' no "
                         f"reconocido. Escribe [bold white]help[/bold white] "
-                        f"para ver opciones.[/yellow]")
+                        f"para ver opciones.[/yellow]"
+                    )
             except EOFError:
                 self._cleanup()
                 break
@@ -449,11 +477,11 @@ class ApexSentinel:
 
 # ── Punto de entrada ──────────────────────────────────────────────────
 
-from typing import Any  # noqa: E402 — necesario para la anotación en _despachar
-
 if __name__ == "__main__":
-    for d in ["data/logs", "data/evidence", "data/evidence/rf",
-              "data/evidence/rf/iq", "core/data/logs",
-              "core/data/security", "plugins"]:
+    for d in [
+        "data/logs", "data/evidence", "data/evidence/rf",
+        "data/evidence/rf/iq", "core/data/logs",
+        "core/data/security", "plugins",
+    ]:
         os.makedirs(d, exist_ok=True)
     ApexSentinel().ejecutar()
