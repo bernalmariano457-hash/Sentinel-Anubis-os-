@@ -1,19 +1,3 @@
-"""tests/test_auth_security.py
-
-Tests unitarios para:
-  · core.auth      — hashing, verificación, lockout, migración bcrypt, credenciales
-  · core.Security  — cifrado Fernet, rotación de clave, permisos
-
-Todos los tests son aislados: usan tmp_path y monkeypatch para no
-tocar el sistema de archivos real del proyecto.
-
-Correr solo estos tests:
-    pytest tests/test_auth_security.py -v
-
-Correr con cobertura:
-    pytest tests/test_auth_security.py --cov=core.auth --cov=core.Security -v
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -31,7 +15,6 @@ import pytest
 
 @pytest.fixture()
 def security_dir(tmp_path: Path) -> Path:
-    """Directorio de seguridad aislado en tmp para cada test."""
     d = tmp_path / "data" / "security"
     d.mkdir(parents=True)
     return d
@@ -39,7 +22,6 @@ def security_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def mock_sentinel() -> MagicMock:
-    """Sentinel mínimo — SecurityModule solo lo guarda en self.sentinel."""
     return MagicMock()
 
 
@@ -63,7 +45,6 @@ def mock_log() -> MagicMock:
 # ══════════════════════════════════════════════════════════════════════
 
 class TestHashFunctions:
-    """Prueba las funciones de hash internas de auth.py."""
 
     def test_hash_bcrypt_devuelve_prefijo_correcto(self):
         from core.auth import _hash_bcrypt
@@ -76,7 +57,8 @@ class TestHashFunctions:
         partes = h.split(":")
         assert partes[0] == "sha256s"
         assert len(partes) == 3
-        assert len(partes[1]) == 32, "La sal debe ser 16 bytes en hex = 32 chars"
+        assert len(
+            partes[1]) == 32, "La sal debe ser 16 bytes en hex = 32 chars"
 
     def test_hash_rechaza_password_corta(self):
         from core.auth import _hash
@@ -97,7 +79,6 @@ class TestHashFunctions:
 
 
 class TestVerificar:
-    """Prueba _verificar contra los tres formatos de hash soportados."""
 
     def test_verifica_hash_bcrypt_correcto(self):
         from core.auth import _hash_bcrypt, _verificar
@@ -136,11 +117,11 @@ class TestVerificar:
 
     def test_verifica_devuelve_false_con_hash_invalido(self):
         from core.auth import _verificar
-        assert _verificar("cualquier_cosa", "esto_no_es_un_hash_valido") is False
+        assert _verificar("cualquier_cosa",
+                          "esto_no_es_un_hash_valido") is False
 
 
 class TestEsLegacy:
-    """Prueba la detección de hashes que deben migrarse."""
 
     def test_sha256_plano_es_legacy(self):
         from core.auth import _es_legacy
@@ -163,7 +144,6 @@ class TestEsLegacy:
 # ══════════════════════════════════════════════════════════════════════
 
 class TestLockoutManager:
-    """Prueba el control de bloqueo persistente."""
 
     @pytest.fixture(autouse=True)
     def _patch_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -230,13 +210,13 @@ class TestLockoutManager:
         assert bloqueado is True
 
     def test_intentos_fuera_de_ventana_se_ignoran(self, monkeypatch):
-        """Intentos más viejos que la ventana no cuentan para el bloqueo."""
         import core.auth as auth_mod
         lm = _LockoutManager_new(auth_mod)
 
         # Escribir manualmente intentos con timestamps viejos
         datos_viejos = {"intentos": [time.time() - 999], "bloqueado_hasta": 0}
-        auth_mod._LOCKOUT_FILE.write_text(json.dumps(datos_viejos), encoding="utf-8")
+        auth_mod._LOCKOUT_FILE.write_text(
+            json.dumps(datos_viejos), encoding="utf-8")
 
         lm.registrar_fallo()
         # El intento viejo no debe contar; solo hay 1 intento válido
@@ -244,7 +224,6 @@ class TestLockoutManager:
 
 
 def _LockoutManager_new(auth_mod):
-    """Helper para crear _LockoutManager con las rutas parcheadas."""
     return auth_mod._LockoutManager()
 
 
@@ -253,7 +232,6 @@ def _LockoutManager_new(auth_mod):
 # ══════════════════════════════════════════════════════════════════════
 
 class TestCredentialStore:
-    """Prueba el almacén de credenciales."""
 
     @pytest.fixture(autouse=True)
     def _patch_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -290,7 +268,6 @@ class TestCredentialStore:
         assert cs.leer() == "hash_desde_env"
 
     def test_migra_hash_desde_config_json(self, tmp_path: Path):
-        """Si el hash está en config.json (legacy), lo migra a .credentials."""
         import core.auth as auth_mod
         config = {"sistema": {"password_hash": "hash_legacy_en_config"}}
         cs = auth_mod._CredentialStore(config)
@@ -305,7 +282,6 @@ class TestCredentialStore:
 # ══════════════════════════════════════════════════════════════════════
 
 class TestGestorAuthCambiarPassword:
-    """Prueba cambio de contraseña sin tocar el flujo interactivo."""
 
     @pytest.fixture(autouse=True)
     def _patch_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -332,7 +308,8 @@ class TestGestorAuthCambiarPassword:
 
     def test_cambio_falla_con_password_incorrecta(self, mock_console, mock_log):
         ga = self._crear_gestor(mock_console, mock_log)
-        resultado = ga.cambiar_password("password_incorrecta", "nueva_password1")
+        resultado = ga.cambiar_password(
+            "password_incorrecta", "nueva_password1")
         assert resultado is False
 
     def test_cambio_rechaza_nueva_password_corta(self, mock_console, mock_log):
@@ -342,7 +319,6 @@ class TestGestorAuthCambiarPassword:
 
 
 class TestMigracionBcrypt:
-    """Prueba que el login migra hashes legacy a bcrypt automáticamente."""
 
     @pytest.fixture(autouse=True)
     def _patch_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -351,7 +327,6 @@ class TestMigracionBcrypt:
         monkeypatch.setattr(auth_mod, "_LOCKOUT_FILE", tmp_path / ".lockout")
 
     def test_migra_hash_legacy_a_bcrypt_tras_login(self, mock_console, mock_log):
-        """Después de login exitoso con hash legacy, el hash almacenado es bcrypt."""
         import core.auth as auth_mod
         from core.auth import GestorAuth
 
@@ -366,7 +341,6 @@ class TestMigracionBcrypt:
         assert nuevo_hash.startswith("$2"), "Debe haberse migrado a bcrypt"
 
     def test_no_migra_si_ya_es_bcrypt(self, mock_console, mock_log):
-        """Si el hash ya es bcrypt, no debe reescribirse."""
         import core.auth as auth_mod
         from core.auth import GestorAuth, _hash_bcrypt
 
@@ -386,7 +360,6 @@ class TestMigracionBcrypt:
 # ══════════════════════════════════════════════════════════════════════
 
 class TestSecurityModuleInit:
-    """Prueba la inicialización y carga de la clave Fernet."""
 
     @pytest.fixture(autouse=True)
     def _patch_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -396,7 +369,8 @@ class TestSecurityModuleInit:
         key_dir.mkdir(parents=True)
         backup_dir.mkdir(parents=True)
         monkeypatch.setattr(sec_mod, "_KEY_DIR",    key_dir)
-        monkeypatch.setattr(sec_mod, "_KEY_FILE",   key_dir / "anubis_master.key")
+        monkeypatch.setattr(sec_mod, "_KEY_FILE",
+                            key_dir / "anubis_master.key")
         monkeypatch.setattr(sec_mod, "_BACKUP_DIR", backup_dir)
 
     def test_genera_clave_si_no_existe(self, mock_sentinel, tmp_path):
@@ -427,7 +401,6 @@ class TestSecurityModuleInit:
 
 
 class TestCifradoDatos:
-    """Prueba cifrado y descifrado de datos en memoria."""
 
     @pytest.fixture(autouse=True)
     def _patch_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -436,7 +409,8 @@ class TestCifradoDatos:
         key_dir.mkdir(parents=True)
         (key_dir / "key_backups").mkdir()
         monkeypatch.setattr(sec_mod, "_KEY_DIR",    key_dir)
-        monkeypatch.setattr(sec_mod, "_KEY_FILE",   key_dir / "anubis_master.key")
+        monkeypatch.setattr(sec_mod, "_KEY_FILE",
+                            key_dir / "anubis_master.key")
         monkeypatch.setattr(sec_mod, "_BACKUP_DIR", key_dir / "key_backups")
 
     @pytest.fixture()
@@ -451,7 +425,6 @@ class TestCifradoDatos:
         assert sm.descifrar_datos(cifrado) == datos
 
     def test_datos_cifrados_son_distintos_cada_vez(self, sm):
-        """Fernet usa sal aleatoria — cada cifrado es único."""
         datos = b"mismo contenido"
         c1 = sm.cifrar_datos(datos)
         c2 = sm.cifrar_datos(datos)
@@ -464,7 +437,6 @@ class TestCifradoDatos:
 
 
 class TestCifradoArchivos:
-    """Prueba cifrado y descifrado de archivos en disco."""
 
     @pytest.fixture(autouse=True)
     def _patch_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -473,7 +445,8 @@ class TestCifradoArchivos:
         key_dir.mkdir(parents=True)
         (key_dir / "key_backups").mkdir()
         monkeypatch.setattr(sec_mod, "_KEY_DIR",    key_dir)
-        monkeypatch.setattr(sec_mod, "_KEY_FILE",   key_dir / "anubis_master.key")
+        monkeypatch.setattr(sec_mod, "_KEY_FILE",
+                            key_dir / "anubis_master.key")
         monkeypatch.setattr(sec_mod, "_BACKUP_DIR", key_dir / "key_backups")
 
     @pytest.fixture()
@@ -515,7 +488,6 @@ class TestCifradoArchivos:
 
 
 class TestRotacionClave:
-    """Prueba la rotación de la clave maestra Fernet."""
 
     @pytest.fixture(autouse=True)
     def _patch_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -524,7 +496,8 @@ class TestRotacionClave:
         key_dir.mkdir(parents=True)
         (key_dir / "key_backups").mkdir()
         monkeypatch.setattr(sec_mod, "_KEY_DIR",    key_dir)
-        monkeypatch.setattr(sec_mod, "_KEY_FILE",   key_dir / "anubis_master.key")
+        monkeypatch.setattr(sec_mod, "_KEY_FILE",
+                            key_dir / "anubis_master.key")
         monkeypatch.setattr(sec_mod, "_BACKUP_DIR", key_dir / "key_backups")
 
     @pytest.fixture()
@@ -544,7 +517,6 @@ class TestRotacionClave:
         assert len(backups) == 1
 
     def test_rotacion_recifra_archivos(self, sm, tmp_path):
-        """Los archivos cifrados con la clave anterior deben funcionar tras rotación."""
         archivo = tmp_path / "datos.bin"
         archivo.write_bytes(b"datos importantes")
 
@@ -556,7 +528,6 @@ class TestRotacionClave:
         assert archivo.read_bytes() == b"datos importantes"
 
     def test_rotacion_multiples_veces_acumula_backups(self, sm):
-        """Mockea el timestamp para que cada rotación genere un nombre único."""
         import core.Security as sec_mod
         timestamps = ["20260101_000001", "20260101_000002", "20260101_000003"]
         with patch("core.Security.datetime") as mock_dt:
@@ -568,7 +539,6 @@ class TestRotacionClave:
         assert len(backups) == 3
 
     def test_estado_muestra_backups_correctamente(self, sm):
-        """Mockea el timestamp para garantizar nombres de backup únicos."""
         timestamps = ["20260101_000001", "20260101_000002"]
         with patch("core.Security.datetime") as mock_dt:
             mock_dt.now.return_value.strftime.side_effect = timestamps
@@ -583,7 +553,6 @@ class TestRotacionClave:
 # ══════════════════════════════════════════════════════════════════════
 
 class TestVendorResolver:
-    """Prueba el resolver de fabricantes MAC extraído de Main.py."""
 
     @pytest.fixture(autouse=True)
     def _limpiar_cache(self):
@@ -603,7 +572,8 @@ class TestVendorResolver:
     def test_detecta_mac_aleatorizada(self):
         from core.vendor_resolver import VendorResolver
         # El bit U/L del primer octeto en 0x02 = MAC local/aleatoria
-        assert VendorResolver.resolve("02:00:00:00:00:00") == "MAC aleatorizada"
+        assert VendorResolver.resolve(
+            "02:00:00:00:00:00") == "MAC aleatorizada"
 
     def test_resultado_queda_en_cache(self):
         from core.vendor_resolver import VendorResolver
@@ -623,10 +593,7 @@ class TestVendorResolver:
         assert VendorResolver.is_valid_mac("no-es-una-mac") is False
 
     def test_api_remota_falla_graciosamente(self):
-        """Si la API está caída, devuelve 'Desconocido' sin lanzar excepción.
-        Usamos F0:00:00:00:00:00 — bit U/L = 0 (no aleatorizada) y no está
-        en la tabla OUI local, así que llega al API lookup.
-        """
+
         from core.vendor_resolver import VendorResolver
         with patch("requests.get", side_effect=Exception("timeout")):
             resultado = VendorResolver.resolve("F0:00:00:00:00:00")
