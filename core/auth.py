@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import os
 import sys
 import time
 from pathlib import Path
-
+from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -85,14 +86,14 @@ def _verificar(password: str, almacenado: str) -> bool:
         try:
             _, salt, h = almacenado.split(":", 2)
             candidate = hashlib.sha256((salt + password).encode()).hexdigest()
-            return hashlib.compare_digest(candidate, h)
+            return hmac.compare_digest(candidate, h)
         except Exception:
             return False
 
     # ── Hash legacy (SHA-256 sin sal, 64 hex) ────────────────────────
     if len(almacenado) == 64 and all(c in "0123456789abcdef" for c in almacenado):
         candidate = hashlib.sha256(password.encode()).hexdigest()
-        return hashlib.compare_digest(candidate, almacenado)
+        return hmac.compare_digest(candidate, almacenado)
 
     return False
 
@@ -110,11 +111,6 @@ def _es_legacy(almacenado: str) -> bool:
 # ══════════════════════════════════════════════════════════════════════
 
 class _LockoutManager:
-    """
-    Rastrea intentos fallidos en disco para que el bloqueo persista
-    entre reinicios del sistema.
-    """
-
     def __init__(self):
         _LOCKOUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -164,22 +160,11 @@ class _LockoutManager:
 # ══════════════════════════════════════════════════════════════════════
 
 class _CredentialStore:
-    """
-    Gestiona dónde y cómo se almacena el hash de contraseña.
-
-    Prioridad de lectura:
-      1. Variable de entorno  SENTINEL_PASSWORD_HASH
-      2. Archivo              data/security/.credentials
-      3. config.json          (legacy — se migra automáticamente)
-
-    El hash NUNCA se escribe de vuelta en config.json.
-    """
-
     def __init__(self, config: dict):
         self._config = config
         _CREDS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    def leer(self) -> str | None:
+    def leer(self) -> Optional[str]:
         # 1. Variable de entorno (máxima prioridad)
         env_hash = os.getenv("SENTINEL_PASSWORD_HASH")
         if env_hash:
@@ -236,20 +221,6 @@ class _CredentialStore:
 # ══════════════════════════════════════════════════════════════════════
 
 class GestorAuth:
-    """
-    Módulo de autenticación de APEX SENTINEL.
-
-    Interfaz compatible con la versión anterior:
-        auth = GestorAuth(config, console, log)
-        if not auth.solicitar_acceso():
-            sys.exit(1)
-
-    Mejoras respecto a la versión legacy:
-        · bcrypt con sal (migración automática desde SHA-256)
-        · Hash almacenado en .credentials, no en config.json
-        · Bloqueo persistente entre sesiones
-        · Migración automática de hashes inseguros al autenticar
-    """
 
     def __init__(self, config: dict, console: Console, log_sistema):
         self.config = config
@@ -262,16 +233,11 @@ class GestorAuth:
 
     @staticmethod
     def generar_hash(password: str) -> str:
-        """Genera un hash seguro para una contraseña. Útil para scripts de setup."""
         return _hash(password)
 
     # ── Flujo de configuración inicial ────────────────────────────────
 
     def configurar_primera_vez(self) -> str:
-        """
-        Solicita y confirma la contraseña maestra en el primer arranque.
-        Retorna el hash generado (ya guardado en .credentials).
-        """
         self.console.print(Panel(
             "[bold cyan]ANUBIS OS — SETUP DE SEGURIDAD[/bold cyan]\n"
             "[white]No se detectó clave de operador.\n"
@@ -313,10 +279,6 @@ class GestorAuth:
     # ── Login ──────────────────────────────────────────────────────────
 
     def solicitar_acceso(self) -> bool:
-        """
-        Solicita credenciales al operador.
-        Retorna True si el acceso fue concedido, False si se bloqueó.
-        """
         # ── Primer arranque ───────────────────────────────────────────
         primer_arranque = self.config.get(
             "sistema", {}).get("primer_arranque", True)
@@ -391,10 +353,6 @@ class GestorAuth:
     # ── Cambio de contraseña ───────────────────────────────────────────
 
     def cambiar_password(self, actual: str, nueva: str) -> bool:
-        """
-        Cambia la contraseña verificando la actual.
-        Retorna True si se cambió correctamente.
-        """
         hash_actual = self._creds.leer()
         if not _verificar(actual, hash_actual):
             self.log.warning(
@@ -410,10 +368,6 @@ class GestorAuth:
     # ── Migración automática de hashes inseguros ───────────────────────
 
     def _migrar_hash_si_necesario(self, password: str, hash_actual: str) -> None:
-        """
-        Después de un login exitoso, si el hash es SHA-256 (legacy o con sal),
-        lo migra silenciosamente a bcrypt.
-        """
         if not _BCRYPT:
             return
         if not _es_legacy(hash_actual):

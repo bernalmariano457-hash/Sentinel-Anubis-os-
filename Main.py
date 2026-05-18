@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
 from core.vendor_resolver import VendorResolver
@@ -173,6 +172,7 @@ class ApexSentinel:
             raise SystemExit("[FATAL] config.json está dañado.")
 
     def _guardar_config(self) -> None:
+        # Persiste config.json cuando primer_arranque cambia a False
         try:
             with open("config.json", "w", encoding="utf-8") as f:
                 json.dump(self.config, f, ensure_ascii=False, indent=2)
@@ -185,6 +185,7 @@ class ApexSentinel:
         return getattr(getattr(self, "bt", None), "iface", "wlan0mon")
 
     def _modulo_ok(self, nombre_attr: str) -> bool:
+        # Verifica que el attr del módulo no es None — avisa si falta
         if getattr(self, nombre_attr, None) is None:
             self.console.print(
                 f"[red][!] Módulo '[bold]{nombre_attr}[/bold]' "
@@ -203,13 +204,16 @@ class ApexSentinel:
     # ── Delegados de UI (mantienen compatibilidad con módulos existentes) ──
 
     def obtener_fabricante(self, mac: str) -> str:
+        # Delegado a VendorResolver — compatibilidad con módulos existentes
         return VendorResolver.resolve(mac)
 
     def animar_barra(self, tarea: str, pasos: int = 20) -> None:
+        # Delegado a sentinel_ui.animar_barra
         animar_barra(self.console, tarea, pasos)
 
     def mostrar_dashboard_exito(self, ip: str, servicio: str,
                                 credencial: str) -> None:
+        # Delegado a sentinel_ui.mostrar_dashboard_exito
         mostrar_dashboard_exito(
             self.console, self.log, ip, servicio, credencial,
             gp=getattr(self, "gp", None),
@@ -277,6 +281,9 @@ class ApexSentinel:
             "rfstatus":  c.rfestado,  "radio":     c.radio,
             "rfgrabar":  c.rfgrabar,  "rfplay":    c.rfplay,
             "adsb":      c.adsb,
+            # Analizador de espectro RF
+            "spectrum": c.spectrum,
+            "sa":       c.spectrum,
             # Mobile / Forense
             "mobile":      c.mobile,
             "mobile-deep": c.mobile_deep,
@@ -378,6 +385,7 @@ class ApexSentinel:
 # ── Punto de entrada ──────────────────────────────────────────────────
 
 def main() -> None:
+    # Entry point registrado en pyproject.toml → [project.scripts] sentinel
     _ensure_dirs()
     ApexSentinel().ejecutar()
 

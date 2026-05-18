@@ -1,0 +1,92 @@
+# ══════════════════════════════════════════════════════════════════════
+#  APEX SENTINEL — Keybindings
+#  Teclas configurables por plataforma para el Spectrum Analyzer.
+#
+#  Formato de tecla:
+#    Letra/símbolo normal  →  "q"  "+"  "-"
+#    Teclas especiales     →  "UP"  "DOWN"  "LEFT"  "RIGHT"  "ESC"
+#    Función               →  "F1" … "F12"
+#    Control               →  "CTRL_C"  "CTRL_Z"
+#
+#  En la uConsole, las teclas Fn+número envían F1-F10 al terminal.
+#  Usa esas combinaciones para los atajos de banda frecuencial.
+# ══════════════════════════════════════════════════════════════════════
+
+
+# ── Teclas globales (todas las plataformas) ───────────────────────────
+
+[global]
+
+# Sintonización de frecuencia
+tune_right      = ["RIGHT", "d"]   # +step (span/10)
+tune_left       = ["LEFT",  "a"]   # -step (span/10)
+
+# Span
+span_up         = ["+", "="]       # × 2
+span_down       = ["-"]            # ÷ 2
+
+# Nivel de referencia
+ref_up          = ["UP",   "w"]    # +5 dBm
+ref_down        = ["DOWN", "s"]    # -5 dBm
+
+# Modos de display
+toggle_peak     = ["p"]            # Peak hold on/off
+toggle_avg      = ["v"]            # Ciclar promedio
+clear_buffer    = ["c"]            # Limpiar peak hold
+
+# Marcadores
+marker_1        = ["m"]            # Colocar M1 en pico
+marker_2        = ["n"]            # Colocar M2 en pico
+
+# Ganancia
+cycle_gain      = ["g"]            # auto → 20 → 40 → 60 dB
+
+# Exportar
+export_frame    = ["e"]            # JSON + CSV → data/evidence/rf/
+
+# Salir
+quit            = ["q", "Q", "ESC", "CTRL_C"]
+
+
+# ── Saltos rápidos de banda ───────────────────────────────────────────
+# Pulsa F1-F10 (en uConsole: Fn+1 … Fn+0) para ir directo a la banda.
+
+[bands]
+
+F1   = { freq_mhz = 88.0,    span_mhz = 20.0,   label = "FM Broadcast"     }
+F2   = { freq_mhz = 137.5,   span_mhz = 3.0,    label = "NOAA Weather Sat" }
+F3   = { freq_mhz = 144.0,   span_mhz = 6.0,    label = "VHF Amateur"      }
+F4   = { freq_mhz = 433.920, span_mhz = 2.0,    label = "ISM 433 MHz"      }
+F5   = { freq_mhz = 462.5,   span_mhz = 5.0,    label = "GMRS / FRS"       }
+F6   = { freq_mhz = 868.0,   span_mhz = 4.0,    label = "ISM 868 MHz (EU)" }
+F7   = { freq_mhz = 915.0,   span_mhz = 4.0,    label = "ISM 915 MHz (US)" }
+F8   = { freq_mhz = 1090.0,  span_mhz = 4.0,    label = "ADS-B Mode S"     }
+F9   = { freq_mhz = 1575.42, span_mhz = 4.0,    label = "GPS L1"            }
+F10  = { freq_mhz = 433.920, span_mhz = 0.5,    label = "ISM 433 Zoom"     }
+
+
+# ── Overrides por plataforma ──────────────────────────────────────────
+# Las claves aquí sobreescriben las del bloque [global] para esa plataforma.
+# Útil si alguna tecla no está disponible o se comporta distinto.
+
+[uconsole]
+# En la uConsole el teclado físico tiene Fn+arrows para PgUp/PgDn.
+# Las flechas solas funcionan igual que en cualquier terminal.
+# No se necesitan overrides — el [global] funciona perfecto.
+
+# Ajuste de tamaño de pantalla (sobreescribe la detección automática)
+# Descomenta y ajusta si tu fuente de terminal es distinta al default.
+# display_cols   = 160
+# display_rows   = 40
+
+[termux]
+# En Termux los F-keys pueden no funcionar sin configuración del teclado.
+# Usamos letras alternativas para los saltos de banda.
+band_fm         = ["1"]
+band_noaa       = ["2"]
+band_ism433     = ["3"]
+band_ism915     = ["4"]
+band_adsb       = ["5"]
+
+[kali]
+# Kali en x86 — sin cambios, funciona igual que global.

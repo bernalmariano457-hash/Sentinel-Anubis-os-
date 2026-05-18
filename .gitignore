@@ -1,6 +1,6 @@
 # ══════════════════════════════════════════════════════════════════
 #  APEX SENTINEL — .gitignore
-#  Última revisión: seguridad pre-GitHub
+#   seguridad pre-GitHub
 # ══════════════════════════════════════════════════════════════════
 
 # ── Claves y credenciales ─────────────────────────────────────────
@@ -120,3 +120,27 @@ config.local.toml
 !core/data/security/.gitkeep
 !plugins/ejemplo_plugin.py
 !plugins/README.md
+
+# ── Cobertura de tests ────────────────────────────────────────────
+htmlcov/
+.coverage
+coverage.xml
+.pytest_cache/
+
+# ── Archivos de operación sensibles ──────────────────────────────
+# El EvilTwinServer antiguo guardaba aquí capturas en texto plano
+capturas_anubis.txt
+capturas_*.txt
+
+# Backups de clave fuera de key_backups/
+*.bak
+
+# Payloads Rubber Ducky (pueden contener comandos reales)
+tools/payloads/
+
+# zphisher — herramienta externa grande, instalar con git clone
+tools/zphisher/
+
+# ── Corrección: pyrightconfig.json SÍ debe versionarse ───────────
+# (estaba ignorado por error — lo quitamos de la lista)
+!pyrightconfig.json

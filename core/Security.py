@@ -4,7 +4,7 @@ import logging
 import os
 import shutil
 import sys
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -167,7 +167,7 @@ class SecurityModule:
         log.info("Iniciando rotación de clave maestra...")
 
         # 1. Backup de la clave actual
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         backup_path = _BACKUP_DIR / f"anubis_master.key.{timestamp}.bak"
         try:
             shutil.copy2(_KEY_FILE, backup_path)

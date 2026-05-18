@@ -1,43 +1,54 @@
 from __future__ import annotations
 
 import os
+import socket
+import subprocess
 import sys
 import time
-import socket
 from datetime import datetime
+from typing import Any
 
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.columns import Columns
-from rich.text import Text
-from rich.rule import Rule
-from rich.align import Align
-from rich.progress import (
-    Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn,
-)
 from rich import box
+from rich.align import Align
+from rich.columns import Columns
+from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.table import Table
+from rich.text import Text
 
-# ═══════════════════════════════════════════════════════════════════
+# ── Importar detección de plataforma (opcional — graceful fallback) ───
+try:
+    from core.platform import detect as _detect_platform
+    _PLATFORM_OK = True
+except ImportError:
+    _PLATFORM_OK = False
 
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# ARTE ASCII — mascara de Anubis (sin modificar)
+# ══════════════════════════════════════════════════════════════════════
 
-ANUBIS_ART = r"""
-   ▄████████████████████▄
-   █  ╔═══════════════╗  █
-   █  ║   /\     /\   ║  █
-   █  ║  (  \   /  )  ║  █
-   █  ║   \  \_/  /   ║  █
-   █  ║   /  ___  \   ║  █
-   █  ║  / / | | \ \  ║  █
-   █  ║ /_/__|_|__\_\  ║  █
-   █  ╚═══════════════╝  █
-   ▀████████████████████▀"""
-
+ANUBIS_ART = "\n".join([
+    r"   ▄████████████████████▄",
+    r"   █  ╔═══════════════╗  █",
+    r"   █  ║   /\     /\   ║  █",
+    r"   █  ║  (  \   /  )  ║  █",
+    r"   █  ║   \  \_/  /   ║  █",
+    r"   █  ║   /  ___  \   ║  █",
+    r"   █  ║  / / | | \ \  ║  █",
+    r"   █  ║ /_/__|_|__\_\  ║  █",
+    r"   █  ╚═══════════════╝  █",
+    r"   ▀████████████████████▀",
+])
 
 ANUBIS = ANUBIS_ART
 
-# ── Estilos de log: (color, icono) ─────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+# ESTILOS DE LOG
+# ══════════════════════════════════════════════════════════════════════
+
 ESTILOS_LOG: dict[str, tuple[str, str]] = {
     "INFO":    ("cyan",         "ℹ"),
     "SUCCESS": ("green",        "✔"),
@@ -47,7 +58,10 @@ ESTILOS_LOG: dict[str, tuple[str, str]] = {
     "DEBUG":   ("dim",          "·"),
 }
 
-# ── Módulos del sistema ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+# MÓDULOS CONOCIDOS — con agrupación por categoría para el resumen
+# ══════════════════════════════════════════════════════════════════════
+
 MODULOS_BOOT: list[tuple[str, str]] = [
     ("HydraModule",      "Fuerza bruta / auditoría"),
     ("TacticalSniffer",  "Captura de tráfico"),
@@ -66,7 +80,21 @@ MODULOS_BOOT: list[tuple[str, str]] = [
     ("GestorPlugins",    "Plugins en caliente"),
 ]
 
-# ── Tabla de ayuda por categorías ──────────────────────────────────
+# Agrupación visual para la línea de resumen compacta
+_GRUPOS_MODULOS: dict[str, list[str]] = {
+    "Red":      ["RadarSentinel", "TacticalSniffer", "BluetoothModule"],
+    "RF":       ["RFModule", "SpectrumAnalyzer"],
+    "Forense":  ["ExifAnalyzer", "ForensicReader", "MobileSentinel", "StealthModule"],
+    "Acceso":   ["HydraModule"],
+    "OSINT":    ["OSINTEngine", "CVEMatcher", "GeoPrecise"],
+    "Proyectos":["GestorProyectos", "MotorReportes", "ColaTareas", "GestorPlugins"],
+    "Seguridad":["SecurityModule", "Recovery"],
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# TABLA DE AYUDA
+# ══════════════════════════════════════════════════════════════════════
+
 COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     "SISTEMA": [
         ("help / ?",         "Mostrar este menú de ayuda"),
@@ -79,7 +107,6 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     ],
     "RED": [
         ("scan",             "Escaneo ARP de red local"),
-        ("netscan",          "Alias de scan"),
         ("advscan",          "Escaneo avanzado (Nmap)"),
         ("portscan",         "Escaneo de puertos TCP"),
         ("sweep",            "Barrido ICMP de subred"),
@@ -87,33 +114,29 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
         ("radar",            "Modo radar Wi-Fi RSSI"),
     ],
     "RF / SDR": [
+        ("spectrum / sa",    "Analizador de espectro en tiempo real"),
         ("rfscan",           "Escaneo de frecuencias RF"),
         ("rfbarrido",        "Barrido de espectro por rango"),
         ("rfbandas",         "Escanear todas las bandas conocidas"),
-        ("radio",            "Escuchar y demodular señal (WFM/NFM/AM/SSB)"),
+        ("radio",            "Escuchar y demodular señal"),
         ("rfgrabar",         "Grabar señal IQ a archivo"),
         ("rfplay",           "Reproducir grabación IQ"),
-        ("adsb",             "Monitor ADS-B — transponders de aeronaves"),
-        ("rfstatus",         "Estado del hardware SDR"),
+        ("adsb",             "Monitor ADS-B — aeronaves"),
     ],
     "ATAQUES": [
         ("audit",            "Auditoría de credenciales"),
         ("vulnscan",         "Análisis de vulnerabilidades"),
-        ("sqlcheck",         "Detección SQLi básica"),
         ("wifi",             "Auditoría Wi-Fi"),
-        ("eviltwin",         "Access point gemelo maligno"),
-        ("btjumper",         "Salto de canal Bluetooth"),
+        ("eviltwin",         "Portal cautivo wireless"),
         ("phishing",         "Clonar página de phishing"),
-        ("ducky",            "Generar payload USB Ducky"),
+        ("ducky",            "Payload USB Ducky"),
     ],
     "FORENSE": [
-        ("view",             "Leer archivo forense"),
         ("geofoto",          "Extraer GPS de fotografías EXIF"),
-        ("locate",           "Localización por IP"),
-        ("locate -p",        "Localización precisa (GPS activo)"),
+        ("locate / locate -p","Localización por IP / GPS activo"),
         ("mobile",           "Triaje básico de móvil"),
         ("mobile-deep",      "Análisis profundo de móvil"),
-        ("stealth",          "Activar modo sigiloso"),
+        ("stealth",          "Verificar identidad digital"),
         ("panic",            "Borrado de emergencia"),
     ],
     "PROYECTOS": [
@@ -121,73 +144,74 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
         ("proyecto cargar",  "Cargar proyecto existente"),
         ("proyecto lista",   "Listar todos los proyectos"),
         ("proyecto estado",  "Resumen del proyecto activo"),
-        ("proyecto cerrar",  "Cerrar proyecto activo"),
         ("reporte",          "Generar reporte completo"),
-        ("reporte resumen",  "Resumen ejecutivo"),
-        ("reporte timeline", "Línea de tiempo de eventos"),
     ],
     "INTELIGENCIA": [
         ("osint",            "Motor de reconocimiento pasivo"),
         ("cve",              "Búsqueda en base CVE / NVD"),
         ("jobs",             "Ver cola de tareas asíncronas"),
-        ("jobs resultado",   "Resultado de un job"),
-        ("jobs cancelar",    "Cancelar un job"),
         ("plugins",          "Listar plugins cargados"),
         ("plugins reload",   "Recargar plugins en caliente"),
     ],
 }
 
-# ── Mensajes del log de arranque ───────────────────────────────────
-_LOGS_ARRANQUE: list[tuple[str, str]] = [
-    ("SUCCESS", "Integridad del sistema verificada"),
-    ("SUCCESS", "Autenticación bcrypt inicializada"),
-    ("INFO",    "Cargando módulos tácticos..."),
-    ("SUCCESS", "RadarSentinel iniciando sniffing pasivo"),
-    ("SUCCESS", "GestorProyectos listo"),
-    ("SUCCESS", "OSINTEngine conectado a APIs públicas"),
-    ("INFO",    "PluginSystem escaneando plugins/"),
-    ("SUCCESS", "Sistema operativo — todos los módulos en línea"),
-]
 
-
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # UTILIDADES INTERNAS
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+
+_ip_cache: str | None = None
+
 
 def _limpiar() -> None:
-    os.system("cls" if os.name == "nt" else "clear")
+    if os.name == "nt":
+        subprocess.run(["cls"], shell=True, check=False)
+    else:
+        subprocess.run(["clear"], check=False)
 
 
 def _get_ip() -> str:
+    global _ip_cache
+    if _ip_cache:
+        return _ip_cache
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(1)
+        s.settimeout(0.5)
         s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+        _ip_cache = s.getsockname()[0]
         s.close()
-        return ip
+        return _ip_cache
     except Exception:
-        return "Sin conexión"
+        return "—"
 
 
 def _ts() -> str:
     return datetime.now().strftime("%H:%M:%S")
 
 
-# ═══════════════════════════════════════════════════════════════════
+def _plataforma_str() -> str:
+    if _PLATFORM_OK:
+        try:
+            info = _detect_platform()
+            return f"{info.kind.name}  {info.machine}"
+        except Exception:
+            pass
+    import platform
+    return f"{platform.machine()}  {sys.platform}"
+
+
+# ══════════════════════════════════════════════════════════════════════
 # COMPONENTES VISUALES
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 
-def _panel_header(nombre: str, version: str, iface: str) -> Panel:
-    """Panel principal del bootscreen con arte ASCII e info del sistema."""
-
+def _panel_hero(nombre: str, version: str, iface: str) -> Panel:
     arte = Text(ANUBIS_ART, style="bold green")
 
     inf = Table.grid(padding=(0, 2))
     inf.add_column(style="dim green", justify="right", min_width=14)
     inf.add_column(style="white")
 
-    def row(k, v):
+    def row(k: str, v: str) -> None:
         inf.add_row(k, v)
 
     row("SISTEMA",
@@ -196,9 +220,8 @@ def _panel_header(nombre: str, version: str, iface: str) -> Panel:
     row("ESTADO",     "[bold green]● EN LÍNEA[/bold green]")
     row("INTERFAZ",   f"[cyan]{iface}[/cyan]")
     row("IP LOCAL",   f"[cyan]{_get_ip()}[/cyan]")
-    row("PLATAFORMA", f"[dim]{os.name.upper()} / {sys.platform}[/dim]")
-    row("ARRANQUE",
-        f"[dim]{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}[/dim]")
+    row("PLATAFORMA", f"[dim]{_plataforma_str()}[/dim]")
+    row("ARRANQUE",   f"[dim]{datetime.now().strftime('%d/%m/%Y  %H:%M:%S')}[/dim]")
     row("",           "")
     row("AVISO",
         "[bold red]⚠  AUTHORIZED USE ONLY — ACCESO RESTRINGIDO[/bold red]")
@@ -217,83 +240,45 @@ def _panel_header(nombre: str, version: str, iface: str) -> Panel:
     )
 
 
-def _panel_modulos(estados: dict[str, bool] | None = None) -> Panel:
-    """
-    Tabla de módulos con estado REAL.
+def _resumen_modulos(estados: dict[str, bool] | None) -> Text:
+    t = Text("  ")
+    if not estados:
+        t.append("Módulos cargados", style="dim green")
+        return t
 
-    Args:
-        estados: dict {display_name → bool} devuelto por ModuleRegistry.estados().
-                 Si es None o no contiene el módulo, muestra ● LISTO (fallback).
-    """
-    tb = Table(
-        box=box.SIMPLE_HEAD,
-        header_style="bold green",
-        show_edge=False,
-        expand=True,
-        padding=(0, 1),
-    )
-    tb.add_column("#",        style="dim",
-                  justify="right", min_width=3)
-    tb.add_column("Módulo",   style="bold green",  min_width=22)
-    tb.add_column("Función",  style="dim white",   min_width=30)
-    tb.add_column("Estado",   justify="center")
+    ok = sum(1 for v in estados.values() if v)
+    total = len(estados)
 
-    cargados = 0
-    for i, (nombre, desc) in enumerate(MODULOS_BOOT, 1):
-        if estados is not None and nombre in estados:
-            ok = estados[nombre]
+    for grupo, nombres in _GRUPOS_MODULOS.items():
+        activos = [n for n in nombres if estados.get(n, False)]
+        degradados = [n for n in nombres if n in estados and not estados[n]]
+        if not activos and not degradados:
+            continue
+        if degradados:
+            t.append(f"○ {grupo} ", style="yellow")
         else:
-            ok = True  # fallback conservador si no hay info
+            t.append(f"● {grupo} ", style="green")
 
-        if ok:
-            cargados += 1
-            estado_str = "[bold green]● LISTO[/bold green]"
-        else:
-            estado_str = "[yellow]○ DEGRADADO[/yellow]"
-
-        tb.add_row(str(i), nombre, desc, estado_str)
-
-    subtitle = (
-        f"[dim green]{cargados}/{len(MODULOS_BOOT)} módulos en línea[/dim green]"
-        if estados is not None
-        else f"[dim green]{len(MODULOS_BOOT)} módulos cargados[/dim green]"
-    )
-
-    return Panel(
-        tb,
-        title="[bold green]▸  MÓDULOS DEL SISTEMA[/bold green]",
-        subtitle=subtitle,
-        border_style="green",
-        box=box.HEAVY_HEAD,
-        padding=(0, 1),
-    )
+    t.append(f" [{ok}/{total}]", style="dim green")
+    return t
 
 
-def _construir_log_text(entradas: list[tuple[str, str]]) -> Text:
-    """Construye el objeto Text del log de arranque."""
-    texto = Text()
-    for nivel, msg in entradas:
-        color, icono = ESTILOS_LOG.get(nivel, ("white", "·"))
-        texto.append(f"  {_ts()} ", style="dim")
-        texto.append(f" {icono}  ", style=color)
-        texto.append(f"{nivel:<8} ", style=f"bold {color}")
-        texto.append(f"{msg}\n",    style=color)
-    return texto
+def _linea_modulo_live(idx: int, total: int, nombre: str) -> Text:
+    pct = int((idx / total) * 100)
+    bar_w = 20
+    filled = int(bar_w * idx / total)
+    bar = "█" * filled + "░" * (bar_w - filled)
+    t = Text()
+    t.append("  ")
+    t.append(f"[{bar}]", style="green")
+    t.append(f" {pct:>3}%  ", style="bold green")
+    t.append(f"{nombre}", style="dim green")
+    return t
 
 
-def _panel_log(entradas: list[tuple[str, str]]) -> Panel:
-    return Panel(
-        _construir_log_text(entradas),
-        title="[dim green]▸  LOG DE ARRANQUE[/dim green]",
-        border_style="dim green",
-        padding=(0, 2),
-        box=box.SIMPLE,
-    )
-
-
-# ═══════════════════════════════════════════════════════════════════
-# FUNCIÓN PRINCIPAL: BOOTLOADER
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# BOOTLOADER — pantalla única que se actualiza con Rich Live
+# ══════════════════════════════════════════════════════════════════════
 
 def mostrar_bootloader(
     console: Console,
@@ -302,162 +287,118 @@ def mostrar_bootloader(
     iface: str,
     estados_modulos: dict[str, bool] | None = None,
 ) -> None:
-    """
-    Pantalla de arranque animada v3 — 5 fases:
-      1. Header con info del sistema
-      2. Separador de fase
-      3. Barra de progreso de módulos
-      4. Tabla de módulos con estado REAL
-      5. Log de arranque animado línea a línea
-
-    Args:
-        estados_modulos: dict {display_name → bool} de ModuleRegistry.estados().
-                         Si se proporciona, la tabla refleja el estado real de
-                         cada módulo (● LISTO / ○ DEGRADADO) en lugar de
-                         mostrar todos como LISTO sin verificar.
-    """
     _limpiar()
+    hero = _panel_hero(nombre, version, iface)
 
-    # ── Fase 1: Header ─────────────────────────────────────────────
-    console.print(_panel_header(nombre, version, iface))
-    console.print()
+    modulos = list(estados_modulos.keys()) if estados_modulos else [m for m, _ in MODULOS_BOOT]
+    total   = len(modulos)
 
-    # ── Fase 2: Separador animado ──────────────────────────────────
-    console.print(
-        Rule(
-            title="[bold green]INICIALIZANDO SUBSISTEMAS[/bold green]",
-            style="green",
-            align="center",
+    with Live(console=console, refresh_per_second=30, screen=False) as live:
+
+        # ── Fase 1: Mostrar hero + barra de verificación ──────────────
+        for i, nombre_mod in enumerate(modulos, 1):
+            cuerpo = Text()
+            cuerpo.append_text(_linea_modulo_live(i, total, nombre_mod))
+            cuerpo.append("\n")
+            live.update(Panel(
+                cuerpo,
+                title="[bold green]◈  A N U B I S   O S  ◈[/bold green]",
+                border_style="green",
+                box=box.ROUNDED,
+                padding=(0, 2),
+            ))
+            time.sleep(0.03)   # 15 módulos × 0.03s = 0.45s total
+
+        # ── Fase 2: Mostrar el hero panel completo ────────────────────
+        live.update(hero)
+        time.sleep(0.25)
+
+        # ── Fase 3: Resumen de módulos inline en el hero ──────────────
+        resumen_txt = _resumen_modulos(estados_modulos)
+        ok_count    = (
+            sum(1 for v in estados_modulos.values() if v)
+            if estados_modulos else total
         )
-    )
-    console.print()
-
-    # ── Fase 3: Barra de carga de módulos ─────────────────────────
-    with Progress(
-        SpinnerColumn(spinner_name="aesthetic", style="bold green"),
-        TextColumn(
-            "[green]{task.description:<48}[/green]",
-            justify="left",
-        ),
-        BarColumn(
-            bar_width=26,
-            style="dim green",
-            complete_style="bold green",
-            finished_style="bold green",
-            pulse_style="bright_green",
-        ),
-        TextColumn("[bold green]{task.percentage:>3.0f}%[/bold green]"),
-        TimeElapsedColumn(),
-        console=console,
-        transient=False,
-    ) as pg:
-        tk = pg.add_task(
-            "  Iniciando núcleo AnubisOS...",
-            total=len(MODULOS_BOOT),
+        degradados  = (
+            [k for k, v in estados_modulos.items() if not v]
+            if estados_modulos else []
         )
-        for mod_nombre, _ in MODULOS_BOOT:
-            pg.update(
-                tk,
-                description=f"  Cargando [bold]{mod_nombre}[/bold]...",
+
+        resumen_panel_content = Text()
+        resumen_panel_content.append_text(resumen_txt)
+        if degradados:
+            resumen_panel_content.append(
+                f"\n  [yellow]○ Sin cargar:[/yellow] "
+                + ", ".join(f"[dim]{d}[/dim]" for d in degradados[:5])
+                + ("..." if len(degradados) > 5 else "")
             )
-            time.sleep(0.12)
-            pg.advance(tk)
-        pg.update(
-            tk,
-            description="  [bold green]✔  Todos los módulos en línea[/bold green]",
-        )
-        time.sleep(0.4)
 
-    console.print()
-
-    # ── Fase 4: Tabla de módulos ───────────────────────────────────
-    console.print(_panel_modulos(estados_modulos))
-    console.print()
-
-    # ── Fase 5: Log de arranque animado ───────────────────────────
-    console.print(
-        Rule(
-            title="[dim green]LOG DE ARRANQUE[/dim green]",
-            style="dim green",
-        )
-    )
-    console.print()
-
-    # Animación línea a línea: imprime el panel creciente
-    for i in range(1, len(_LOGS_ARRANQUE) + 1):
-        parcial = _LOGS_ARRANQUE[:i]
-        texto = _construir_log_text(parcial)
-        panel = Panel(
-            texto,
+        resumen_panel = Panel(
+            resumen_panel_content,
+            title=f"[dim green]{ok_count}/{total} módulos activos[/dim green]",
             border_style="dim green",
+            box=box.ROUNDED,
             padding=(0, 2),
-            box=box.SIMPLE,
         )
-        if i == 1:
-            console.print(panel)
-        else:
-            # Retrocede y sobreescribe el panel anterior
-            lineas = i + 2
-            console.print(f"\033[{lineas}A", end="")
-            console.print(panel)
-        time.sleep(0.18)
 
-    console.print()
+        layout = Layout()
+        layout.split_column(
+            Layout(hero,          name="hero",    ratio=4),
+            Layout(resumen_panel, name="resumen", ratio=1),
+        )
+        live.update(layout)
+        time.sleep(0.3)
+
+    # ── Cierre: ready line ────────────────────────────────────────────
     console.print(Rule(style="dim green"))
     console.print(
         Align.center(
-            "[dim]Escribe [bold white]help[/bold white] "
-            "para ver todos los comandos disponibles  ·  "
-            "[bold white]exit[/bold white] para salir[/dim]"
+            "[dim]Escribe [bold white]help[/bold white] para ver comandos  "
+            "·  [bold white]exit[/bold white] para salir[/dim]"
         )
     )
     console.print(Rule(style="dim green"))
     console.print()
 
 
-# ═══════════════════════════════════════════════════════════════════
-# BANNER COMPACTO (comando clear / cls)
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# BANNER COMPACTO — comando clear / cls
+# ══════════════════════════════════════════════════════════════════════
 
 def mostrar_banner(
     console: Console,
     nombre: str,
     version: str,
     iface: str,
-    proyecto: str = None,
+    proyecto: str | None = None,
 ) -> None:
-    """Banner compacto para el comando 'clear' durante la sesión."""
     _limpiar()
-
-    grid = Table.grid(padding=(0, 3), expand=True)
-    grid.add_column(ratio=1)
-    grid.add_column(ratio=2)
 
     arte = Text(ANUBIS_ART, style="bold green")
 
-    der = Table.grid(padding=(0, 1))
-    der.add_column(style="dim green", justify="right", min_width=12)
-    der.add_column(style="white")
+    inf = Table.grid(padding=(0, 1))
+    inf.add_column(style="dim green", justify="right", min_width=12)
+    inf.add_column(style="white")
 
-    def row(k, v):
-        der.add_row(k, v)
+    def row(k: str, v: str) -> None:
+        inf.add_row(k, v)
 
-    row("SISTEMA",
-        f"[bold white]APEX SENTINEL[/bold white] [dim]v{version}[/dim]")
-    row("OPERADOR", f"[bold green]{nombre}[/bold green]")
-    row("ESTADO",   "[bold green]● EN LÍNEA[/bold green]")
-    row("INTERFAZ", f"[cyan]{iface}[/cyan]")
-    row("IP",       f"[cyan]{_get_ip()}[/cyan]")
-    row("HORA",     f"[dim]{datetime.now().strftime('%H:%M:%S')}[/dim]")
+    row("SISTEMA",   f"[bold white]APEX SENTINEL[/bold white] [dim]v{version}[/dim]")
+    row("ESTADO",    "[bold green]● EN LÍNEA[/bold green]")
+    row("INTERFAZ",  f"[cyan]{iface}[/cyan]  [dim]{_get_ip()}[/dim]")
+    row("HORA",      f"[dim]{datetime.now().strftime('%H:%M:%S')}[/dim]")
     if proyecto:
         row("PROYECTO", f"[bold green]{proyecto}[/bold green]")
-    row("AVISO",    "[bold red]AUTHORIZED USE ONLY[/bold red]")
-
-    grid.add_row(Align(arte, vertical="middle"), Align(der, vertical="middle"))
+    row("",          "")
+    row("AVISO",     "[bold red]AUTHORIZED USE ONLY[/bold red]")
 
     console.print(
         Panel(
-            grid,
+            Columns(
+                [Align(arte, vertical="middle"), Align(inf, vertical="middle")],
+                equal=False,
+                expand=True,
+            ),
             title="[bold green]◈  ANUBIS OS  ◈[/bold green]",
             border_style="green",
             box=box.HEAVY_EDGE,
@@ -468,23 +409,15 @@ def mostrar_banner(
     console.print()
 
 
-# ═══════════════════════════════════════════════════════════════════
-# MENÚ DE AYUDA (requerido por Main_v3.py)
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# MENÚ DE AYUDA
+# ══════════════════════════════════════════════════════════════════════
 
 def mostrar_ayuda(
     console: Console,
     version: str,
-    comandos: dict[str, list[tuple[str, str]]] = None,
+    comandos: dict[str, list[tuple[str, str]]] | None = None,
 ) -> None:
-    """
-    Menú de ayuda organizado por categorías.
-
-    :param console:   instancia Rich Console
-    :param version:   versión del sistema (ej. "2.1")
-    :param comandos:  dict categoría → [(cmd, descripción), ...]
-                      Por defecto usa COMANDOS_HELP
-    """
     if comandos is None:
         comandos = COMANDOS_HELP
 
@@ -512,27 +445,12 @@ def mostrar_ayuda(
             padding=(0, 1),
             min_width=38,
         )
-        tb.add_column(
-            f"▸  {categoria}",
-            style="cyan",
-            min_width=22,
-            no_wrap=True,
-        )
+        tb.add_column(f"▸  {categoria}", style="cyan", min_width=22, no_wrap=True)
         tb.add_column("Descripción", style="dim white")
-
         for cmd, desc in cmds:
             tb.add_row(f"[bold white]{cmd}[/bold white]", desc)
+        cols.append(Panel(tb, border_style="dim green", box=box.ROUNDED, padding=(0, 1)))
 
-        cols.append(
-            Panel(
-                tb,
-                border_style="dim green",
-                box=box.ROUNDED,
-                padding=(0, 1),
-            )
-        )
-
-    # Imprimir en grupos de 2 columnas
     pares = [cols[i: i + 2] for i in range(0, len(cols), 2)]
     for par in pares:
         console.print(Columns(par, equal=True, expand=True))
@@ -542,27 +460,34 @@ def mostrar_ayuda(
     console.print(
         Align.center(
             "[dim]Todos los módulos respetan [bold white]Ctrl+C[/bold white] "
-            "para cancelar  ·  [bold white]exit[/bold white] para cerrar la sesión[/dim]"
+            "para cancelar  ·  [bold white]exit[/bold white] para cerrar[/dim]"
         )
     )
     console.print(Rule(style="dim green"))
     console.print()
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # PRUEBA STANDALONE
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    _console = Console()
+    _con = Console()
+    estados_demo = {
+        "RadarSentinel": True,  "TacticalSniffer": True,
+        "RFModule": True,       "SpectrumAnalyzer": True,
+        "ExifAnalyzer": True,   "ForensicReader": True,
+        "StealthModule": True,  "MobileSentinel": True,
+        "OSINTEngine": True,    "CVEMatcher": True,
+        "GestorProyectos": True,"MotorReportes": True,
+        "HydraModule": True,    "GestorPlugins": True,
+        "Recovery": False,
+    }
     try:
-        mostrar_bootloader(_console, "Sentinel", "2.1", "wlan0mon")
-        input("AnubisOS@Sentinel:~# ")
-        mostrar_banner(
-            _console, "Sentinel", "2.1", "wlan0mon",
-            proyecto="Operacion-Alpha",
-        )
-        input("AnubisOS@Sentinel:~# ")
-        mostrar_ayuda(_console, "2.1")
+        mostrar_bootloader(_con, "Sentinel", "2.3", "wlan0mon", estados_demo)
+        input("AnubisOS@Sentinel~# ")
+        mostrar_banner(_con, "Sentinel", "2.3", "wlan0mon", proyecto="Operacion-Alpha")
+        input("AnubisOS@Sentinel~# ")
+        mostrar_ayuda(_con, "2.3")
     except KeyboardInterrupt:
-        _console.print("\n[yellow][!] Cancelado.[/yellow]")
+        _con.print("\n[yellow][!] Cancelado.[/yellow]")

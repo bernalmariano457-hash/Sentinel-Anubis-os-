@@ -1,30 +1,24 @@
-"""
-core/ModuleRegistry.py — Registro declarativo de módulos de APEX SENTINEL
-══════════════════════════════════════════════════════════════════════════
-
-Reemplaza _cargar_modulos() de Main.py (90 líneas god-method).
-Añadir un módulo nuevo = una línea en la lista MODULOS.
-"""
+# core/ModuleRegistry.py — Registro declarativo de módulos de APEX SENTINEL
+# ══════════════════════════════════════════════════════════════════════════
+# Reemplaza _cargar_modulos() de Main.py (90 líneas god-method).
+# Añadir un módulo nuevo = una línea en la lista MODULOS.
 from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from Main import ApexSentinel
+from typing import Any
 
 
 @dataclass
 class ModuleSpec:
-    attr:           str          # atributo en el sentinel (self.radar, self.rf…)
-    cls_name:       str          # nombre de la clase
-    module_path:    str          # ruta Python: "modules.network.RadarSentinel"
-    needs_sentinel: bool = True  # True → Cls(sentinel) | False → Cls()
-    display_name:   str  = ""    # nombre en bootscreen
+    attr:           str    # atributo en el sentinel (self.radar, self.rf…)
+    cls_name:       str    # nombre de la clase
+    module_path:    str    # ruta Python: "modules.network.RadarSentinel"
+    needs_sentinel: bool = True   # True → Cls(sentinel) | False → Cls()
+    display_name:   str  = ""     # nombre en bootscreen
     critico:        bool = False
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         if not self.display_name:
             self.display_name = self.cls_name
 
@@ -95,16 +89,16 @@ MODULOS: list[ModuleSpec] = [
     # ── RF ────────────────────────────────────────────────────────────
     ModuleSpec("rf",           "RFModuleIntegrado", "modules.rf.rf_module",
                display_name="RFModuleIntegrado"),
+    ModuleSpec("sa",            "SpectrumAnalyzer",  "modules.rf.SpectrumAnalyzer",
+               display_name="SpectrumAnalyzer"),   # Analizador de espectro v2
 ]
 
 
 class ModuleRegistry:
-    """
-    Carga todos los módulos declarados en MODULOS y los asigna
-    como atributos en el sentinel.
-    """
+    # Carga todos los módulos declarados en MODULOS y los asigna
+    # como atributos en el sentinel.
 
-    def __init__(self, sentinel: ApexSentinel) -> None:
+    def __init__(self, sentinel):
         self._sentinel = sentinel
         self._log = getattr(sentinel, "log", None)
         self._resultados: dict[str, tuple[bool, ModuleSpec]] = {}
@@ -118,10 +112,10 @@ class ModuleRegistry:
             self._log.warning(msg, "Registry")
 
     @staticmethod
-    def _importar(module_path: str, cls_name: str) -> type[Any] | None:
+    def _importar(module_path: str, cls_name: str):
         try:
             mod = importlib.import_module(module_path)
-            return getattr(mod, cls_name, None)  # type: ignore[no-any-return]
+            return getattr(mod, cls_name, None)
         except Exception:
             return None
 
@@ -191,7 +185,7 @@ class ModuleRegistry:
             return False
 
     def _cargar_extras(self) -> None:
-        """Carga callables y primitivas que no son instancias de clase."""
+        # Carga callables y primitivas que no son instancias de clase.
         # EvilTwin
         try:
             from modules.network.EvilTwinServer import iniciar_servidor
@@ -221,10 +215,8 @@ class ModuleRegistry:
             self._sentinel._db_extractor_cls = None
 
     def cargar_todos(self) -> dict[str, bool]:
-        """
-        Carga todos los módulos en orden correcto de dependencias.
-        Devuelve {attr: bool} para el bootscreen.
-        """
+        # Carga todos los módulos en orden correcto de dependencias.
+        # Devuelve {attr: bool} para el bootscreen.
         resultados: dict[str, bool] = {}
         _especiales = {"recovery", "motor_rep", "plugins", "checker"}
 
@@ -253,8 +245,7 @@ class ModuleRegistry:
         # 4. MotorReportes (depende de gp)
         ok = self._cargar_motor_rep()
         resultados["motor_rep"] = ok
-        mr_spec = ModuleSpec("motor_rep", "MotorReportes",
-                             "modules.reporte.MotorReportes",
+        mr_spec = ModuleSpec("motor_rep", "MotorReportes", "modules.reporte.MotorReportes",
                              display_name="MotorReportes")
         self._resultados["motor_rep"] = (ok, mr_spec)
 
@@ -270,9 +261,9 @@ class ModuleRegistry:
         return resultados
 
     def estados(self) -> dict[str, bool]:
-        """Para el bootscreen: {display_name: bool}"""
+        # Para el bootscreen: {display_name: bool}
         return {spec.display_name: ok
-                for _attr, (ok, spec) in self._resultados.items()}
+                for attr, (ok, spec) in self._resultados.items()}
 
     def disponible(self, attr: str) -> bool:
         return getattr(self._sentinel, attr, None) is not None
