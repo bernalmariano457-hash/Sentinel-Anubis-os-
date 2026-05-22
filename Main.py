@@ -276,6 +276,7 @@ class ApexSentinel:
             "rfstatus":  c.rfestado,  "radio":     c.radio,
             "rfgrabar":  c.rfgrabar,  "rfplay":    c.rfplay,
             "adsb":      c.adsb,
+            "noaa":      c.noaa,
             # Analizador de espectro RF
             "spectrum": c.spectrum,
             "sa":       c.spectrum,

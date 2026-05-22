@@ -161,6 +161,20 @@ class RFCommands(_DomainBase):
         except ImportError:
             self.console.print("[red][!] rf_recorder.py no encontrado.[/red]")
 
+    def noaa(self):
+        # Decodificador NOAA APT — imágenes satelitales en 137 MHz
+        try:
+            from modules.rf.NOAADecoder import NOAADecoder
+            NOAADecoder(self.s).menu()
+        except ImportError as e:
+            self.console.print(f"[red][!] Dependencia faltante: {e}[/red]")
+            self.console.print(
+                "[dim]Instala: pip install scipy Pillow --break-system-packages\n"
+                "Opcional (mejor calidad): pip install apt3 --break-system-packages[/dim]"
+            )
+        except Exception as e:
+            self.console.print(f"[red][!] Error NOAA: {e}[/red]")
+
     def adsb(self):
         # Monitor ADS-B — decodifica transponders de aeronaves en 1090 MHz
         duracion_s = self.console.input(

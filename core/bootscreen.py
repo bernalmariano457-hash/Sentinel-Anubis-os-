@@ -122,6 +122,7 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
         ("rfgrabar",         "Grabar señal IQ a archivo"),
         ("rfplay",           "Reproducir grabación IQ"),
         ("adsb",             "Monitor ADS-B — aeronaves"),
+        ("noaa",             "NOAA APT — imágenes satélite 137 MHz"),
     ],
     "ATAQUES": [
         ("audit",            "Auditoría de credenciales"),
