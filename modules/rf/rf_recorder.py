@@ -1,66 +1,335 @@
 from __future__ import annotations
-from typing import Any
 
 import json
 import logging
 import time
-import wave
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-
+from typing import Optional
 
 import numpy as np
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
-    BarColumn, Progress, SpinnerColumn,
-    TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn,
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
 )
+from rich.table import Table
+from rich import box
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
 
 log = logging.getLogger("sentinel.rf.recorder")
 
-_IQ_DIR = Path("data/evidence/rf/iq")
 
+# ---------------------------------------------------------------------------
+# Constantes
+# ---------------------------------------------------------------------------
+
+IQ_DIR           = Path("data/evidence/rf/iq")
+SIGMF_VERSION    = "1.0.0"
+SIGMF_AUTHOR     = "rfscanner"
+SIGMF_DATATYPE   = "cf32_le"
+DEFAULT_SR       = 2_048_000
+DEFAULT_DURATION = 10
+AUDIO_RATE       = 48_000
+AUDIO_VOLUME     = 0.85
+BLOCK_SIZE_SECS  = 1            # segundos por bloque de reproducción
+
+IQ_GLOB_PATTERNS = ("*.iq", "*.sigmf-data")
+META_EXTENSIONS  = (".sigmf-meta", ".json")
+
+COMPATIBLE_TOOLS = "SDR# · GQRX · GNU Radio · URH · SigMF"
+
+
+# ---------------------------------------------------------------------------
+# Modelos de datos
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RecordingConfig:
+    freq_mhz:    float
+    duration_s:  int   = DEFAULT_DURATION
+    sample_rate: int   = DEFAULT_SR
+    name:        Optional[str] = None
+    format:      str   = "sigmf"
+
+    @property
+    def freq_hz(self) -> int:
+        return int(self.freq_mhz * 1e6)
+
+    @property
+    def freq_label(self) -> str:
+        return f"{self.freq_mhz:.3f} MHz"
+
+    @property
+    def sps_label(self) -> str:
+        return f"{self.sample_rate / 1e6:.2f} Msps"
+
+    def build_filename(self, timestamp: str) -> str:
+        return self.name or f"iq_{self.freq_mhz:.3f}MHz_{timestamp}"
+
+    def build_path(self, timestamp: str) -> Path:
+        ext = "sigmf-data" if self.format == "sigmf" else "iq"
+        return IQ_DIR / f"{self.build_filename(timestamp)}.{ext}"
+
+
+@dataclass
+class RecordingResult:
+    path:          Path
+    freq_mhz:      float
+    sample_rate:   int
+    total_samples: int
+    bytes_written: int
+    duration_s:    float
+    timestamp_utc: str
+    hardware:      str
+
+    @property
+    def size_mb(self) -> float:
+        return self.bytes_written / 1e6
+
+    @property
+    def actual_duration(self) -> float:
+        return self.total_samples / self.sample_rate
+
+    def to_meta_dict(self) -> dict:
+        return {
+            "frecuencia_hz":    int(self.freq_mhz * 1e6),
+            "sample_rate":      self.sample_rate,
+            "formato":          "complex64",
+            "byte_order":       "little-endian",
+            "timestamp_utc":    self.timestamp_utc,
+            "duracion_seg":     self.duration_s,
+            "muestras_totales": self.total_samples,
+            "hardware":         self.hardware,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Helpers de metadatos
+# ---------------------------------------------------------------------------
+
+def _build_sigmf_meta(result: RecordingResult, duration_s: int) -> dict:
+    return {
+        "global": {
+            "core:datatype":         SIGMF_DATATYPE,
+            "core:sample_rate":      result.sample_rate,
+            "core:version":          SIGMF_VERSION,
+            "core:hw":               result.hardware,
+            "core:description":      f"APEX SENTINEL capture @ {result.freq_mhz:.3f} MHz",
+            "core:author":           SIGMF_AUTHOR,
+            "core:date":             result.timestamp_utc,
+            "rfscanner:duration_s":  duration_s,
+            "rfscanner:samples":     result.total_samples,
+        },
+        "captures": [{
+            "core:sample_start": 0,
+            "core:frequency":    int(result.freq_mhz * 1e6),
+            "core:datetime":     result.timestamp_utc,
+        }],
+        "annotations": [],
+    }
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _read_meta(meta_path: Path) -> tuple[float, int, float, str]:
+    raw = json.loads(meta_path.read_text(encoding="utf-8"))
+    if "global" in raw:
+        sr      = int(raw["global"].get("core:sample_rate", DEFAULT_SR))
+        freq_hz = int(raw.get("captures", [{}])[0].get("core:frequency", 0))
+        dur     = float(raw["global"].get("rfscanner:duration_s", 0))
+        hw      = raw["global"].get("core:hw", "?")
+    else:
+        sr      = raw.get("sample_rate", DEFAULT_SR)
+        freq_hz = raw.get("frecuencia_hz", 0)
+        dur     = float(raw.get("duracion_seg", 0))
+        hw      = raw.get("hardware", "?")
+    return freq_hz / 1e6, sr, dur, hw
+
+
+def _locate_meta(iq_path: Path) -> Optional[Path]:
+    for ext in META_EXTENSIONS:
+        candidate = iq_path.with_suffix(ext)
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+# ---------------------------------------------------------------------------
+# Clase principal
+# ---------------------------------------------------------------------------
 
 class RFRecorder:
 
     def __init__(self, sentinel) -> None:
         self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
-        _IQ_DIR.mkdir(parents=True, exist_ok=True)
+        IQ_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── API pública ────────────────────────────────────────────────
+    # -----------------------------------------------------------------------
+    # API pública
+    # -----------------------------------------------------------------------
+
+    def record(self, cfg: RecordingConfig) -> Optional[Path]:
+        rf = getattr(self.sentinel, "rf_scanner", None)
+        if rf is None:
+            self.console.print("[red][!] rf_scanner not available.[/red]")
+            return None
+
+        timestamp = _utc_timestamp()
+        out_path  = cfg.build_path(timestamp)
+
+        self.console.print(
+            f"[bold cyan][RF] Recording {cfg.freq_label} · "
+            f"{cfg.duration_s}s · {cfg.sps_label} · "
+            f"fmt={cfg.format.upper()}[/bold cyan]"
+        )
+
+        result = self._capture_iq(rf, cfg, out_path, timestamp)
+        if result is None:
+            return None
+
+        self._persist_metadata(result, cfg)
+        self._print_summary(result)
+        self._emit_event(result)
+        return result.path
 
     def grabar(
         self,
-        freq_mhz: float,
-        duracion_seg: int = 10,
-        sample_rate: int = 2_048_000,
-        nombre: str | None = None,
-        formato: str = "sigmf",
-    ) -> Path | None:
-        rf = getattr(self.sentinel, "rf_scanner", None)
-        if rf is None:
-            self.console.print("[red][!] rf_scanner no disponible.[/red]")
-            return None
+        freq_mhz:    float,
+        duracion_seg: int  = DEFAULT_DURATION,
+        sample_rate:  int  = DEFAULT_SR,
+        nombre:       Optional[str] = None,
+        formato:      str  = "sigmf",
+    ) -> Optional[Path]:
+        # Wrapper de compatibilidad hacia atrás
+        return self.record(RecordingConfig(
+            freq_mhz   = freq_mhz,
+            duration_s = duracion_seg,
+            sample_rate= sample_rate,
+            name       = nombre,
+            format     = formato,
+        ))
 
-        ts    = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        fname = nombre or f"iq_{freq_mhz:.3f}MHz_{ts}"
+    def playback(
+        self,
+        file:        str | Path,
+        mode:        str = "wfm",
+        sample_rate: int = DEFAULT_SR,
+    ) -> None:
+        from modules.rf.rf_demod  import Demodulator
+        from modules.rf.rf_config import DemodConfig
 
-        if formato == "sigmf":
-            ruta = _IQ_DIR / f"{fname}.sigmf-data"
-        else:
-            ruta = _IQ_DIR / f"{fname}.iq"
+        path = Path(file)
+        if not path.exists():
+            self.console.print(f"[red][!] File not found: {path}[/red]")
+            return
+
+        sample_rate = self._resolve_sample_rate(path, sample_rate)
 
         self.console.print(
-            f"[bold cyan][RF] Grabando {freq_mhz:.3f} MHz · "
-            f"{duracion_seg}s · {sample_rate/1e6:.2f} Msps · "
-            f"fmt={formato.upper()}[/bold cyan]"
+            f"[cyan][RF] Playing [bold]{path.name}[/bold] "
+            f"mode=[bold]{mode.upper()}[/bold][/cyan]"
         )
 
-        muestras_totales = []
-        inicio           = time.monotonic()
-        bytes_escritos   = 0
+        samples = self._load_iq(path)
+        if samples is None:
+            return
+
+        self._demodulate_and_play(samples, sample_rate, mode)
+
+    def reproducir(
+        self,
+        archivo:     str | Path,
+        modo:        str = "wfm",
+        sample_rate: int = DEFAULT_SR,
+    ) -> None:
+        self.playback(archivo, modo, sample_rate)
+
+    def list_recordings(self) -> None:
+        files = sorted(
+            (f for pat in IQ_GLOB_PATTERNS for f in IQ_DIR.glob(pat)),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
+        )
+        if not files:
+            self.console.print("[dim]No IQ recordings found.[/dim]")
+            return
+
+        table = Table(
+            title=f"[bold]IQ RECORDINGS[/bold] — {IQ_DIR}",
+            box=box.SIMPLE_HEAD,
+            header_style="bold cyan",
+            show_edge=False,
+        )
+        table.add_column("File",     style="white",  min_width=32)
+        table.add_column("Size",     justify="right", width=9)
+        table.add_column("Date",     width=20,        style="dim")
+        table.add_column("Info",     style="dim")
+
+        for f in files:
+            size_mb  = f.stat().st_size / 1e6
+            modified = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+            info     = self._file_info_label(f)
+            table.add_row(f.name, f"{size_mb:.1f} MB", modified, info)
+
+        self.console.print(table)
+
+    def listar(self) -> None:
+        self.list_recordings()
+
+    def delete(self, filename: str) -> None:
+        path = (
+            IQ_DIR / filename
+            if not Path(filename).is_absolute()
+            else Path(filename)
+        )
+        if not path.exists():
+            self.console.print(f"[red][!] Not found: {filename}[/red]")
+            return
+
+        path.unlink()
+        for ext in META_EXTENSIONS:
+            sidecar = path.with_suffix(ext)
+            if sidecar.exists():
+                sidecar.unlink()
+                log.debug("Removed sidecar: %s", sidecar)
+
+        self.console.print(f"[green][+] Deleted: {path.name}[/green]")
+
+    def eliminar(self, archivo: str) -> None:
+        self.delete(archivo)
+
+    # -----------------------------------------------------------------------
+    # Captura IQ
+    # -----------------------------------------------------------------------
+
+    def _capture_iq(
+        self,
+        rf,
+        cfg:       RecordingConfig,
+        out_path:  Path,
+        timestamp: str,
+    ) -> Optional[RecordingResult]:
+        sample_counts: list[int] = []
+        bytes_written  = 0
+        start          = time.monotonic()
 
         with Progress(
             SpinnerColumn(),
@@ -70,246 +339,147 @@ class RFRecorder:
             TimeElapsedColumn(),
             TimeRemainingColumn(),
             console=self.console,
+            transient=True,
         ) as progress:
             task = progress.add_task(
-                f"Capturando {freq_mhz:.3f} MHz...",
-                total=duracion_seg,
+                f"Capturing {cfg.freq_label}...",
+                total=cfg.duration_s,
             )
-            with open(ruta, "wb") as iq_file:
-                while (transcurrido := time.monotonic() - inicio) < duracion_seg:
-                    bloque = rf._capturar(freq_mhz * 1e6)
-                    if bloque is None:
-                        break
-                    bloque_c64 = bloque.astype(np.complex64)
-                    iq_file.write(bloque_c64.tobytes())
-                    muestras_totales.append(len(bloque_c64))
-                    bytes_escritos += bloque_c64.nbytes
-                    progress.update(task, completed=min(transcurrido, duracion_seg))
 
-        total_muestras = sum(muestras_totales)
-        if total_muestras == 0:
-            self.console.print("[red][!] No se obtuvieron muestras.[/red]")
-            ruta.unlink(missing_ok=True)
+            with out_path.open("wb") as fh:
+                while (elapsed := time.monotonic() - start) < cfg.duration_s:
+                    block = rf._capturar(cfg.freq_hz)
+                    if block is None:
+                        log.warning("rf._capturar returned None — stopping early.")
+                        break
+
+                    block_c64 = block.astype(np.complex64)
+                    fh.write(block_c64.tobytes())
+                    sample_counts.append(len(block_c64))
+                    bytes_written += block_c64.nbytes
+                    progress.update(task, completed=min(elapsed, cfg.duration_s))
+
+        total_samples = sum(sample_counts)
+        if total_samples == 0:
+            self.console.print("[red][!] No samples captured.[/red]")
+            out_path.unlink(missing_ok=True)
             return None
 
-        size_mb = bytes_escritos / 1e6
+        hw = getattr(rf, "hw_nombre", "unknown")
 
-        meta = {
-            "frecuencia_hz":   int(freq_mhz * 1e6),
-            "sample_rate":     sample_rate,
-            "formato":         "complex64",
-            "byte_order":      "little-endian",
-            "timestamp_utc":   ts,
-            "duracion_seg":    duracion_seg,
-            "muestras_totales": total_muestras,
-            "hardware":        getattr(rf, "hw_nombre", "desconocido"),
-        }
+        return RecordingResult(
+            path          = out_path,
+            freq_mhz      = cfg.freq_mhz,
+            sample_rate   = cfg.sample_rate,
+            total_samples = total_samples,
+            bytes_written = bytes_written,
+            duration_s    = cfg.duration_s,
+            timestamp_utc = timestamp,
+            hardware      = hw,
+        )
 
-        if formato == "sigmf":
-            self._escribir_meta_sigmf(ruta, meta, freq_mhz, sample_rate, ts)
+    # -----------------------------------------------------------------------
+    # Persistencia de metadatos
+    # -----------------------------------------------------------------------
+
+    def _persist_metadata(self, result: RecordingResult, cfg: RecordingConfig) -> None:
+        if cfg.format == "sigmf":
+            meta = _build_sigmf_meta(result, cfg.duration_s)
+            _write_json(result.path.with_suffix(".sigmf-meta"), meta)
         else:
-            (ruta.parent / f"{fname}.json").write_text(
-                json.dumps(meta, indent=4), encoding="utf-8"
-            )
+            fname = cfg.build_filename(result.timestamp_utc)
+            _write_json(IQ_DIR / f"{fname}.json", result.to_meta_dict())
 
-        self.console.print(Panel(
-            f"[bold green]Grabacion completada[/bold green]\n\n"
-            f"  Archivo:   [white]{ruta}[/white]\n"
-            f"  Muestras:  [white]{total_muestras:,}[/white]\n"
-            f"  Tamano:    [white]{size_mb:.1f} MB[/white]\n"
-            f"  Duracion:  [white]{total_muestras/sample_rate:.1f}s[/white]\n\n"
-            f"[dim]Compatible con: SDR# · GQRX · GNU Radio · URH · SigMF[/dim]",
-            border_style="green",
-        ))
+    # -----------------------------------------------------------------------
+    # Reproducción
+    # -----------------------------------------------------------------------
 
-        self._registrar_en_db(freq_mhz, sample_rate, total_muestras, ruta, meta)
-
+    def _resolve_sample_rate(self, path: Path, fallback: int) -> int:
+        meta_path = _locate_meta(path)
+        if meta_path is None:
+            return fallback
         try:
-            self.sentinel.reportes.registrar_evento(
-                "RF_REC",
-                f"Grabacion IQ: {freq_mhz:.3f} MHz, "
-                f"{total_muestras/sample_rate:.1f}s, {size_mb:.1f}MB"
+            freq_mhz, sr, dur, hw = _read_meta(meta_path)
+            self.console.print(
+                f"[dim]Metadata: {freq_mhz:.3f} MHz · {sr / 1e6:.2f} Msps[/dim]"
             )
-        except Exception:
-            pass
+            return sr
+        except Exception as exc:
+            log.warning("Could not read metadata from %s: %s", meta_path, exc)
+            return fallback
 
-        return ruta
+    def _load_iq(self, path: Path) -> Optional[np.ndarray]:
+        try:
+            return np.fromfile(str(path), dtype=np.complex64)
+        except Exception as exc:
+            self.console.print(f"[red][!] Failed to read IQ file: {exc}[/red]")
+            log.exception("IQ file read error: %s", path)
+            return None
 
-    def reproducir(
+    def _demodulate_and_play(
         self,
-        archivo: str | Path,
-        modo: str = "wfm",
-        sample_rate: int = 2_048_000,
-    ):
-        from modules.rf.rf_demod import Demodulator
+        samples:     np.ndarray,
+        sample_rate: int,
+        mode:        str,
+    ) -> None:
+        from modules.rf.rf_demod  import Demodulator
         from modules.rf.rf_config import DemodConfig
 
-        ruta = Path(archivo)
-        if not ruta.exists():
-            self.console.print(f"[red][!] Archivo no encontrado: {ruta}[/red]")
-            return
-
-        meta_path = ruta.with_suffix(".sigmf-meta")
-        if not meta_path.exists():
-            meta_path = ruta.with_suffix(".json")
-
-        if meta_path.exists():
-            try:
-                raw  = json.loads(meta_path.read_text())
-                # SigMF usa anidamiento, fallback a formato propio
-                if "global" in raw:
-                    sample_rate = int(
-                        raw["global"].get("core:sample_rate", sample_rate)
-                    )
-                    freq_hz = int(
-                        raw.get("captures", [{}])[0]
-                        .get("core:frequency", 0)
-                    )
-                else:
-                    sample_rate = raw.get("sample_rate", sample_rate)
-                    freq_hz     = raw.get("frecuencia_hz", 0)
-                self.console.print(
-                    f"[dim]Metadata: {freq_hz/1e6:.3f} MHz · "
-                    f"{sample_rate/1e6:.2f} Msps[/dim]"
-                )
-            except Exception as e:
-                log.warning("Error leyendo metadata: %s", e)
+        block_size = sample_rate * BLOCK_SIZE_SECS
+        n_blocks   = len(samples) // block_size
 
         self.console.print(
-            f"[cyan][RF] Reproduciendo [bold]{ruta.name}[/bold] "
-            f"en modo [bold]{modo.upper()}[/bold][/cyan]"
+            f"[dim]{len(samples):,} samples · "
+            f"{len(samples) / sample_rate:.1f}s · {n_blocks} blocks[/dim]"
         )
 
-        try:
-            datos = np.fromfile(str(ruta), dtype=np.complex64)
-        except Exception as e:
-            self.console.print(f"[red][!] Error leyendo archivo IQ: {e}[/red]")
-            return
-
-        cfg   = DemodConfig(mode=modo, audio_rate=48000, volume=0.85)
+        cfg   = DemodConfig(mode=mode, audio_rate=AUDIO_RATE, volume=AUDIO_VOLUME)
         demod = Demodulator(cfg, sample_rate)
 
-        bloque_size = sample_rate
-        n_bloques   = len(datos) // bloque_size
-
-        self.console.print(
-            f"[dim]{len(datos):,} muestras · "
-            f"{len(datos)/sample_rate:.1f}s · {n_bloques} bloques[/dim]"
-        )
-
-        for i in range(n_bloques):
-            bloque = datos[i * bloque_size:(i + 1) * bloque_size]
-            audio  = demod.demodulate(bloque)
+        for i in range(n_blocks):
+            block = samples[i * block_size:(i + 1) * block_size]
+            audio = demod.demodulate(block)
             if audio is not None and len(audio) > 0:
                 demod.play(audio)
 
         demod.stop_audio()
-        self.console.print("[green][RF] Reproduccion completada.[/green]")
+        self.console.print("[green][RF] Playback complete.[/green]")
 
-    def listar(self) -> None:
-        archivos = sorted(
-            list(_IQ_DIR.glob("*.iq")) + list(_IQ_DIR.glob("*.sigmf-data")),
-            key=lambda f: f.stat().st_mtime,
-            reverse=True,
-        )
+    # -----------------------------------------------------------------------
+    # UI helpers
+    # -----------------------------------------------------------------------
 
-        if not archivos:
-            self.console.print("[dim]No hay grabaciones IQ.[/dim]")
-            return
+    def _print_summary(self, result: RecordingResult) -> None:
+        self.console.print(Panel(
+            f"[bold green]Recording complete[/bold green]\n\n"
+            f"  File:     [white]{result.path}[/white]\n"
+            f"  Samples:  [white]{result.total_samples:,}[/white]\n"
+            f"  Size:     [white]{result.size_mb:.1f} MB[/white]\n"
+            f"  Duration: [white]{result.actual_duration:.1f}s[/white]\n\n"
+            f"[dim]Compatible with: {COMPATIBLE_TOOLS}[/dim]",
+            border_style="green",
+        ))
 
-        from rich.table import Table
-        tabla = Table(
-            title=f"[bold]GRABACIONES IQ[/bold] — {_IQ_DIR}",
-            box=None,
-            header_style="bold cyan",
-        )
-        tabla.add_column("Archivo",   style="white",  min_width=30)
-        tabla.add_column("Tamano",    justify="right", width=9)
-        tabla.add_column("Fecha",     width=20, style="dim")
-        tabla.add_column("Info",      style="dim")
-
-        for f in archivos:
-            size_mb = f.stat().st_size / 1e6
-            fecha   = datetime.fromtimestamp(
-                f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-            info    = ""
-
-            for ext in (".sigmf-meta", ".json"):
-                meta_f = f.with_suffix(ext)
-                if meta_f.exists():
-                    try:
-                        m = json.loads(meta_f.read_text())
-                        if "global" in m:
-                            sr   = m["global"].get("core:sample_rate", 0)
-                            freq = m.get("captures", [{}])[0].get(
-                                "core:frequency", 0
-                            ) / 1e6
-                            dur  = m["global"].get("rfscanner:duration_s", 0)
-                            hw   = m["global"].get("core:hw", "?")
-                        else:
-                            freq = m.get("frecuencia_hz", 0) / 1e6
-                            dur  = m.get("duracion_seg", 0)
-                            hw   = m.get("hardware", "?")
-                        info = f"{freq:.3f}MHz · {dur}s · {hw}"
-                    except Exception:
-                        pass
-                    break
-
-            tabla.add_row(f.name, f"{size_mb:.1f}MB", fecha, info)
-
-        self.console.print(tabla)
-
-    def eliminar(self, archivo: str) -> None:
-        ruta = (
-            _IQ_DIR / archivo
-            if not Path(archivo).is_absolute()
-            else Path(archivo)
-        )
-        if not ruta.exists():
-            self.console.print(f"[red][!] No encontrado: {archivo}[/red]")
-            return
-        ruta.unlink()
-        for ext in (".sigmf-meta", ".json"):
-            meta = ruta.with_suffix(ext)
-            if meta.exists():
-                meta.unlink()
-        self.console.print(f"[green][+] Eliminado: {ruta.name}[/green]")
-
-    # ── Helpers privados ───────────────────────────────────────────
-
-    def _escribir_meta_sigmf(self, ruta: Path, meta: dict,
-                              freq_mhz: float, sample_rate: int, ts: str) -> None:
-        sigmf_meta = {
-            "global": {
-                "core:datatype":       "cf32_le",
-                "core:sample_rate":    sample_rate,
-                "core:version":        "1.0.0",
-                "core:hw":             meta["hardware"],
-                "core:description":    f"APEX SENTINEL capture @ {freq_mhz:.3f} MHz",
-                "core:author":         "rfscanner",
-                "core:date":           ts,
-                "rfscanner:duration_s":  meta["duracion_seg"],
-                "rfscanner:samples":     meta["muestras_totales"],
-            },
-            "captures": [{
-                "core:sample_start": 0,
-                "core:frequency":    int(freq_mhz * 1e6),
-                "core:datetime":     ts,
-            }],
-            "annotations": [],
-        }
-        meta_path = ruta.with_suffix(".sigmf-meta")
-        meta_path.write_text(
-            json.dumps(sigmf_meta, indent=2), encoding="utf-8"
-        )
-
-    def _registrar_en_db(self, freq_mhz: float, sample_rate: int,
-                          total_muestras: int, ruta: Path, meta: dict) -> None:
+    def _file_info_label(self, path: Path) -> str:
+        meta_path = _locate_meta(path)
+        if meta_path is None:
+            return ""
         try:
-            db = getattr(
-                getattr(self.sentinel, "rf_module", None), "_db", None
-            )
-            if db and hasattr(db, "insertar_senal"):
-                pass
+            freq_mhz, sr, dur, hw = _read_meta(meta_path)
+            return f"{freq_mhz:.3f} MHz · {dur:.0f}s · {hw}"
         except Exception:
-            pass
+            return ""
+
+    # -----------------------------------------------------------------------
+    # Telemetría
+    # -----------------------------------------------------------------------
+
+    def _emit_event(self, result: RecordingResult) -> None:
+        try:
+            self.sentinel.reportes.registrar_evento(
+                "RF_REC",
+                f"IQ recording: {result.freq_mhz:.3f} MHz, "
+                f"{result.actual_duration:.1f}s, {result.size_mb:.1f} MB",
+            )
+        except Exception as exc:
+            log.debug("Could not emit RF_REC event: %s", exc)

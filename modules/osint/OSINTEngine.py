@@ -1,298 +1,410 @@
 from __future__ import annotations
 
+import logging
 import os
-import json
 import socket
+import warnings
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
 import requests
-from datetime import datetime
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.rule import Rule
 from rich import box
+from rich.columns import Columns
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich.rule import Rule
+from rich.table import Table
+from rich.text import Text
 
-console = Console()
-TIMEOUT = 5
+if TYPE_CHECKING:
+    from Main import ApexSentinel
 
+log = logging.getLogger("sentinel.osint")
+
+# ── Configuración ─────────────────────────────────────────────────────
+_TIMEOUT    = int(os.getenv("OSINT_TIMEOUT", "8"))
+_MAX_WHOIS  = int(os.getenv("OSINT_WHOIS_FIELDS", "14"))
+
+# ── Rutas ─────────────────────────────────────────────────────────────
+_EVIDENCE_DIR = Path("data/evidence/osint")
+
+# ── APIs ──────────────────────────────────────────────────────────────
+_URL_GEO     = (
+    "https://ip-api.com/json/{ip}"
+    "?fields=status,country,regionName,city,lat,lon,timezone,"
+    "isp,org,as,mobile,proxy,hosting"
+)
+_URL_ASN     = "https://ipinfo.io/{ip}/json"
+_URL_WHOIS   = "https://api.whois.vu/?q={dominio}"
+_URL_ABUSE   = "https://api.abuseipdb.com/api/v2/check"
+
+# ── Headers HTTP de interés para fingerprinting ───────────────────────
+_HEADERS_RELEVANTES: tuple[str, ...] = (
+    "Server", "X-Powered-By", "X-Frame-Options",
+    "Content-Security-Policy", "Strict-Transport-Security",
+    "X-Content-Type-Options", "X-Generator", "Set-Cookie",
+)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CLASE PRINCIPAL
+# ══════════════════════════════════════════════════════════════════════
 
 class OSINTEngine:
-    def __init__(self, sentinel):
-        self.sentinel = sentinel
-        self.console = sentinel.console
-        self.gp = getattr(sentinel, "gp", None)
-        self._sesion = requests.Session()
-        self._sesion.headers.update({
-            "User-Agent": "Mozilla/5.0 (compatible; research-tool)"
-        })
 
-    # ------------------------------------------------------------------
-    # IP INTELLIGENCE
-    # ------------------------------------------------------------------
+    def __init__(self, sentinel: ApexSentinel) -> None:
+        self._s      = sentinel
+        self._con    = sentinel.console
+        self._log    = sentinel.log
+        self._sesion = self._crear_sesion()
+        self._abuse_key: str = os.getenv("ABUSEIPDB_KEY", "")
+        _EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 
-    def analizar_ip(self, ip: str):
-        self.console.print(
-            f"\n[bold cyan]OSINT → Analizando IP: {ip}[/bold cyan]")
-        self.console.print(Rule(style="dim cyan"))
+    # ── API pública ───────────────────────────────────────────────────
 
-        datos = {}
+    def analizar_ip(self, ip: str) -> dict[str, Any]:
+        self._con.print(
+            f"\n[bold cyan]OSINT  →  IP:[/bold cyan] "
+            f"[bold white]{ip}[/bold white]"
+        )
+        self._con.print(Rule(style="dim cyan"))
+        datos: dict[str, Any] = {"objetivo": ip, "tipo": "ip"}
 
-        # 1. Geolocalización (ip-api.com — gratuito, sin key)
-        self.console.print("[dim]  [1/3] Geolocalización...[/dim]")
-        geo = self._geo_ip(ip)
+        with self._con.status("[dim]Consultando geolocalización...[/dim]"):
+            geo = self._geo_ip(ip)
         if geo:
             datos["geo"] = geo
             self._mostrar_geo(geo)
 
-        # 2. ASN / Organización (ipinfo.io — gratuito hasta 50k/mes)
-        self.console.print("[dim]  [2/3] ASN e ISP...[/dim]")
-        asn = self._asn_ip(ip)
+        with self._con.status("[dim]Consultando ASN / ISP...[/dim]"):
+            asn = self._asn_ip(ip)
         if asn:
             datos["asn"] = asn
             self._mostrar_asn(asn)
 
-        # 3. DNS reverso
-        self.console.print("[dim]  [3/3] DNS reverso...[/dim]")
-        rdns = self._rdns(ip)
+        with self._con.status("[dim]Resolución DNS inversa...[/dim]"):
+            rdns = self._rdns(ip)
         datos["rdns"] = rdns
-        self.console.print(f"  [cyan]rDNS:[/cyan] {rdns}")
+        self._con.print(
+            Panel(Text(rdns, style="white"),
+                  title="[dim cyan]rDNS[/dim cyan]",
+                  border_style="dim cyan",
+                  expand=False))
 
-        # Registrar en proyecto
-        if self.gp:
-            self.gp.registrar_evidencia(
-                "osint_ip", f"Análisis OSINT de {ip}", datos
-            )
+        if self._abuse_key:
+            with self._con.status("[dim]AbuseIPDB...[/dim]"):
+                abuso = self._abuseipdb(ip)
+            if abuso:
+                datos["abuseipdb"] = abuso
+                self._mostrar_abuso(abuso)
 
+        self._registrar_y_exportar("osint_ip", ip, datos)
         return datos
 
-    def _geo_ip(self, ip: str) -> dict | None:
-        try:
-            r = self._sesion.get(
-                f"http://ip-api.com/json/{ip}"
-                f"?fields=status,country,regionName,city,zip,lat,lon,"
-                f"timezone,isp,org,as,mobile,proxy,hosting",
-                timeout=TIMEOUT
-            )
-            if r.status_code == 200:
-                d = r.json()
-                if d.get("status") == "success":
-                    return d
-        except Exception:
-            pass
-        return None
-
-    def _asn_ip(self, ip: str) -> dict | None:
-        try:
-            r = self._sesion.get(
-                f"https://ipinfo.io/{ip}/json", timeout=TIMEOUT
-            )
-            if r.status_code == 200:
-                return r.json()
-        except Exception:
-            pass
-        return None
-
-    def _rdns(self, ip: str) -> str:
-        try:
-            return socket.gethostbyaddr(ip)[0]
-        except Exception:
-            return "Sin registro rDNS"
-
-    def _mostrar_geo(self, geo: dict):
-        tabla = Table(box=box.SIMPLE, show_header=False,
-                      show_edge=False, padding=(0, 2))
-        tabla.add_column(style="dim cyan", justify="right", min_width=15)
-        tabla.add_column(style="white")
-
-        campos = [
-            ("País",        geo.get("country", "—")),
-            ("Región",      geo.get("regionName", "—")),
-            ("Ciudad",      geo.get("city", "—")),
-            ("Coordenadas", f"{geo.get('lat', '?')}, {geo.get('lon', '?')}"),
-            ("Zona horaria", geo.get("timezone", "—")),
-            ("ISP",         geo.get("isp", "—")),
-            ("Org",         geo.get("org", "—")),
-            ("ASN",         geo.get("as", "—")),
-            ("Proxy",       "[red]SÍ[/red]" if geo.get("proxy")
-             else "[green]NO[/green]"),
-            ("Hosting",
-             "[yellow]SÍ[/yellow]" if geo.get("hosting") else "NO"),
-            ("Móvil",       "SÍ" if geo.get("mobile") else "NO"),
-        ]
-        for k, v in campos:
-            tabla.add_row(k, str(v))
-
-        self.console.print(Panel(tabla, title="GEOLOCALIZACIÓN",
-                                 border_style="cyan"))
-
-    def _mostrar_asn(self, asn: dict):
-        tabla = Table(box=box.SIMPLE, show_header=False,
-                      show_edge=False, padding=(0, 2))
-        tabla.add_column(style="dim cyan", justify="right", min_width=15)
-        tabla.add_column(style="white")
-        for k, v in asn.items():
-            if k not in ("ip", "readme"):
-                tabla.add_row(k.capitalize(), str(v))
-        self.console.print(Panel(tabla, title="ASN / ORGANIZACIÓN",
-                                 border_style="dim cyan"))
-
-    # ------------------------------------------------------------------
-    # DOMINIO INTELLIGENCE
-    # ------------------------------------------------------------------
-
-    def analizar_dominio(self, dominio: str):
-        self.console.print(
-            f"\n[bold cyan]OSINT → Analizando dominio: {dominio}[/bold cyan]"
+    def analizar_dominio(self, dominio: str) -> dict[str, Any]:
+        self._con.print(
+            f"\n[bold cyan]OSINT  →  Dominio:[/bold cyan] "
+            f"[bold white]{dominio}[/bold white]"
         )
-        self.console.print(Rule(style="dim cyan"))
+        self._con.print(Rule(style="dim cyan"))
+        datos: dict[str, Any] = {"objetivo": dominio, "tipo": "dominio"}
 
-        datos = {}
-
-        # 1. Resolución DNS básica
-        self.console.print("[dim]  [1/3] Registros DNS...[/dim]")
-        dns = self._resolver_dns(dominio)
+        with self._con.status("[dim]Resolviendo DNS...[/dim]"):
+            dns = self._resolver_dns(dominio)
         datos["dns"] = dns
         self._mostrar_dns(dominio, dns)
 
-        # 2. WHOIS vía API pública
-        self.console.print("[dim]  [2/3] WHOIS...[/dim]")
-        whois = self._whois_api(dominio)
+        with self._con.status("[dim]Consultando WHOIS...[/dim]"):
+            whois = self._whois(dominio)
         if whois:
             datos["whois"] = whois
             self._mostrar_whois(whois)
 
-        # 3. Encabezados HTTP
-        self.console.print("[dim]  [3/3] Tecnologías web...[/dim]")
-        headers = self._headers_http(dominio)
+        with self._con.status("[dim]Analizando headers HTTP...[/dim]"):
+            headers = self._headers_http(dominio)
         if headers:
             datos["headers"] = headers
             self._mostrar_headers(headers)
 
-        if self.gp:
-            self.gp.registrar_evidencia(
-                "osint_dominio", f"Reconocimiento de {dominio}", datos
-            )
-
+        self._registrar_y_exportar("osint_dominio", dominio, datos)
         return datos
 
-    def _resolver_dns(self, dominio: str) -> dict:
-        resultado = {}
-        try:
-            resultado["A"] = socket.gethostbyname_ex(dominio)[2]
-        except Exception:
-            resultado["A"] = []
-        return resultado
-
-    def _whois_api(self, dominio: str) -> dict | None:
-        try:
-            r = self._sesion.get(
-                f"https://api.whois.vu/?q={dominio}", timeout=TIMEOUT
-            )
-            if r.status_code == 200:
-                return r.json()
-        except Exception:
-            pass
-        return None
-
-    def _headers_http(self, dominio: str) -> dict | None:
-        try:
-            r = self._sesion.get(
-                f"https://{dominio}", timeout=TIMEOUT, verify=False
-            )
-            return dict(r.headers)
-        except Exception:
-            try:
-                r = self._sesion.get(
-                    f"http://{dominio}", timeout=TIMEOUT
-                )
-                return dict(r.headers)
-            except Exception:
-                return None
-
-    def _mostrar_dns(self, dominio: str, dns: dict):
-        tabla = Table(box=box.SIMPLE, show_header=False,
-                      show_edge=False, padding=(0, 2))
-        tabla.add_column(style="dim cyan", justify="right", min_width=10)
-        tabla.add_column(style="white")
-        for tipo, valores in dns.items():
-            for v in (valores if isinstance(valores, list) else [valores]):
-                tabla.add_row(tipo, str(v))
-        self.console.print(Panel(tabla, title=f"DNS — {dominio}",
-                                 border_style="cyan"))
-
-    def _mostrar_whois(self, whois: dict):
-        tabla = Table(box=box.SIMPLE, show_header=False,
-                      show_edge=False, padding=(0, 2))
-        tabla.add_column(style="dim cyan", justify="right", min_width=15)
-        tabla.add_column(style="white")
-        for k, v in list(whois.items())[:10]:
-            if v and str(v).strip():
-                tabla.add_row(str(k), str(v)[:80])
-        self.console.print(Panel(tabla, title="WHOIS",
-                                 border_style="dim cyan"))
-
-    def _mostrar_headers(self, headers: dict):
-        interesantes = [
-            "Server", "X-Powered-By", "X-Frame-Options",
-            "Content-Security-Policy", "Strict-Transport-Security",
-            "X-Content-Type-Options", "Set-Cookie"
-        ]
-        tabla = Table(box=box.SIMPLE, show_header=False,
-                      show_edge=False, padding=(0, 2))
-        tabla.add_column(style="dim cyan", justify="right", min_width=20)
-        tabla.add_column(style="white")
-
-        for header in interesantes:
-            valor = headers.get(header)
-            if valor:
-                tabla.add_row(header, str(valor)[:80])
-
-        self.console.print(Panel(tabla, title="HEADERS HTTP",
-                                 border_style="dim cyan"))
-
-    # ------------------------------------------------------------------
-    # MENÚ INTERACTIVO
-    # ------------------------------------------------------------------
-
-    def menu(self):
-        self.console.print()
-        self.console.print(Panel(
+    def menu(self) -> None:
+        self._con.print()
+        self._con.print(Panel(
             "[bold cyan]OSINT ENGINE[/bold cyan]\n"
             "[dim]Reconocimiento pasivo — solo APIs públicas[/dim]\n\n"
-            "[green][1][/green] Analizar IP\n"
-            "[green][2][/green] Analizar dominio\n"
-            "[green][3][/green] Ambos (IP + dominio del mismo objetivo)",
-            border_style="cyan"
+            "[green]1[/green]  Analizar IP\n"
+            "[green]2[/green]  Analizar dominio\n"
+            "[green]3[/green]  IP + dominio del mismo objetivo",
+            border_style="cyan",
+            expand=False,
         ))
 
-        opcion = self.console.input(
-            "[bold cyan][?] Opción: [/bold cyan]"
-        ).strip()
+        opcion = Prompt.ask("[bold cyan][?] Opción[/bold cyan]",
+                            choices=["1", "2", "3"], default="1")
 
         if opcion == "1":
-            ip = self.console.input(
-                "[bold cyan][?] IP a analizar: [/bold cyan]"
-            ).strip()
+            ip = Prompt.ask("[bold cyan][?] IP a analizar[/bold cyan]").strip()
             if ip:
                 self.analizar_ip(ip)
 
         elif opcion == "2":
-            dominio = self.console.input(
-                "[bold cyan][?] Dominio (ej: ejemplo.com): [/bold cyan]"
+            dominio = Prompt.ask(
+                "[bold cyan][?] Dominio (ej: ejemplo.com)[/bold cyan]"
             ).strip()
             if dominio:
                 self.analizar_dominio(dominio)
 
         elif opcion == "3":
-            objetivo = self.console.input(
-                "[bold cyan][?] Dominio o IP: [/bold cyan]"
+            objetivo = Prompt.ask(
+                "[bold cyan][?] Dominio o IP[/bold cyan]"
             ).strip()
-            if objetivo:
-                # Resolver IP del dominio primero
-                try:
-                    ip = socket.gethostbyname(objetivo)
-                    self.analizar_ip(ip)
-                except Exception:
-                    pass
-                self.analizar_dominio(objetivo)
-        else:
-            self.console.print("[red][!] Opción inválida.[/red]")
+            if not objetivo:
+                return
+            try:
+                ip = socket.gethostbyname(objetivo)
+                self.analizar_ip(ip)
+            except OSError as exc:
+                log.debug("Resolución DNS de %s falló: %s", objetivo, exc)
+            self.analizar_dominio(objetivo)
+
+    # ── IP Intelligence ───────────────────────────────────────────────
+
+    def _geo_ip(self, ip: str) -> dict[str, Any] | None:
+        try:
+            r = self._sesion.get(_URL_GEO.format(ip=ip), timeout=_TIMEOUT)
+            r.raise_for_status()
+            data = r.json()
+            if data.get("status") == "success":
+                return data
+            log.warning("ip-api.com: status != success para %s", ip)
+        except requests.Timeout:
+            log.warning("ip-api.com: timeout para %s", ip)
+        except requests.RequestException as exc:
+            log.warning("ip-api.com: error — %s", exc)
+        return None
+
+    def _asn_ip(self, ip: str) -> dict[str, Any] | None:
+        try:
+            r = self._sesion.get(_URL_ASN.format(ip=ip), timeout=_TIMEOUT)
+            r.raise_for_status()
+            return r.json()
+        except requests.Timeout:
+            log.warning("ipinfo.io: timeout para %s", ip)
+        except requests.RequestException as exc:
+            log.warning("ipinfo.io: error — %s", exc)
+        return None
+
+    def _rdns(self, ip: str) -> str:
+        try:
+            return socket.gethostbyaddr(ip)[0]
+        except OSError:
+            return "Sin registro rDNS"
+
+    def _abuseipdb(self, ip: str) -> dict[str, Any] | None:
+        if not self._abuse_key:
+            return None
+        try:
+            r = self._sesion.get(
+                _URL_ABUSE,
+                params={"ipAddress": ip, "maxAgeInDays": 90},
+                headers={"Key": self._abuse_key, "Accept": "application/json"},
+                timeout=_TIMEOUT,
+            )
+            r.raise_for_status()
+            return r.json().get("data")
+        except requests.Timeout:
+            log.warning("AbuseIPDB: timeout para %s", ip)
+        except requests.RequestException as exc:
+            log.warning("AbuseIPDB: error — %s", exc)
+        return None
+
+    # ── Domain Intelligence ───────────────────────────────────────────
+
+    def _resolver_dns(self, dominio: str) -> dict[str, Any]:
+        resultado: dict[str, Any] = {}
+        try:
+            _, _, ips = socket.gethostbyname_ex(dominio)
+            resultado["A"] = ips
+        except OSError as exc:
+            log.debug("DNS A de %s: %s", dominio, exc)
+            resultado["A"] = []
+
+        # MX — intento con dnspython si disponible
+        try:
+            import dns.resolver  # noqa: PLC0415
+            mx = [str(r.exchange).rstrip(".") for r in
+                  dns.resolver.resolve(dominio, "MX")]
+            resultado["MX"] = mx
+        except Exception:
+            pass
+
+        return resultado
+
+    def _whois(self, dominio: str) -> dict[str, Any] | None:
+        # Intentar python-whois primero (más fiable)
+        try:
+            import whois  # noqa: PLC0415
+            w = whois.whois(dominio)
+            if w:
+                return {k: str(v) for k, v in w.items()
+                        if v and k not in ("status",)}
+        except Exception:
+            pass
+
+        # Fallback: API pública
+        try:
+            r = self._sesion.get(
+                _URL_WHOIS.format(dominio=dominio), timeout=_TIMEOUT)
+            r.raise_for_status()
+            return r.json()
+        except requests.Timeout:
+            log.warning("WHOIS API: timeout para %s", dominio)
+        except requests.RequestException as exc:
+            log.warning("WHOIS API: error — %s", exc)
+        return None
+
+    def _headers_http(self, dominio: str) -> dict[str, str] | None:
+        for url in (f"https://{dominio}", f"http://{dominio}"):
+            try:
+                verify = not url.startswith("http://")
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    r = self._sesion.get(
+                        url, timeout=_TIMEOUT, verify=verify,
+                        allow_redirects=True)
+                log.debug("Headers HTTP de %s: HTTP %d", url, r.status_code)
+                return dict(r.headers)
+            except requests.Timeout:
+                log.debug("Headers HTTP: timeout para %s", url)
+            except requests.RequestException as exc:
+                log.debug("Headers HTTP: %s — %s", url, exc)
+        return None
+
+    # ── Display ───────────────────────────────────────────────────────
+
+    def _mostrar_geo(self, geo: dict[str, Any]) -> None:
+        tb = self._tabla_kv()
+        campos: list[tuple[str, str]] = [
+            ("País",         geo.get("country", "—")),
+            ("Región",       geo.get("regionName", "—")),
+            ("Ciudad",       geo.get("city", "—")),
+            ("Coordenadas",  f"{geo.get('lat', '?')}, {geo.get('lon', '?')}"),
+            ("Zona horaria", geo.get("timezone", "—")),
+            ("ISP",          geo.get("isp", "—")),
+            ("Organización", geo.get("org", "—")),
+            ("ASN",          geo.get("as", "—")),
+            ("Proxy/VPN",    "[red]SÍ[/red]"   if geo.get("proxy")   else "[green]NO[/green]"),
+            ("Hosting/DC",   "[yellow]SÍ[/yellow]" if geo.get("hosting") else "NO"),
+            ("Red móvil",    "SÍ" if geo.get("mobile") else "NO"),
+        ]
+        for k, v in campos:
+            tb.add_row(k, v)
+        self._con.print(Panel(tb, title="[cyan]GEOLOCALIZACIÓN[/cyan]",
+                              border_style="cyan"))
+
+    def _mostrar_asn(self, asn: dict[str, Any]) -> None:
+        tb = self._tabla_kv()
+        for k, v in asn.items():
+            if k not in ("ip", "readme") and v:
+                tb.add_row(k.capitalize(), str(v)[:80])
+        self._con.print(Panel(tb, title="[dim cyan]ASN / ORGANIZACIÓN[/dim cyan]",
+                              border_style="dim cyan"))
+
+    def _mostrar_abuso(self, abuso: dict[str, Any]) -> None:
+        score = int(abuso.get("abuseConfidenceScore", 0))
+        color = "red" if score >= 50 else ("yellow" if score >= 10 else "green")
+        tb    = self._tabla_kv()
+        tb.add_row("Score de abuso",   f"[{color}]{score}%[/{color}]")
+        tb.add_row("Total reportes",   str(abuso.get("totalReports", 0)))
+        tb.add_row("Último reporte",   str(abuso.get("lastReportedAt", "—")))
+        tb.add_row("Categorías",
+                   ", ".join(str(c) for c in abuso.get("reports", [])[:3]) or "—")
+        self._con.print(Panel(tb, title="[red]ABUSEIPDB[/red]",
+                              border_style="red"))
+
+    def _mostrar_dns(self, dominio: str, dns: dict[str, Any]) -> None:
+        tb = self._tabla_kv()
+        for tipo, valores in dns.items():
+            for v in (valores if isinstance(valores, list) else [valores]):
+                tb.add_row(tipo, str(v))
+        self._con.print(Panel(tb, title=f"[cyan]DNS — {dominio}[/cyan]",
+                              border_style="cyan"))
+
+    def _mostrar_whois(self, whois: dict[str, Any]) -> None:
+        tb = self._tabla_kv()
+        for k, v in list(whois.items())[:_MAX_WHOIS]:
+            if v and str(v).strip():
+                tb.add_row(str(k), str(v)[:80])
+        self._con.print(Panel(tb, title="[dim cyan]WHOIS[/dim cyan]",
+                              border_style="dim cyan"))
+
+    def _mostrar_headers(self, headers: dict[str, str]) -> None:
+        tb = self._tabla_kv(min_key_width=24)
+        for h in _HEADERS_RELEVANTES:
+            v = headers.get(h)
+            if v:
+                tb.add_row(h, str(v)[:90])
+        if tb.row_count:
+            self._con.print(Panel(tb, title="[dim cyan]HEADERS HTTP[/dim cyan]",
+                                  border_style="dim cyan"))
+
+    # ── Utilidades internas ───────────────────────────────────────────
+
+    def _crear_sesion(self) -> requests.Session:
+        s = requests.Session()
+        s.headers.update({
+            "User-Agent": (
+                f"ApexSentinel/{getattr(self._s, 'version', '2.3')} "
+                "(security-research; passive-recon)"
+            )
+        })
+        return s
+
+    def _tabla_kv(self, min_key_width: int = 15) -> Table:
+        tb = Table(box=box.SIMPLE, show_header=False,
+                   show_edge=False, padding=(0, 2))
+        tb.add_column(style="dim cyan", justify="right",
+                      min_width=min_key_width)
+        tb.add_column(style="white")
+        return tb
+
+    def _registrar_y_exportar(
+        self,
+        tipo:     str,
+        objetivo: str,
+        datos:    dict[str, Any],
+    ) -> None:
+        # Log en Sentinel
+        self._log.info(
+            f"OSINT completado — {objetivo} ({tipo})",
+            "OSINTEngine",
+        )
+
+        # Guardar JSON en evidencias
+        from datetime import datetime, UTC
+        ts       = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        seguro   = objetivo.replace(".", "_").replace("/", "_")[:40]
+        destino  = _EVIDENCE_DIR / f"{tipo}_{seguro}_{ts}.json"
+
+        import json  # importación diferida — solo cuando se necesita
+        destino.write_text(
+            json.dumps(datos, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        log.info("OSINT exportado: %s", destino)
+
+        # Registrar en proyecto activo
+        gp = getattr(self._s, "gp", None)
+        if gp and gp.proyecto_activo:
+            gp.registrar_evidencia(
+                tipo,
+                f"OSINT: {objetivo}",
+                {"ruta": str(destino), "campos": list(datos.keys())},
+            )
+
+        self._con.print(
+            f"\n[dim]Evidencia guardada → "
+            f"[cyan]{destino}[/cyan][/dim]\n"
+        )

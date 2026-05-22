@@ -18,6 +18,8 @@ from rich import box
 if TYPE_CHECKING:
     from sentinel import ApexSentinel
 
+from core.vendor_resolver import VendorResolver
+
 logger = logging.getLogger(__name__)
 
 # ── Importación defensiva de bleak ────────────────────────────────────
@@ -31,25 +33,7 @@ except ImportError:
     BLEDevice = None
     AdvertisementData = None
 
-# ── Base de datos mínima de OUIs para fingerprinting ──────────────────
-# Primeros 3 bytes de la MAC → fabricante aproximado
-_OUI_MAP: dict[str, str] = {
-    "00:1A:7D": "Apple",        "AC:DE:48": "Apple",
-    "00:17:F2": "Apple",        "F0:18:98": "Apple",
-    "00:50:F2": "Microsoft",    "28:18:78": "Microsoft",
-    "00:15:5D": "Microsoft",    "B8:27:EB": "Raspberry Pi",
-    "DC:A6:32": "Raspberry Pi", "E4:5F:01": "Raspberry Pi",
-    "00:1B:DC": "Samsung",      "8C:71:F8": "Samsung",
-    "00:1D:FE": "Fitbit",       "88:B4:A6": "Fitbit",
-    "A4:C1:38": "Espressif",    "30:AE:A4": "Espressif",
-    "24:6F:28": "Espressif",    "00:1B:63": "Apple",
-}
-
-
-def _oui_lookup(address: str) -> str:
-
-    prefijo = address.upper()[:8]
-    return _OUI_MAP.get(prefijo, "Desconocido")
+# OUI lookup centralizado en core.vendor_resolver.VendorResolver
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -88,7 +72,6 @@ class DispositivoBLE:
 
     @property
     def proximidad(self) -> str:
-        """Estimación de proximidad basada en RSSI."""
         if self.rssi >= -50:
             return "[bold red]MUY CERCA[/bold red]"
         if self.rssi >= -70:
@@ -255,7 +238,7 @@ class BluetoothModule:
                 nombre=device.name or "",
                 address=device.address,
                 rssi=adv.rssi if adv.rssi else -99,
-                fabricante=_oui_lookup(device.address),
+                fabricante=VendorResolver.resolve(device.address),
                 servicios=servicios,
             )
             encontrados.append(disp)
@@ -320,7 +303,7 @@ class BluetoothModule:
                             nombre=device.name or "",
                             address=device.address,
                             rssi=rssi,
-                            fabricante=_oui_lookup(device.address),
+                            fabricante=VendorResolver.resolve(device.address),
                             servicios=servicios,
                         )
                         self._dispositivos[device.address] = disp
@@ -373,7 +356,6 @@ class BluetoothModule:
 
     def _registrar_evidencia(self, dispositivos: list[DispositivoBLE],
                              tipo: str):
-        """Registra los resultados BLE en el GestorProyectos si hay uno activo."""
         if not self.gp or not dispositivos:
             return
         try:

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -7,7 +6,6 @@ _MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}$")
 
 
 class VendorResolver:
-
     # ── Tabla OUI local ───────────────────────────────────────────────
     _LOCAL: dict[str, str] = {
         # Apple
@@ -27,6 +25,17 @@ class VendorResolver:
         # Móviles
         "FC:EC:DA": "Xiaomi",       "64:09:80": "Xiaomi",       "F4:60:E2": "Motorola",
         "78:02:F8": "OnePlus",      "AC:37:43": "HTC",
+        # Microsoft
+        "00:50:F2": "Microsoft",    "28:18:78": "Microsoft",    "00:15:5D": "Microsoft",
+        # Fitbit / wearables
+        "00:1D:FE": "Fitbit",       "88:B4:A6": "Fitbit",
+        # Espressif (ESP32, ESP8266 — IoT / BLE)
+        "A4:C1:38": "Espressif",    "30:AE:A4": "Espressif",    "24:6F:28": "Espressif",
+        # Apple — MACs adicionales BLE
+        "00:1A:7D": "Apple",        "AC:DE:48": "Apple",
+        "F0:18:98": "Apple",        "00:1B:63": "Apple",
+        # Samsung — MACs adicionales BLE
+        "00:1B:DC": "Samsung",      "8C:71:F8": "Samsung",
     }
 
     _cache: dict[str, str] = {}
@@ -84,6 +93,7 @@ class VendorResolver:
 
     @classmethod
     def clear_cache(cls) -> None:
+        """Vacía el caché en memoria (útil en tests)."""
         cls._cache.clear()
 
     @classmethod

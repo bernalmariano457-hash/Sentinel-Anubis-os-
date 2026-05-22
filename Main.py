@@ -1,7 +1,6 @@
 from __future__ import annotations
 from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
 from core.vendor_resolver import VendorResolver
-from core.validators import Validador
 from core.command_handler import CommandHandler
 from core.ModuleRegistry import ModuleRegistry
 from core.log_sistema import LogSistema
@@ -9,7 +8,6 @@ from core.log_sistema import LogSistema
 import json
 import os
 import signal
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -197,9 +195,6 @@ class ApexSentinel:
     def _limpiar(self) -> None:
         os.system("cls" if os.name == "nt" else "clear")
 
-    def _run(self, cmd: list[str], timeout: int = 30,
-             **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
-        return subprocess.run(cmd, timeout=timeout, check=True, **kwargs)
 
     # ── Delegados de UI (mantienen compatibilidad con módulos existentes) ──
 
