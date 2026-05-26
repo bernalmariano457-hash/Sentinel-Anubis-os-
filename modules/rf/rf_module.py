@@ -11,7 +11,6 @@ from rich import box
 
 from modules.rf.bands import tactical_bands, BANDAS_RF
 from modules.rf.rf_config import load_config, RFConfig
-from modules.rf.rf_mock import SyntheticSignal
 from modules.rf.RFScanner import RFScanner
 
 log = logging.getLogger("sentinel.rf.module")
@@ -36,8 +35,8 @@ class RFModuleIntegrado:
     def __init__(self, sentinel, config_path: str | None = None):
         self.sentinel = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
-        self.gp               = getattr(sentinel, "gp",      None)
-        self.log_s            = getattr(sentinel, "log",     None)
+        self.gp = getattr(sentinel, "gp",      None)
+        self.log_s = getattr(sentinel, "log",     None)
 
         # El RFScanner es el núcleo — carga config, conecta hardware,
         # inicia logging, DB, DSP, Renderizador y RFRecorder
@@ -45,12 +44,13 @@ class RFModuleIntegrado:
 
         # Exponer cfg y hw_nombre directamente para accesos externos
         self.cfg:        RFConfig = self._scanner.cfg
-        self.hw_nombre:  str      = self._scanner.hw_nombre
-        self.hw_disponible: bool  = self._scanner._hw_disponible
+        self.hw_nombre:  str = self._scanner.hw_nombre
+        self.hw_disponible: bool = self._scanner._hw_disponible
 
-        # Si no hay hardware real, poblar el mock con señales útiles
-        # para desarrollo y demos sin RTL-SDR físico
-        if self._scanner._mock is not None and not self._scanner.sdr:
+        # Si el backend activo es Mock (sin SDR físico), poblar señales
+        # útiles para desarrollo y demos
+        from modules.rf.rf_source import _MockBackend
+        if isinstance(self._scanner._backend, _MockBackend):
             self._poblar_mock_desarrollo()
 
         self._print(
@@ -62,17 +62,20 @@ class RFModuleIntegrado:
 
     # ── Setup interno ─────────────────────────────────────────────────
 
-    def _poblar_mock_desarrollo(self):
+    def _poblar_mock_desarrollo(self) -> None:
         senales = [
-            SyntheticSignal(freq_offset=0,      power_dbm=-55, mode="nfm",  bw_hz=12_500),
-            SyntheticSignal(freq_offset=200e3,  power_dbm=-65, mode="wfm",  bw_hz=200_000),
-            SyntheticSignal(freq_offset=-150e3, power_dbm=-72, mode="am",   bw_hz=9_000),
-            SyntheticSignal(freq_offset=400e3,  power_dbm=-80, mode="tone", bw_hz=500),
-            SyntheticSignal(freq_offset=-400e3, power_dbm=-78, mode="nfm",  bw_hz=12_500,
-                            doppler_hz_s=5.0),
+            dict(freq_offset_hz=0,       power_dbm=-
+                 55, mode="nfm",  bw_hz=12_500),
+            dict(freq_offset_hz=200_000, power_dbm=-
+                 65, mode="wfm",  bw_hz=200_000),
+            dict(freq_offset_hz=-150_000, power_dbm=-
+                 72, mode="am",   bw_hz=9_000),
+            dict(freq_offset_hz=400_000, power_dbm=-80, mode="tone", bw_hz=500),
+            dict(freq_offset_hz=-400_000, power_dbm=-
+                 78, mode="nfm",  bw_hz=12_500),
         ]
         for s in senales:
-            self._scanner._mock.add_signal(s)
+            self._scanner.agregar_senal_mock(**s)
         log.debug("Mock desarrollo: %d señales sintéticas añadidas", len(senales))
 
     # ── Propiedades delegadas ─────────────────────────────────────────
@@ -115,14 +118,15 @@ class RFModuleIntegrado:
 
     def cargar_iq_archivo(self, path: str):
         self._scanner.cargar_iq_archivo(path)
-        self.hw_nombre     = self._scanner.hw_nombre
+        self.hw_nombre = self._scanner.hw_nombre
         self.hw_disponible = self._scanner._hw_disponible
 
     def agregar_senal_mock(self, freq_offset_hz: float,
                            power_dbm: float = -60.0,
                            mode: str = "tone",
                            bw_hz: float = 12_500.0):
-        self._scanner.agregar_senal_mock(freq_offset_hz, power_dbm, mode, bw_hz)
+        self._scanner.agregar_senal_mock(
+            freq_offset_hz, power_dbm, mode, bw_hz)
 
     def grabar_iq(self, freq_mhz: float, duracion: int = 10,
                   formato: str = "sigmf"):
@@ -181,7 +185,7 @@ class RFModuleIntegrado:
         )
         for b in bandas:
             freq = (b["freq_min"] + b["freq_max"]) / 2.0
-            col  = b.get("color", "red")
+            col = b.get("color", "red")
             self._print(
                 f"[{col}]  ▶ {b['nombre']:<24} "
                 f"{freq:.3f} MHz[/{col}]"
@@ -191,7 +195,7 @@ class RFModuleIntegrado:
     def db_consultar(self, freq_min: float | None = None,
                      freq_max: float | None = None,
                      snr_min:  float | None = None,
-                     horas:    int | None   = None):
+                     horas:    int | None = None):
         try:
             resultados = self._db.consultar_senales(
                 freq_min=freq_min, freq_max=freq_max,
@@ -202,7 +206,8 @@ class RFModuleIntegrado:
             return
 
         if not resultados:
-            self._print("[dim]Sin señales almacenadas con esos criterios.[/dim]")
+            self._print(
+                "[dim]Sin señales almacenadas con esos criterios.[/dim]")
             return
 
         tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
@@ -223,7 +228,7 @@ class RFModuleIntegrado:
                 f"{r.get('snr_db', 0):.1f} dB",
                 f"{r.get('bw_khz', 0):.2f} kHz",
                 r.get("mod_hint") or "—",
-                r.get("banda")    or "—",
+                r.get("banda") or "—",
             )
 
         self.console.print(Panel(
@@ -290,10 +295,10 @@ class RFModuleIntegrado:
                 self._print("[red][!] Valor inválido.[/red]")
 
         elif opt == "2":
-            ini_s  = self.console.input(
+            ini_s = self.console.input(
                 "[bold cyan][?] Freq. inicial (MHz): [/bold cyan]"
             ).strip()
-            fin_s  = self.console.input(
+            fin_s = self.console.input(
                 "[bold cyan][?] Freq. final (MHz): [/bold cyan]"
             ).strip()
             paso_s = self.console.input(
@@ -344,14 +349,15 @@ class RFModuleIntegrado:
             freq_s = self.console.input(
                 "[bold cyan][?] Frecuencia a grabar (MHz): [/bold cyan]"
             ).strip()
-            dur_s  = self.console.input(
+            dur_s = self.console.input(
                 "[bold cyan][?] Duración segundos [10]: [/bold cyan]"
             ).strip()
-            fmt_s  = self.console.input(
+            fmt_s = self.console.input(
                 "[bold cyan][?] Formato (sigmf/raw) [sigmf]: [/bold cyan]"
             ).strip() or "sigmf"
             try:
-                self.grabar_iq(float(freq_s), int(dur_s) if dur_s else 10, fmt_s)
+                self.grabar_iq(float(freq_s), int(
+                    dur_s) if dur_s else 10, fmt_s)
             except ValueError:
                 self._print("[red][!] Valor inválido.[/red]")
 
@@ -371,17 +377,17 @@ class RFModuleIntegrado:
             freq_s = self.console.input(
                 "[bold cyan][?] Freq. mínima MHz (Enter=todas): [/bold cyan]"
             ).strip()
-            snr_s  = self.console.input(
+            snr_s = self.console.input(
                 "[bold cyan][?] SNR mínimo dB [0]: [/bold cyan]"
             ).strip()
-            hrs_s  = self.console.input(
+            hrs_s = self.console.input(
                 "[bold cyan][?] Últimas N horas (Enter=todas): [/bold cyan]"
             ).strip()
             try:
                 self.db_consultar(
                     freq_min=float(freq_s) if freq_s else None,
-                    snr_min=float(snr_s)   if snr_s  else None,
-                    horas=int(hrs_s)       if hrs_s  else None,
+                    snr_min=float(snr_s) if snr_s else None,
+                    horas=int(hrs_s) if hrs_s else None,
                 )
             except ValueError:
                 self._print("[red][!] Valor inválido.[/red]")
@@ -399,7 +405,7 @@ class RFModuleIntegrado:
             try:
                 self.frecuencias_activas(
                     snr_min=float(snr_s) if snr_s else 10.0,
-                    horas=int(hrs_s)     if hrs_s else 24,
+                    horas=int(hrs_s) if hrs_s else 24,
                 )
             except ValueError:
                 self._print("[red][!] Valor inválido.[/red]")
@@ -437,7 +443,7 @@ class RFModuleIntegrado:
     # ── Helpers internos ──────────────────────────────────────────────
 
     def _sync_hw_estado(self):
-        self.hw_nombre     = self._scanner.hw_nombre
+        self.hw_nombre = self._scanner.hw_nombre
         self.hw_disponible = self._scanner._hw_disponible
 
     def _log_sentinel(self, msg: str):

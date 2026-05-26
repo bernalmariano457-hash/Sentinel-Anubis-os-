@@ -17,11 +17,10 @@ class OsintCommands(_DomainBase):
 
     def locate_p(self) -> None:
         s = self.s
-        # FIX typo: geopreciose → geoprecise
         if not self._modulo_ok("adv_scanner") or not self._modulo_ok("geoprecise"):
             return
         redes = s.adv_scanner.obtener_redes_formateadas()
-        s.geoprecise.triangular_posicion(redes)
+        s.geoprecise.triangular(redes)
 
     def geofoto(self) -> None:
         if not self._modulo_ok("exif"):
@@ -39,4 +38,4 @@ class OsintCommands(_DomainBase):
     def cve(self) -> None:
         if not self._modulo_ok("cve"):
             return
-        self.s.cve.busqueda_libre()
+        self.s.cve.interactive_search()
