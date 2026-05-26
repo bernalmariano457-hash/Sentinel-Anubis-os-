@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.13-blue)](https://python.org)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Platform](https://img.shields.io/badge/Platform-uConsole%20%7C%20Kali%20%7C%20Termux-green)](#instalación)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-red)](LICENSE)
 
 ---
 
@@ -23,6 +23,8 @@
   ──────────────────────────────────────────
   RF / SDR          RTL-SDR V3  ·  1246 MHz
   Network           wlan0mon  ·  activo
+  Bluetooth         BLE  ·  disponible
+  Geo               GeoPrecise  ·  disponible
   Forense           disponible
   OSINT             disponible
   Proyectos         sin proyecto activo
@@ -62,12 +64,13 @@ Main.py (ApexSentinel)
 │   └── log_sistema          ← logging con niveles · auditoría · rotación
 │
 ├── modules/
-│   ├── rf/                  ← RTL-SDR · FFT · waterfall · ADS-B · MockSDR
-│   ├── network/             ← radar Wi-Fi · ARP scan · sniffer · Evil Twin
-│   ├── forense/             ← EXIF · triaje móvil · stealth · panic
+│   ├── rf/                  ← RTL-SDR · FFT · waterfall · ADS-B · NOAA · MockSDR
+│   ├── network/             ← radar Wi-Fi · ARP scan · sniffer · Evil Twin · Bluetooth · triangulación
+│   ├── geo/                 ← GeoPrecise · GeomapSentinel · LocatorModule
+│   ├── forense/             ← EXIF · triaje móvil · stealth · panic · db_extractor
 │   ├── osint/               ← CVE lookup · geolocalización · reconocimiento
-│   ├── audit/               ← Rubber Ducky HID · credenciales
-│   └── reporte/             ← generación de reportes · exportación
+│   ├── audit/               ← Rubber Ducky HID · credenciales · diccionarios
+│   └── reporte/             ← generación de reportes · exportación · timeline
 │
 └── plugins/                 ← módulos de terceros · hot-reload
 ```
@@ -80,13 +83,15 @@ El `ModuleRegistry` carga cada módulo con un `ModuleSpec` declarativo. Si el ha
 
 ### RF / SDR
 
-El módulo más completo del proyecto. Motor propio sobre `pyrtlsdr` con `MockSDR` como fallback para desarrollo sin hardware físico.
+Motor propio sobre `pyrtlsdr` con `MockSDR` como fallback para desarrollo sin hardware físico.
 
 - Análisis espectral FFT en tiempo real con vista de cascada (waterfall)
+- **SpectrumAnalyzer** — analizador de espectro interactivo en tiempo real (`spectrum / sa`)
 - Detección automática de señales en 35 bandas de frecuencia conocidas
 - Demodulación WFM · NFM · AM · USB · LSB
 - Grabación IQ a archivos `.iq` — compatibles con SDR#, GQRX y GNU Radio
-- Decodificación ADS-B a 1090 MHz — seguimiento de aeronaves en vivo
+- **Decodificación ADS-B** a 1090 MHz con pyModeS — seguimiento de aeronaves en vivo con mensajes extendidos
+- **Decodificador NOAA APT** a 137 MHz — imágenes meteorológicas de satélite en tiempo real
 - Estadísticas de sesión por banda y tipo de señal
 
 ### Red
@@ -95,12 +100,29 @@ El módulo más completo del proyecto. Motor propio sobre `pyrtlsdr` con `MockSD
 - Escaneo avanzado de puertos TCP con detección de servicios
 - Captura de paquetes con filtros BPF
 - Radar Wi-Fi por RSSI — mapa de señal en tiempo real
+- **Triangulación Wi-Fi** — estimación de posición por RSSI con suavizado adaptativo
 - Portal cautivo para auditoría wireless
+- **WifiAtack / WADecryptor** — auditoría de redes Wi-Fi
+
+### Bluetooth
+
+- Escaneo BLE en tiempo real con `bleak` — descubrimiento de dispositivos y datos de publicidad
+- Monitor continuo con umbral de proximidad (cerca / medio / lejos) por RSSI
+- Resolución OUI de fabricantes para direcciones MAC BLE
+- Registro de evidencias por sesión
+
+### Geo
+
+- **GeoPrecise** — geolocalización por triangulación de redes Wi-Fi cercanas (API externa)
+- **GeomapSentinel** — generación de mapas HTML interactivos con `folium` coloreados por fabricante
+- **LocatorModule** — localización por IP con coordenadas y volcado a evidencias
+- Resultados guardados en `data/evidence/geo/`
 
 ### Forense
 
 - Extracción de coordenadas GPS de EXIF de imágenes
-- Triaje básico de dispositivos móviles
+- Triaje básico y profundo de dispositivos móviles
+- Extractor de bases de datos (`db_extractor`) para análisis de archivos SQLite
 - Verificación de identidad digital (VPN/proxy/exposición)
 - Protocolo de pánico — cifrado de emergencia + purga de historial
 
@@ -112,7 +134,7 @@ El módulo más completo del proyecto. Motor propio sobre `pyrtlsdr` con `MockSD
 
 ### Proyectos
 
-Workspace de operación que agrupa evidencias, hallazgos por severidad y genera reportes al cierre. Cada proyecto tiene su propio directorio y archivo JSON.
+Workspace de operación que agrupa evidencias, hallazgos por severidad y genera reportes al cierre. Cada proyecto tiene su propio directorio y archivo JSON. El motor de reportes exporta en Markdown, texto plano y timeline.
 
 ---
 
@@ -138,7 +160,7 @@ python Main.py
 
 **ClockworkPi uConsole:**
 ```bash
-pip install -e ".[uconsole]"   # network + RTL-SDR + ADS-B
+pip install -e ".[uconsole]"   # network + RTL-SDR + ADS-B + NOAA
 python Main.py
 ```
 
@@ -173,6 +195,7 @@ pkg install rtl-sdr
 | `status` | Estado del sistema y módulos cargados |
 | `logs` | Historial de eventos de la sesión |
 | `hora` | Hora del sistema |
+| `files` | Explorar directorio actual |
 | `clear` / `cls` | Limpiar pantalla |
 | `exit` | Cerrar Sentinel |
 
@@ -195,6 +218,7 @@ pkg install rtl-sdr
 
 | Comando | Descripción |
 |---------|-------------|
+| `spectrum` / `sa` | Analizador de espectro en tiempo real |
 | `rfscan` | Escaneo de frecuencias con detección de señales |
 | `rfmenu` | Menú interactivo de opciones RF |
 | `rfbarrido` | Barrido espectral por rango personalizado |
@@ -205,7 +229,8 @@ pkg install rtl-sdr
 | `rfdb` | Base de datos de señales capturadas |
 | `rfstats` | Estadísticas de sesión RF |
 | `rfstatus` | Estado del hardware SDR |
-| `adsb` | Monitor ADS-B — aeronaves en 1090 MHz |
+| `adsb` | Monitor ADS-B — aeronaves en 1090 MHz (pyModeS) |
+| `noaa` | NOAA APT — imágenes de satélite meteorológico a 137 MHz |
 
 ### Forense
 
@@ -232,8 +257,9 @@ pkg install rtl-sdr
 | Comando | Descripción |
 |---------|-------------|
 | `proyecto nuevo` | Crear workspace de operación |
-| `proyecto abrir` | Cargar proyecto existente |
-| `proyecto info` | Ver detalles del proyecto activo |
+| `proyecto cargar` | Cargar proyecto existente |
+| `proyecto lista` | Listar todos los proyectos |
+| `proyecto estado` | Resumen del proyecto activo |
 | `proyecto cerrar` | Cerrar y guardar proyecto |
 | `reporte` | Generar reporte del proyecto activo |
 
@@ -243,6 +269,14 @@ pkg install rtl-sdr
 |---------|-------------|
 | `phishing` | Suite de phishing (zphisher) |
 | `ducky` | Ejecutar payload HID (Rubber Ducky) |
+
+### Sistema de tareas y plugins
+
+| Comando | Descripción |
+|---------|-------------|
+| `jobs` | Ver cola de tareas asíncronas activas |
+| `plugins` | Listar plugins cargados |
+| `plugins reload` | Recargar plugins en caliente |
 
 ---
 
@@ -275,7 +309,7 @@ cd Sentinel-Anubis-os
 pip install -e ".[all]"
 
 # Comandos disponibles
-make test          # tests sin hardware (58 tests)
+make test          # tests sin hardware
 make check         # lint + tipos + tests — idéntico al CI
 make format        # corrige y formatea con ruff
 make test-hardware # requiere RTL-SDR conectado
@@ -288,7 +322,9 @@ El CI corre automáticamente en cada push a `main` y en cada PR — lint con ruf
 
 ```
 tests/
-└── test_auth_security.py   # Auth · bcrypt · lockout · Fernet · rotación de clave
+├── test_auth_security.py     # Auth · bcrypt · lockout · Fernet · rotación de clave
+├── test_module_registry.py   # ModuleRegistry · carga · fallback silencioso
+└── test_sentinel.py          # Sistema · integración · CommandHandler
 ```
 
 ### Añadir un módulo
@@ -336,22 +372,27 @@ Los plugins se cargan en caliente — no hace falta reiniciar Sentinel.
 - [x] Cifrado Fernet con rotación de clave y backups
 - [x] ModuleRegistry — carga declarativa con fallback silencioso
 - [x] Motor RF: FFT · waterfall · demodulación · ADS-B · MockSDR
+- [x] SpectrumAnalyzer — analizador de espectro en tiempo real
+- [x] Decodificador NOAA APT — imágenes de satélite a 137 MHz
+- [x] Decodificador ADS-B completo con pyModeS
+- [x] Módulo Bluetooth — escaneo BLE con bleak · proximidad · evidencias
+- [x] Triangulación Wi-Fi — estimación de posición por RSSI
+- [x] Módulo Geo — GeoPrecise · GeomapSentinel · mapas HTML con folium
 - [x] Sistema de proyectos con evidencias y hallazgos por severidad
 - [x] pyproject.toml — dependencias por plataforma (uConsole / Kali / Termux)
 - [x] CI/CD con GitHub Actions — lint + types + tests
-- [x] 58 tests unitarios — Auth, Security, VendorResolver
+- [x] Suite de tests — Auth, Security, ModuleRegistry, integración
 
 ### En progreso
 
 - [ ] Arranque nativo en uConsole (reemplazar el login shell)
-- [ ] Tests del ModuleRegistry y CommandHandler
+- [ ] Cobertura de tests al 80%
 
 ### Próximo
 
-- [ ] Decodificador de imágenes de satélite NOAA (137 MHz)
-- [ ] Decodificador ADS-B completo con pyModeS
-- [ ] Triangulación Wi-Fi con mapa en vivo en terminal
-- [ ] Cobertura de tests al 80%
+- [ ] Mapa BLE en tiempo real — visualización de dispositivos en terminal
+- [ ] Triangulación Wi-Fi combinada con BLE para mayor precisión
+- [ ] Exportación de mapas geo a formatos KML / GeoJSON
 
 ---
 
