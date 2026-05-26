@@ -28,35 +28,10 @@ from modules.rf.dsp import DSPEngine, Signal
 from modules.rf.rf_config import RFConfig, load_config
 from modules.rf.rf_database import RFDatabase
 from modules.rf.rf_demod import Demodulator
-from modules.rf.rf_mock import MockSDRManager, SyntheticSignal
 from modules.rf.rf_recorder import RFRecorder
 from modules.rf.rf_storage import SignalDB, CSVExporter, SigMFWriter
 
 log = logging.getLogger("sentinel.rf.scanner")
-
-# ════════════════════════════════════════════════════════════════════
-# DETECCIÓN DE DRIVER SDR
-# ════════════════════════════════════════════════════════════════════
-
-_SDR_DRIVER: str | None = None
-_SDR_CLASS                 = None
-
-try:
-    from rtlsdr import RtlSdr as _RtlSdr
-    _SDR_DRIVER = "RTL-SDR"
-    _SDR_CLASS  = _RtlSdr
-except ImportError:
-    pass
-
-if _SDR_DRIVER is None:
-    try:
-        import SoapySDR as _SoapySDR
-        _devs = _SoapySDR.Device.enumerate()
-        if _devs:
-            _SDR_DRIVER = _devs[0].get("driver", "SoapySDR").upper()
-            _SDR_CLASS  = _SoapySDR.Device
-    except Exception:
-        pass
 
 # ════════════════════════════════════════════════════════════════════
 # CONSTANTES VISUALES
@@ -316,18 +291,15 @@ class RFScanner:
         # Submódulos
         self.dsp      = DSPEngine(self.cfg.dsp, self.cfg.hardware.sample_rate)
         self.render   = Renderizador(self.console, self.cfg)
-        self.db       = RFDatabase(self.cfg.storage.db_path)   # DB heredada (barridos, escaneos)
-        self.signal_db = SignalDB(self.cfg.storage)             # DB de señales con sesiones
-        self.csv       = CSVExporter(self.cfg.storage)          # Exportación CSV desacoplada
-        self.sigmf     = SigMFWriter(self.cfg.storage)          # Grabación IQ streaming SigMF
+        self.db       = RFDatabase(self.cfg.storage.db_path)
+        self.signal_db = SignalDB(self.cfg.storage)
+        self.csv       = CSVExporter(self.cfg.storage)
+        self.sigmf     = SigMFWriter(self.cfg.storage)
         self.recorder  = RFRecorder(self)
         self._demod:   Demodulator | None = None
 
-        # Hardware
-        self.sdr           = None
-        self._soapy_stream = None
-        self._mock:        MockSDRManager | None = None
-        self.hw_nombre     = "No inicializado"
+        # Backend SDR unificado (rf_source.SDRBackend)
+        self._backend: Any = None
         self._lock         = threading.Lock()
 
         # Estado de sesión
@@ -359,59 +331,32 @@ class RFScanner:
         ))
         root.addHandler(fh)
 
-    # ── Hardware ──────────────────────────────────────────────────────
+    # ── Hardware (rf_source.SDRBackend) ──────────────────────────────
 
     def _conectar_hardware(self) -> None:
+        from modules.rf.rf_source import open_backend
         hw = self.cfg.hardware
-
-        if _SDR_DRIVER == "RTL-SDR" and _SDR_CLASS:
-            try:
-                sdr = _SDR_CLASS(device_index=hw.device_index)
-                sdr.sample_rate     = hw.sample_rate
-                sdr.gain            = "auto" if hw.agc else hw.gain_db
-                sdr.freq_correction = hw.ppm_correction
-                if hw.bias_tee:
-                    try:
-                        sdr.set_bias_tee(True)
-                    except Exception:
-                        log.debug("bias_tee no soportado en este dispositivo")
-                self.sdr       = sdr
-                self.hw_nombre = (f"RTL-SDR idx={hw.device_index} "
-                                  f"gain={hw.gain_db}dB "
-                                  f"sr={hw.sample_rate/1e6:.3f}MHz")
-                self._print(f"[green][+] RTL-SDR conectado — {self.hw_nombre}[/green]")
-                return
-            except Exception as exc:
-                self._print(f"[red][!] RTL-SDR error: {exc}[/red]")
-                log.error("RTL-SDR init: %s", exc)
-
-        if _SDR_DRIVER and _SDR_CLASS and "SOAPY" in _SDR_DRIVER.upper():
-            try:
-                import SoapySDR
-                self.sdr = SoapySDR.Device({"driver": _SDR_DRIVER.lower()})
-                self.sdr.setSampleRate(SoapySDR.SOAPY_SDR_RX, 0, hw.sample_rate)
-                self.sdr.setGain(SoapySDR.SOAPY_SDR_RX, 0, hw.gain_db)
-                self.sdr.setFreqCorrection(SoapySDR.SOAPY_SDR_RX, 0, hw.ppm_correction)
-                self._soapy_stream = self.sdr.setupStream(
-                    SoapySDR.SOAPY_SDR_RX, SoapySDR.SOAPY_SDR_CF32
-                )
-                self.sdr.activateStream(self._soapy_stream)
-                self.hw_nombre = f"{_SDR_DRIVER} sr={hw.sample_rate/1e6:.3f}MHz"
-                self._print(f"[green][+] {_SDR_DRIVER} conectado.[/green]")
-                return
-            except Exception as exc:
-                self._soapy_stream = None
-                self._print(f"[red][!] {_SDR_DRIVER} error: {exc}[/red]")
-                log.error("SoapySDR init: %s", exc)
-
-        # Fallback MockSDR
-        self._mock     = MockSDRManager(sample_rate=hw.sample_rate)
-        self.hw_nombre = f"MockSDR sr={hw.sample_rate/1e6:.3f}MHz"
-        self._print(
-            "[yellow][!] Sin hardware SDR físico — MockSDR activo.[/yellow]\n"
-            "[dim]    pip install pyrtlsdr  |  https://www.rtl-sdr.com/[/dim]"
+        self._backend = open_backend(
+            freq_hz      = hw.sample_rate,       # frecuencia inicial irrelevante
+            sample_rate  = hw.sample_rate,
+            gain         = hw.gain_db,
+            ppm          = hw.ppm_correction,
+            device_index = hw.device_index,
         )
-        log.warning("Hardware SDR no encontrado — MockSDR activo")
+        self.hw_nombre = self._backend.hw_name
+        if hw.bias_tee:
+            # bias_tee es específico de pyrtlsdr; intentamos si el backend lo expone
+            try:
+                self._backend._sdr.set_bias_tee(True)
+            except Exception:
+                log.debug("bias_tee no soportado en este dispositivo")
+        self._print(
+            f"[green][+] RF backend: {self.hw_nombre}[/green]"
+            if "Mock" not in self.hw_nombre
+            else f"[yellow][!] Sin hardware SDR físico — {self.hw_nombre}[/yellow]\n"
+                 "[dim]    pip install pyrtlsdr  |  https://www.rtl-sdr.com/[/dim]"
+        )
+        log.info("RF backend: %s", self.hw_nombre)
 
     # ── Propiedades públicas ──────────────────────────────────────────
 
@@ -421,23 +366,21 @@ class RFScanner:
 
     @property
     def _hw_disponible(self) -> bool:
-        return self.sdr is not None or self._mock is not None
+        return self._backend is not None
+
+    @property
+    def hw_disponible(self) -> bool:
+        return self._hw_disponible
 
     # ── Configuración en caliente ─────────────────────────────────────
 
-    def configurar_ganancia(self, ganancia) -> None:
+    def configurar_ganancia(self, ganancia: object) -> None:
         if not self._hw_disponible:
             self._print("[red][!] Sin hardware conectado.[/red]")
             return
         try:
             val = "auto" if str(ganancia).lower() == "auto" else float(ganancia)
-            if self._mock:
-                self._mock.set_gain(0.0 if val == "auto" else float(val))
-            elif _SDR_DRIVER == "RTL-SDR":
-                self.sdr.gain = val
-            elif _SDR_DRIVER and "SOAPY" in _SDR_DRIVER.upper():
-                import SoapySDR
-                self.sdr.setGain(SoapySDR.SOAPY_SDR_RX, 0, float(val))
+            self._backend.set_gain(val)
             if val != "auto":
                 self.cfg.hardware.gain_db = float(val)
             self._print(f"[green][+] Ganancia → {ganancia} dB[/green]")
@@ -447,21 +390,54 @@ class RFScanner:
             log.error("set_gain: %s", exc)
 
     def cargar_iq_archivo(self, path: str) -> None:
-        self._mock     = MockSDRManager.from_file(path, self.sample_rate)
-        self.hw_nombre = f"FILE:{Path(path).name}"
+        """Carga un archivo IQ u8 interleaved para replay."""
+        from modules.rf.rf_source import file_backend
+        self._backend  = file_backend(path, loop=True)
+        self.hw_nombre = self._backend.hw_name
         self._print(f"[cyan][RF] IQ cargado desde: {path}[/cyan]")
+        log.info("IQ replay desde %s", path)
 
-    def agregar_senal_mock(self, freq_offset_hz: float,
-                           power_dbm: float = -60.0,
-                           mode: str = "tone",
-                           bw_hz: float = 12_500.0) -> None:
-        if self._mock is None:
-            self._mock     = MockSDRManager(sample_rate=self.sample_rate)
-            self.hw_nombre = f"MockSDR sr={self.sample_rate/1e6:.3f}MHz"
-        self._mock.add_signal(
-            SyntheticSignal(freq_offset=freq_offset_hz,
-                            power_dbm=power_dbm,
-                            mode=mode, bw_hz=bw_hz)
+    def configurar_tcp(self, host: str, port: int = 1234, gain: int = 400) -> None:
+        """Conecta el escáner a un SDR remoto vía rtl_tcp."""
+        from modules.rf.rf_source import tcp_backend
+        try:
+            self._backend  = tcp_backend(
+                host, port,
+                freq_hz     = self.cfg.hardware.sample_rate,
+                sample_rate = self.cfg.hardware.sample_rate,
+                gain        = gain,
+            )
+            self.hw_nombre = self._backend.hw_name
+            self._print(f"[green][+] rtl_tcp conectado — {self.hw_nombre}[/green]")
+            log.info("TCP backend: %s", self.hw_nombre)
+        except Exception as exc:
+            self._print(f"[red][!] TCP error: {exc}[/red]")
+            log.error("TCP backend: %s", exc)
+
+    def agregar_senal_mock(
+        self,
+        freq_offset_hz: float,
+        power_dbm: float = -60.0,
+        mode: str = "tone",
+        bw_hz: float = 12_500.0,
+    ) -> None:
+        """Añade una señal sintética al backend Mock (útil en desarrollo/demo)."""
+        from modules.rf.rf_source import _MockBackend
+        from modules.rf.rf_mock   import SyntheticSignal
+
+        if not isinstance(self._backend, _MockBackend):
+            # Sustituye el backend por uno Mock si el actual no lo es
+            from modules.rf.rf_source import mock_backend
+            self._backend  = mock_backend(self.cfg.hardware.sample_rate)
+            self.hw_nombre = self._backend.hw_name
+
+        self._backend._mock.add_signal(
+            SyntheticSignal(
+                freq_offset=freq_offset_hz,
+                power_dbm=power_dbm,
+                mode=mode,
+                bw_hz=bw_hz,
+            )
         )
         self._print(
             f"[cyan][RF] Señal sintética añadida: "
@@ -479,29 +455,11 @@ class RFScanner:
 
         with self._lock:
             try:
-                if self._mock is not None:
-                    data = self._mock.capture(freq_hz, n)
+                self._backend.tune(freq_hz)
+                iq = self._backend.read_raw(n)
+                if iq is not None:
                     self._capturas_sesion += 1
-                    return data
-
-                if _SDR_DRIVER == "RTL-SDR":
-                    self.sdr.center_freq = freq_hz
-                    data = np.array(
-                        self.sdr.read_samples(n), dtype=np.complex64
-                    )
-                    self._capturas_sesion += 1
-                    return data
-
-                if _SDR_DRIVER and "SOAPY" in _SDR_DRIVER.upper():
-                    import SoapySDR
-                    self.sdr.setFrequency(SoapySDR.SOAPY_SDR_RX, 0, freq_hz)
-                    buf = np.zeros(n, dtype=np.complex64)
-                    sr  = self.sdr.readStream(
-                        self._soapy_stream, [buf], n, timeoutUs=5_000_000
-                    )
-                    self._capturas_sesion += 1
-                    return buf[:sr.ret] if sr.ret > 0 else buf
-
+                return iq
             except Exception as exc:
                 self._print(
                     f"[red][!] Error capturando @ {freq_hz/1e6:.3f} MHz: {exc}[/red]"
@@ -509,10 +467,9 @@ class RFScanner:
                 log.error("Captura IQ @ %.3f MHz: %s", freq_hz / 1e6, exc)
                 return None
 
-        return None
-
     def _verificar_rango_rtl(self, freq_mhz: float) -> bool:
-        if _SDR_DRIVER == "RTL-SDR" and self._mock is None:
+        from modules.rf.rf_source import _RTLSDRBackend
+        if isinstance(self._backend, _RTLSDRBackend):
             if not (_RTL_FREQ_MIN <= freq_mhz <= _RTL_FREQ_MAX):
                 self._print(
                     f"[yellow][!] {freq_mhz:.3f} MHz fuera del rango RTL-SDR "
@@ -1035,7 +992,7 @@ class RFScanner:
         g.add_column(style="dim green", justify="right", min_width=24)
         g.add_column(style="white")
         g.add_row("Hardware",          self.hw_nombre)
-        g.add_row("Driver detectado",  _SDR_DRIVER or "MockSDR")
+        g.add_row("Backend tipo",      type(self._backend).__name__ if self._backend else "N/A")
         g.add_row("Sample rate",       f"{self.sample_rate/1e6:.3f} MHz")
         g.add_row("Ganancia",          f"{self.cfg.hardware.gain_db} dB")
         g.add_row("PPM corrección",    str(self.cfg.hardware.ppm_correction))
@@ -1195,31 +1152,15 @@ class RFScanner:
             except Exception:
                 pass
 
-        if self.sdr is not None:
+        if self._backend is not None:
             try:
-                if _SDR_DRIVER == "RTL-SDR":
-                    self.sdr.close()
-                elif _SDR_DRIVER and "SOAPY" in _SDR_DRIVER.upper():
-                    if self._soapy_stream is not None:
-                        try:
-                            self.sdr.deactivateStream(self._soapy_stream)
-                            self.sdr.closeStream(self._soapy_stream)
-                        except Exception:
-                            pass
-                        self._soapy_stream = None
+                self._backend.close()
                 self._print("[green][+] SDR desconectado.[/green]")
-                log.info("SDR cerrado correctamente")
+                log.info("RF backend cerrado correctamente")
             except Exception as exc:
-                self._print(f"[yellow][!] Error cerrando SDR: {exc}[/yellow]")
+                self._print(f"[yellow][!] Error cerrando RF backend: {exc}[/yellow]")
             finally:
-                self.sdr = None
-
-        if self._mock:
-            try:
-                self._mock.close()
-            except Exception:
-                pass
-            self._mock = None
+                self._backend = None
 
         try:
             self.signal_db.close_session()

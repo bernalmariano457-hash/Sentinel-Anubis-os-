@@ -151,6 +151,14 @@ class ApexSentinel:
                     self.rf.cerrar()
                 except Exception:
                     pass
+            # wifitri / adsb — sin hardware propio, pero cerramos si exponen cerrar()
+            for _attr in ("wifitri", "adsb"):
+                _mod = getattr(self, _attr, None)
+                if _mod and hasattr(_mod, "cerrar"):
+                    try:
+                        _mod.cerrar()
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -277,6 +285,9 @@ class ApexSentinel:
             "rfgrabar":  c.rfgrabar,  "rfplay":    c.rfplay,
             "adsb":      c.adsb,
             "noaa":      c.noaa,
+            # Wi-Fi Triangulación
+            "wifitri":   lambda: (self.wifitri.menu()
+                                  if self._modulo_ok("wifitri") else None),
             # Analizador de espectro RF
             "spectrum": c.spectrum,
             "sa":       c.spectrum,

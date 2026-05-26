@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse
 import json
+import logging
 import math
 import platform
 import re
@@ -11,30 +11,19 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-try:
-    from rich.align import Align
-    from rich.console import Console, Group
-    from rich.live import Live
-    from rich.panel import Panel
-    from rich.rule import Rule
-    from rich.table import Table
-    from rich.text import Text
-    from rich import box
-except ImportError:
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "rich", "-q", "--break-system-packages"],
-        check=False,
-    )
-    from rich.align import Align
-    from rich.console import Console, Group
-    from rich.live import Live
-    from rich.panel import Panel
-    from rich.rule import Rule
-    from rich.table import Table
-    from rich.text import Text
-    from rich import box
+from rich.align import Align
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.table import Table
+from rich.text import Text
+from rich import box
+
+if TYPE_CHECKING:
+    pass  # sentinel type imported lazily to avoid circular imports
 
 try:
     import numpy as np
@@ -42,15 +31,15 @@ try:
 except ImportError:
     _HAS_NUMPY = False
 
-console = Console()
+log = logging.getLogger("sentinel.network.wifi_tri")
 
-CONFIG_PATH    = Path.home() / ".config" / "wifi-tri" / "config.json"
-TX_POWER_DBM   = -40.0
-PATH_LOSS_EXP  = 2.7
-MAX_DIST_M     = 80.0
-SMOOTH_ALPHA   = 0.35
-MAP_W          = 58
-MAP_H          = 22
+CONFIG_PATH = Path.home() / ".config" / "wifi-tri" / "config.json"
+TX_POWER_DBM = -40.0
+PATH_LOSS_EXP = 2.7
+MAX_DIST_M = 80.0
+SMOOTH_ALPHA = 0.35
+MAP_W = 58
+MAP_H = 22
 
 AP_STYLES: List[Tuple[str, str]] = [
     ("bright_cyan",    "◆"),
@@ -76,8 +65,8 @@ class Config:
     room_w:       float = 20.0
     room_h:       float = 15.0
     tx_power:     float = TX_POWER_DBM
-    path_loss_exp:float = PATH_LOSS_EXP
-    scan_interval:float = 2.0
+    path_loss_exp: float = PATH_LOSS_EXP
+    scan_interval: float = 2.0
     access_points: Dict[str, APConfig] = field(default_factory=dict)
 
     @staticmethod
@@ -121,29 +110,33 @@ class AccessPoint:
     ssid:      str
     bssid:     str
     rssi_dbm:  float
-    channel:   int   = 0
-    band:      str   = "2.4G"
-    distance_m:float = 0.0
+    channel:   int = 0
+    band:      str = "2.4G"
+    distance_m: float = 0.0
     pos_x:     float = -1.0
     pos_y:     float = -1.0
-    color:     str   = "white"
-    icon:      str   = "◆"
+    color:     str = "white"
+    icon:      str = "◆"
     history:   List[float] = field(default_factory=list)
 
     def quality(self) -> int:
         return int(max(0, min(100, 2 * (self.rssi_dbm + 100))))
 
     def signal_bar(self) -> str:
-        q      = self.quality()
+        q = self.quality()
         filled = round(q / 20)
-        color  = "bright_green" if q >= 70 else "yellow" if q >= 40 else "bright_red"
+        color = "bright_green" if q >= 70 else "yellow" if q >= 40 else "bright_red"
         return f"[{color}]{'█' * filled}{'░' * (5 - filled)}[/]"
 
     def rssi_style(self) -> str:
-        if self.rssi_dbm >= -50: return "bright_green"
-        if self.rssi_dbm >= -65: return "green"
-        if self.rssi_dbm >= -75: return "yellow"
-        if self.rssi_dbm >= -85: return "orange1"
+        if self.rssi_dbm >= -50:
+            return "bright_green"
+        if self.rssi_dbm >= -65:
+            return "green"
+        if self.rssi_dbm >= -75:
+            return "yellow"
+        if self.rssi_dbm >= -85:
+            return "orange1"
         return "bright_red"
 
 
@@ -153,8 +146,8 @@ class TriangulationResult:
     y:            float = 0.0
     confidence:   float = 0.0
     error_radius: float = 0.0
-    aps_used:     int   = 0
-    method:       str   = "none"
+    aps_used:     int = 0
+    method:       str = "none"
 
 
 def rssi_to_distance(rssi: float, tx: float, n: float) -> float:
@@ -194,22 +187,23 @@ def trilaterate(aps: List[AccessPoint]) -> TriangulationResult:
         return TriangulationResult(method="insufficient_data")
 
     if len(known) == 2:
-        a, b  = known
+        a, b = known
         wa, wb = 1.0 / max(a.distance_m, 0.1), 1.0 / max(b.distance_m, 0.1)
-        wt    = wa + wb
-        x, y  = (a.pos_x * wa + b.pos_x * wb) / wt, (a.pos_y * wa + b.pos_y * wb) / wt
+        wt = wa + wb
+        x, y = (a.pos_x * wa + b.pos_x * wb) / \
+            wt, (a.pos_y * wa + b.pos_y * wb) / wt
         return TriangulationResult(
             x=x, y=y, confidence=30.0,
             error_radius=abs(a.distance_m - b.distance_m) / 2.0,
             aps_used=2, method="weighted_midpoint",
         )
 
-    ref    = known[0]
-    rows_A : List[List[float]] = []
-    rows_b : List[float]       = []
+    ref = known[0]
+    rows_A: List[List[float]] = []
+    rows_b: List[float] = []
 
     for ap in known[1:]:
-        w   = 1.0 / max(ap.distance_m, 0.3)
+        w = 1.0 / max(ap.distance_m, 0.3)
         # Linearised trilateration: subtract ref equation from each AP equation.
         # 2(xi-x0)x + 2(yi-y0)y = d0²-di² - x0²-y0² + xi²+yi²
         rows_A.append([
@@ -218,8 +212,8 @@ def trilaterate(aps: List[AccessPoint]) -> TriangulationResult:
         ])
         rows_b.append((
             ref.distance_m ** 2 - ap.distance_m ** 2
-            - ref.pos_x ** 2   - ref.pos_y ** 2
-            + ap.pos_x  ** 2   + ap.pos_y  ** 2
+            - ref.pos_x ** 2 - ref.pos_y ** 2
+            + ap.pos_x ** 2 + ap.pos_y ** 2
         ) * w)
 
     try:
@@ -227,12 +221,12 @@ def trilaterate(aps: List[AccessPoint]) -> TriangulationResult:
     except Exception:
         x, y = ref.pos_x, ref.pos_y
 
-    residuals   = [
+    residuals = [
         abs(math.sqrt((x - ap.pos_x) ** 2 + (y - ap.pos_y) ** 2) - ap.distance_m)
         for ap in known
     ]
-    mean_res    = sum(residuals) / len(residuals)
-    confidence  = max(0.0, min(100.0, 100.0 - mean_res * 6.0))
+    mean_res = sum(residuals) / len(residuals)
+    confidence = max(0.0, min(100.0, 100.0 - mean_res * 6.0))
 
     return TriangulationResult(
         x=x, y=y,
@@ -245,14 +239,14 @@ def trilaterate(aps: List[AccessPoint]) -> TriangulationResult:
 
 class WiFiScanner:
     def __init__(self, cfg: Config) -> None:
-        self._cfg    = cfg
+        self._cfg = cfg
         self._cache: Dict[str, AccessPoint] = {}
-        self._si     = 0
-        self._os     = platform.system()
+        self._si = 0
+        self._os = platform.system()
 
     def _next_style(self) -> Tuple[str, str]:
         color, icon = AP_STYLES[self._si % len(AP_STYLES)]
-        self._si   += 1
+        self._si += 1
         return color, icon
 
     def scan(self) -> List[AccessPoint]:
@@ -267,14 +261,15 @@ class WiFiScanner:
         result: List[AccessPoint] = []
         for entry in raw:
             bssid = entry["bssid"].upper()
-            rssi  = float(entry["rssi"])
+            rssi = float(entry["rssi"])
 
             if bssid in self._cache:
-                ap          = self._cache[bssid]
-                ap.rssi_dbm = SMOOTH_ALPHA * rssi + (1.0 - SMOOTH_ALPHA) * ap.rssi_dbm
-                ap.ssid     = entry.get("ssid", ap.ssid) or ap.ssid
-                ap.channel  = entry.get("channel", ap.channel)
-                ap.band     = entry.get("band",    ap.band)
+                ap = self._cache[bssid]
+                ap.rssi_dbm = SMOOTH_ALPHA * rssi + \
+                    (1.0 - SMOOTH_ALPHA) * ap.rssi_dbm
+                ap.ssid = entry.get("ssid", ap.ssid) or ap.ssid
+                ap.channel = entry.get("channel", ap.channel)
+                ap.band = entry.get("band",    ap.band)
             else:
                 color, icon = self._next_style()
                 ap = AccessPoint(
@@ -297,10 +292,10 @@ class WiFiScanner:
             )
 
             if bssid in self._cfg.access_points:
-                apc      = self._cfg.access_points[bssid]
+                apc = self._cfg.access_points[bssid]
                 ap.pos_x = apc.x
                 ap.pos_y = apc.y
-                ap.ssid  = apc.ssid
+                ap.ssid = apc.ssid
             else:
                 ap.pos_x = -1.0
                 ap.pos_y = -1.0
@@ -326,8 +321,8 @@ class WiFiScanner:
         except Exception:
             return []
 
-        entries: List[Dict]  = []
-        current: Dict        = {}
+        entries: List[Dict] = []
+        current: Dict = {}
         for line in raw.splitlines():
             m = re.match(r"^(\w+):\s*(.*)", line.strip())
             if not m:
@@ -341,7 +336,7 @@ class WiFiScanner:
 
         result = []
         for e in entries:
-            sig  = int(e.get("SIGNAL", "0") or "0")
+            sig = int(e.get("SIGNAL", "0") or "0")
             freq = e.get("FREQ", "")
             chan = e.get("CHAN", "0") or "0"
             ssid = e.get("SSID", "") or ""
@@ -378,9 +373,9 @@ class WiFiScanner:
 
         result = []
         for block in re.split(r"Cell \d+ -", raw)[1:]:
-            ssid  = re.search(r'ESSID:"([^"]*)"', block)
+            ssid = re.search(r'ESSID:"([^"]*)"', block)
             bssid = re.search(r"Address:\s*([0-9A-Fa-f:]{17})", block)
-            rssi  = re.search(r"Signal level=(-?\d+)\s*dBm", block)
+            rssi = re.search(r"Signal level=(-?\d+)\s*dBm", block)
             if not rssi:
                 pct = re.search(r"Signal level=(\d+)/100", block)
                 if pct:
@@ -448,10 +443,10 @@ class WiFiScanner:
 
         result = []
         for block in re.split(r"(?m)^SSID\s+\d+\s*:", raw)[1:]:
-            ssid  = re.search(r"^\s*(.+)", block)
+            ssid = re.search(r"^\s*(.+)", block)
             bssid = re.search(r"BSSID\s+\d+\s*:\s*([0-9A-Fa-f:]+)", block)
-            sig   = re.search(r"Signal\s*:\s*(\d+)%", block)
-            chan  = re.search(r"Channel\s*:\s*(\d+)", block)
+            sig = re.search(r"Signal\s*:\s*(\d+)%", block)
+            chan = re.search(r"Channel\s*:\s*(\d+)", block)
             if not (bssid and sig):
                 continue
             ch = int(chan.group(1)) if chan else 0
@@ -478,17 +473,19 @@ def _render_map(
         my = max(1, min(H - 2, int(wy / room_h * (H - 3)) + 1))
         return mx, my
 
-    ch    = [["·"] * W for _ in range(H)]
-    sty   = [["dim bright_black"] * W for _ in range(H)]
+    ch = [["·"] * W for _ in range(H)]
+    sty = [["dim bright_black"] * W for _ in range(H)]
 
     for x in range(W):
-        ch[0][x]     = ch[H - 1][x]   = "─"
-        sty[0][x]    = sty[H - 1][x]  = "bright_black"
+        ch[0][x] = ch[H - 1][x] = "─"
+        sty[0][x] = sty[H - 1][x] = "bright_black"
     for y in range(H):
-        ch[y][0]     = ch[y][W - 1]   = "│"
-        sty[y][0]    = sty[y][W - 1]  = "bright_black"
-    ch[0][0]      = "╔"; ch[0][W - 1]      = "╗"
-    ch[H-1][0]    = "╚"; ch[H-1][W-1]      = "╝"
+        ch[y][0] = ch[y][W - 1] = "│"
+        sty[y][0] = sty[y][W - 1] = "bright_black"
+    ch[0][0] = "╔"
+    ch[0][W - 1] = "╗"
+    ch[H-1][0] = "╚"
+    ch[H-1][W-1] = "╝"
 
     for ap in aps:
         if ap.pos_x < 0 or ap.distance_m <= 0:
@@ -498,8 +495,8 @@ def _render_map(
         ry = max(1, int(ap.distance_m / room_h * (H - 2)))
         for deg in range(0, 360, 3):
             rad = math.radians(deg)
-            cx  = ax + int(rx * math.cos(rad))
-            cy  = ay + int(ry * math.sin(rad))
+            cx = ax + int(rx * math.cos(rad))
+            cy = ay + int(ry * math.sin(rad))
             if 1 <= cx < W - 1 and 1 <= cy < H - 1 and ch[cy][cx] == "·":
                 sty[cy][cx] = f"{ap.color} dim"
 
@@ -509,21 +506,21 @@ def _render_map(
         err_ry = max(1, int(result.error_radius / room_h * (H - 2)))
         for deg in range(0, 360, 8):
             rad = math.radians(deg)
-            cx  = px + int(err_rx * math.cos(rad))
-            cy  = py + int(err_ry * math.sin(rad))
+            cx = px + int(err_rx * math.cos(rad))
+            cy = py + int(err_ry * math.sin(rad))
             if 1 <= cx < W - 1 and 1 <= cy < H - 1 and ch[cy][cx] in ("·", " "):
-                ch[cy][cx]  = "○"
+                ch[cy][cx] = "○"
                 sty[cy][cx] = "dim white"
         if 1 <= px < W - 1 and 1 <= py < H - 1:
-            ch[py][px]  = "◎"
+            ch[py][px] = "◎"
             sty[py][px] = "bold bright_white"
 
     for ap in aps:
         if ap.pos_x < 0:
             continue
-        ax, ay       = to_map(ap.pos_x, ap.pos_y)
-        ch[ay][ax]   = ap.icon
-        sty[ay][ax]  = f"bold {ap.color}"
+        ax, ay = to_map(ap.pos_x, ap.pos_y)
+        ch[ay][ax] = ap.icon
+        sty[ay][ax] = f"bold {ap.color}"
 
     t = Text()
     for y in range(H):
@@ -556,9 +553,10 @@ def _ap_table(aps: List[AccessPoint]) -> Table:
         spark = ""
         if len(ap.history) > 1:
             mn, mx = min(ap.history), max(ap.history)
-            rng    = mx - mn or 1.0
-            bars   = "▁▂▃▄▅▆▇█"
-            spark  = "".join(bars[int((v - mn) / rng * 7)] for v in ap.history[-8:])
+            rng = mx - mn or 1.0
+            bars = "▁▂▃▄▅▆▇█"
+            spark = "".join(bars[int((v - mn) / rng * 7)]
+                            for v in ap.history[-8:])
 
         pos_tag = (
             f"[bright_black]({ap.pos_x:.0f},{ap.pos_y:.0f})[/]"
@@ -582,20 +580,25 @@ def _tri_panel(result: TriangulationResult) -> Panel:
     body = Text()
     if result.method == "insufficient_data":
         body.append("\n  ⚠  Sin anclas configuradas\n",   "yellow")
-        body.append("  Ejecuta  --setup  para asignar posiciones a los APs\n\n", "bright_black")
+        body.append(
+            "  Ejecuta  --setup  para asignar posiciones a los APs\n\n", "bright_black")
     elif result.method in ("wls", "weighted_midpoint"):
         c_style = (
             "bright_green" if result.confidence >= 70 else
-            "yellow"       if result.confidence >= 40 else
+            "yellow" if result.confidence >= 40 else
             "bright_red"
         )
         body.append("\n  Posición estimada\n\n", c_style)
         body.append(f"   X  {result.x:7.2f} m\n", "bold bright_white")
         body.append(f"   Y  {result.y:7.2f} m\n\n", "bold bright_white")
-        body.append(f"   Confianza   [{c_style}]{result.confidence:.0f} %[/]\n", "white")
-        body.append(f"   Error       ±{result.error_radius:.2f} m\n",            "white")
-        body.append(f"   APs usados  {result.aps_used}\n",                       "white")
-        body.append(f"   Método      {result.method}\n",                         "bright_black")
+        body.append(
+            f"   Confianza   [{c_style}]{result.confidence:.0f} %[/]\n", "white")
+        body.append(
+            f"   Error       ±{result.error_radius:.2f} m\n",            "white")
+        body.append(
+            f"   APs usados  {result.aps_used}\n",                       "white")
+        body.append(
+            f"   Método      {result.method}\n",                         "bright_black")
     return Panel(body, title="[bold]Trilateración[/]", border_style="bright_cyan", padding=(0, 1))
 
 
@@ -619,7 +622,7 @@ def _screen(
     scan_n: int,
     iface: str,
 ) -> Group:
-    ts    = time.strftime("%H:%M:%S")
+    ts = time.strftime("%H:%M:%S")
     title = Text()
     title.append("  Wi-Fi Triangulation  ", "bold bright_cyan")
     title.append(f"·  {iface}  ·  ", "dim bright_black")
@@ -628,7 +631,7 @@ def _screen(
     has_anchors = any(ap.pos_x >= 0 for ap in aps)
 
     if has_anchors:
-        mapa      = _render_map(aps, result, cfg.room_w, cfg.room_h)
+        mapa = _render_map(aps, result, cfg.room_w, cfg.room_h)
         map_panel = Panel(
             Align(mapa, "center"),
             title=f"[bold]Plano  {cfg.room_w:.0f} × {cfg.room_h:.0f} m[/]",
@@ -650,34 +653,40 @@ def _screen(
             height=6,
         )
 
-    ap_panel  = Panel(
+    ap_panel = Panel(
         _ap_table(aps),
         title=f"[bold]Puntos de Acceso detectados  [{len(aps)}][/]",
         border_style="bright_black",
         padding=(0, 0),
     )
     tri_panel = _tri_panel(result)
-    hint      = Text(
+    hint = Text(
         f"  Ctrl+C salir  ·  --setup configurar  ·  intervalo {cfg.scan_interval:.1f}s",
         "dim bright_black",
     )
     return Group(title, map_panel, ap_panel, tri_panel, hint)
 
 
-def setup_wizard(cfg: Config, scanner: WiFiScanner) -> None:
+def setup_wizard(cfg: Config, scanner: "WiFiScanner", console: Console) -> None:
+
     def ask(prompt: str, default: str) -> str:
-        val = console.input(f"  [bright_cyan]{prompt}[/] [[bright_black]{default}[/]]: ").strip()
+        val = console.input(
+            f"  [bright_cyan]{prompt}[/] [[bright_black]{default}[/]]: ").strip()
         return val if val else default
 
     console.print(Rule("[bold bright_cyan]Asistente de configuración[/]"))
     console.print()
 
-    cfg.room_w        = float(ask("Ancho de la sala (m)",               str(cfg.room_w)))
-    cfg.room_h        = float(ask("Alto de la sala (m)",                str(cfg.room_h)))
-    cfg.tx_power      = float(ask("TxPower a 1 m (dBm)",               str(cfg.tx_power)))
+    cfg.room_w = float(
+        ask("Ancho de la sala (m)",               str(cfg.room_w)))
+    cfg.room_h = float(
+        ask("Alto de la sala (m)",                str(cfg.room_h)))
+    cfg.tx_power = float(
+        ask("TxPower a 1 m (dBm)",               str(cfg.tx_power)))
     cfg.path_loss_exp = float(ask("Exponente de pérdida n  [2=libre, 3.5=interior]",
-                                   str(cfg.path_loss_exp)))
-    cfg.scan_interval = float(ask("Intervalo de escaneo (s)",          str(cfg.scan_interval)))
+                                  str(cfg.path_loss_exp)))
+    cfg.scan_interval = float(
+        ask("Intervalo de escaneo (s)",          str(cfg.scan_interval)))
 
     console.print()
     console.print("  [bright_black]Escaneando redes…[/]")
@@ -685,7 +694,8 @@ def setup_wizard(cfg: Config, scanner: WiFiScanner) -> None:
 
     if not aps:
         console.print("  [red]No se detectaron redes Wi-Fi.[/]")
-        console.print("  [bright_black]Verifica que la interfaz esté activa y los permisos.[/]")
+        console.print(
+            "  [bright_black]Verifica que la interfaz esté activa y los permisos.[/]")
         return
 
     console.print(f"  [bright_green]{len(aps)} redes detectadas[/]\n")
@@ -718,7 +728,8 @@ def setup_wizard(cfg: Config, scanner: WiFiScanner) -> None:
         console.print(f"  [bright_green]✔[/]  {ap.ssid} → ({x}, {y})")
 
     cfg.save()
-    console.print(f"\n  [bright_green]Configuración guardada en[/]  {CONFIG_PATH}\n")
+    console.print(
+        f"\n  [bright_green]Configuración guardada en[/]  {CONFIG_PATH}\n")
 
 
 def _detect_iface() -> str:
@@ -737,50 +748,113 @@ def _detect_iface() -> str:
     return "Wi-Fi"
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="wifi-tri",
-        description="Wi-Fi Triangulation — mapa en vivo en terminal",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument("--setup",    action="store_true",
-                        help="Asistente interactivo de configuración")
-    parser.add_argument("--iface",    default="",
-                        help="Interfaz Wi-Fi (auto-detectada si se omite)")
-    parser.add_argument("--interval", type=float, default=0.0,
-                        help="Intervalo de escaneo en segundos (sobreescribe config)")
-    parser.add_argument("--config",   default="",
-                        help="Ruta alternativa al archivo de configuración")
-    args = parser.parse_args()
+# ═══════════════════════════════════════════════════════════════════════════
+#  MÓDULO SENTINEL — WiFiTriangulation
+#  Mismo patrón que GeoPrecise / OSINTEngine / AircraftMonitor / NOAADecoder.
+#  Uso:  WiFiTriangulation(sentinel).menu()
+# ═══════════════════════════════════════════════════════════════════════════
 
-    cfg_path = Path(args.config) if args.config else CONFIG_PATH
-    cfg      = Config.load(cfg_path)
+class WiFiTriangulation:
+    _MODULE = "WiFi-Tri"
 
-    if args.interval > 0.0:
-        cfg.scan_interval = args.interval
+    def __init__(self, sentinel: object) -> None:
+        self._s = sentinel
+        self._con: Console = getattr(sentinel, "console", None) or Console()
+        self._log = getattr(sentinel, "log", None)
+        self._cfg_path = CONFIG_PATH
+        self._cfg = Config.load(self._cfg_path)
+        self._iface = _detect_iface()
+        self._scanner = WiFiScanner(self._cfg)
 
-    iface   = args.iface or _detect_iface()
-    scanner = WiFiScanner(cfg)
+    # ── Helpers privados ──────────────────────────────────────────────
 
-    try:
-        if args.setup:
-            setup_wizard(cfg, scanner)
+    def _info(self, msg: str) -> None:
+        self._con.print(f"[cyan][{self._MODULE}][/cyan] {msg}")
+        if self._log:
+            self._log.info(msg, self._MODULE)
 
-        with Live(console=console, refresh_per_second=4, screen=True) as live:
-            n = 0
-            while True:
-                aps    = scanner.scan()
-                result = trilaterate(aps)
-                n     += 1
-                live.update(_screen(aps, result, cfg, n, iface))
-                time.sleep(cfg.scan_interval)
+    def _warn(self, msg: str) -> None:
+        self._con.print(f"[yellow][!][{self._MODULE}] {msg}[/yellow]")
+        if self._log:
+            self._log.warning(msg, self._MODULE)
 
-    except KeyboardInterrupt:
-        console.print("\n[bold bright_cyan]  Finalizado.[/]")
-    except Exception as exc:
-        console.print(f"\n[bold red]Error: {exc}[/]")
-        raise SystemExit(1) from exc
+    def _err(self, msg: str) -> None:
+        self._con.print(f"[bold red][✗][{self._MODULE}] {msg}[/bold red]")
+        if self._log:
+            self._log.error(msg, self._MODULE)
 
+    # ── API pública ───────────────────────────────────────────────────
 
-if __name__ == "__main__":
-    main()
+    def menu(self) -> None:
+        from rich.prompt import Prompt
+
+        while True:
+            self._con.print(Panel(
+                "[1] Monitor en vivo\n"
+                "[2] Asistente de configuración (setup)\n"
+                "[3] Cambiar interfaz Wi-Fi\n"
+                "[0] Volver",
+                title=f"[bold cyan]📡  {self._MODULE}[/bold cyan]",
+                border_style="cyan",
+            ))
+            opcion = Prompt.ask(
+                f"[bold cyan]{self._MODULE}[/bold cyan]",
+                choices=["0", "1", "2", "3"],
+                default="1",
+                console=self._con,
+            )
+            if opcion == "0":
+                break
+            elif opcion == "1":
+                self._iniciar_monitor()
+            elif opcion == "2":
+                self._ejecutar_setup()
+            elif opcion == "3":
+                self._cambiar_iface()
+
+    def _iniciar_monitor(self) -> None:
+        self._info(
+            f"Iniciando triangulación en vivo — "
+            f"iface={self._iface}  intervalo={self._cfg.scan_interval:.1f}s"
+        )
+        try:
+            with Live(
+                console=self._con,
+                refresh_per_second=4,
+                screen=True,
+            ) as live:
+                n = 0
+                while True:
+                    aps = self._scanner.scan()
+                    result = trilaterate(aps)
+                    n += 1
+                    live.update(
+                        _screen(aps, result, self._cfg, n, self._iface))
+                    time.sleep(self._cfg.scan_interval)
+        except KeyboardInterrupt:
+            self._con.print("\n[bold bright_cyan]  Monitoreo detenido.[/]")
+        except Exception as exc:
+            self._err(f"Error durante el monitoreo: {exc}")
+            log.exception("WiFi-Tri monitor error")
+
+    def _ejecutar_setup(self) -> None:
+        self._info("Iniciando asistente de configuración…")
+        try:
+            setup_wizard(self._cfg, self._scanner, self._con)
+            self._cfg = Config.load(self._cfg_path)   # recargar tras guardar
+            self._scanner = WiFiScanner(self._cfg)
+            self._info("Configuración recargada correctamente.")
+        except Exception as exc:
+            self._err(f"Error en setup: {exc}")
+            log.exception("WiFi-Tri setup error")
+
+    def _cambiar_iface(self) -> None:
+        from rich.prompt import Prompt
+        nueva = Prompt.ask(
+            "Interfaz Wi-Fi",
+            default=self._iface,
+            console=self._con,
+        ).strip()
+        if nueva:
+            self._iface = nueva
+            self._info(f"Interfaz cambiada a: {self._iface}")

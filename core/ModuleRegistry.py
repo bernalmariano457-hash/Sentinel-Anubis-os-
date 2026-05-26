@@ -49,9 +49,9 @@ MODULOS: list[ModuleSpec] = [
                display_name="BluetoothModule"),
     ModuleSpec("hydra",        "HydraModule",       "modules.network.HydraModule",
                display_name="HydraModule"),
-    ModuleSpec("wifitri", "LiveTriangulator",
+    ModuleSpec("wifitri", "WiFiTriangulation",
                "modules.network.wifi_triangulation",
-               display_name="WiFiTriangulator"),
+               display_name="WiFi Triangulation"),
 
     # ── Forense ───────────────────────────────────────────────────────
     ModuleSpec("reader",       "ForensicReader",    "modules.forense.ForensicReader",

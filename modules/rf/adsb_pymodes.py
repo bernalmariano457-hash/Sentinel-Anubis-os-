@@ -1,24 +1,27 @@
 from __future__ import annotations
 
-import argparse
+import logging
 import sys
-import subprocess
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from math import atan2, cos, degrees, radians, sin, sqrt
-from typing import Callable, Deque, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Deque, Dict, List, Optional, Tuple
 
 import numpy as np
 from rich import box
-from rich.console import Console
 from rich.layout import Layout
-from rich.live import Live
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
+from rich.live   import Live
+from rich.panel  import Panel
+from rich.table  import Table
+from rich.text   import Text
 
-from rf_source import Source, rtlsdr_source
+if TYPE_CHECKING:
+    from rich.console import Console
+
+from modules.rf.rf_source import Source, rtlsdr_source, open_backend
+
+log = logging.getLogger("sentinel.rf.adsb")
 
 try:
     from pyModeS.message import Message as _PMMessage
@@ -28,23 +31,10 @@ try:
     )
     _PYMODES_OK = True
 except ImportError:
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "pyModeS", "-q",
-         "--break-system-packages"],
-        check=False,
-    )
-    try:
-        from pyModeS.message import Message as _PMMessage
-        from pyModeS.position import (
-            airborne_position_pair       as _pm_pair,
-            airborne_position_with_ref   as _pm_ref,
-        )
-        _PYMODES_OK = True
-    except ImportError:
-        _PYMODES_OK = False
-        _PMMessage  = None
-        _pm_pair    = None
-        _pm_ref     = None
+    _PYMODES_OK = False
+    _PMMessage  = None
+    _pm_pair    = None
+    _pm_ref     = None
 
 IcaoHex = str
 
@@ -508,12 +498,14 @@ class ADSBPipeline:
         hz:         int   = 4,
         rx_lat:     float = 0.0,
         rx_lon:     float = 0.0,
+        console:    Optional["Console"] = None,
     ) -> None:
+        from rich.console import Console as _Console
         self._src    = source
         self._sr     = sr
         self._hz     = hz
         self.tracker = FlightTracker(rx_lat, rx_lon)
-        self._con    = Console()
+        self._con    = console or _Console()
 
     def feed_hex(self, h: str, ts: Optional[float] = None) -> None:
         self.tracker.feed_hex(h, ts)
@@ -567,15 +559,22 @@ _HEX_DEMO = [
 ]
 
 
-def run_demo(rx_lat: float = 0.0, rx_lon: float = 0.0) -> None:
+def run_demo(
+    rx_lat:  float = 0.0,
+    rx_lon:  float = 0.0,
+    console: Optional["Console"] = None,
+) -> None:
+    """Modo demo sin hardware: reproduce tramas pre-grabadas en bucle."""
+    from rich.console import Console as _Console
+    con = console or _Console()
     if not _PYMODES_OK:
-        Console().print("[bold red]pyModeS no instalado[/bold red]")
+        con.print("[bold red]pyModeS no instalado — pip install pyModeS[/bold red]")
         return
     tracker = FlightTracker(rx_lat, rx_lon)
-    idx     = 0
+    idx = 0
     with Live(
         _layout(tracker),
-        console=Console(),
+        console=con,
         refresh_per_second=4,
         screen=True,
     ) as live:
@@ -589,28 +588,141 @@ def run_demo(rx_lat: float = 0.0, rx_lon: float = 0.0) -> None:
             pass
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description="ADS-B — pyModeS + Rich",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    g = p.add_mutually_exclusive_group()
-    g.add_argument("--demo",   action="store_true", default=True)
-    g.add_argument("--rtlsdr", action="store_true")
-    p.add_argument("--lat",  type=float, default=0.0)
-    p.add_argument("--lon",  type=float, default=0.0)
-    p.add_argument("--gain", type=float, default=49.6)
-    p.add_argument("--rate", type=int,   default=2_000_000)
-    a = p.parse_args()
+# ═══════════════════════════════════════════════════════════════════════════
+#  MÓDULO SENTINEL — AircraftMonitor
+#  Mismo patrón que GeoPrecise / OSINTEngine / NOAADecoder.
+#  Uso:  AircraftMonitor(sentinel).menu()
+# ═══════════════════════════════════════════════════════════════════════════
 
-    if a.rtlsdr:
+class AircraftMonitor:
+    """
+    Monitoreo ADS-B integrado en Sentinel.
+
+    Recibe la instancia ``sentinel`` y reutiliza ``sentinel.console``
+    y ``sentinel.log``, eliminando toda dependencia de argparse y de
+    instancias globales de Console.
+
+    Parámetros de RF se leen desde ``sentinel.rf.cfg.hardware`` cuando
+    están disponibles, con valores sensatos como fallback.
+    """
+
+    _MODULE = "ADS-B"
+
+    def __init__(self, sentinel: object) -> None:
+        self._s   = sentinel
+        self._con: "Console" = getattr(sentinel, "console", None)
+        if self._con is None:
+            from rich.console import Console as _Console
+            self._con = _Console()
+        self._log = getattr(sentinel, "log", None)
+
+        # Parámetros de hardware desde sentinel.rf cuando esté presente
+        rf_cfg = getattr(getattr(sentinel, "rf", None), "cfg", None)
+        hw     = getattr(rf_cfg, "hardware", None)
+        self._gain  = float(getattr(hw, "gain_db",        49.6))
+        self._rate  = int(  getattr(hw, "sample_rate",    2_000_000))
+        self._ppm   = int(  getattr(hw, "ppm_correction", 0))
+        self._idx   = int(  getattr(hw, "device_index",   0))
+
+        # Coordenadas del receptor (tomadas de sentinel.geo si existe)
+        geo = getattr(sentinel, "geo", None)
+        pos = getattr(geo,     "position", None)
+        self._rx_lat = float(getattr(pos, "lat", 0.0))
+        self._rx_lon = float(getattr(pos, "lon", 0.0))
+
+    # ── Helpers privados ──────────────────────────────────────────────
+
+    def _info(self, msg: str) -> None:
+        self._con.print(f"[cyan][{self._MODULE}][/cyan] {msg}")
+        if self._log:
+            self._log.info(msg, self._MODULE)
+
+    def _warn(self, msg: str) -> None:
+        self._con.print(f"[yellow][!][{self._MODULE}] {msg}[/yellow]")
+        if self._log:
+            self._log.warning(msg, self._MODULE)
+
+    def _err(self, msg: str) -> None:
+        self._con.print(f"[bold red][✗][{self._MODULE}] {msg}[/bold red]")
+        if self._log:
+            self._log.error(msg, self._MODULE)
+
+    # ── API pública ───────────────────────────────────────────────────
+
+    def menu(self) -> None:
+        """Menú interactivo del módulo ADS-B."""
+        from rich.prompt import Prompt
+        from rich.panel  import Panel
+
+        while True:
+            self._con.print(Panel(
+                "[1] Monitor en vivo (RTL-SDR)\n"
+                "[2] Demo sin hardware\n"
+                "[3] Configurar receptor (lat/lon/gain)\n"
+                "[0] Volver",
+                title=f"[bold cyan]✈  {self._MODULE}[/bold cyan]",
+                border_style="cyan",
+            ))
+            opcion = Prompt.ask(
+                "[bold cyan]ADS-B[/bold cyan]",
+                choices=["0", "1", "2", "3"],
+                default="2",
+                console=self._con,
+            )
+            if opcion == "0":
+                break
+            elif opcion == "1":
+                self._iniciar_rtlsdr()
+            elif opcion == "2":
+                self._iniciar_demo()
+            elif opcion == "3":
+                self._configurar()
+
+    def _iniciar_rtlsdr(self) -> None:
+        if not _PYMODES_OK:
+            self._err("pyModeS no instalado. Ejecuta: pip install pyModeS")
+            return
+        self._info(
+            f"Iniciando captura RTL-SDR — "
+            f"1090 MHz  gain={self._gain} dB  sr={self._rate/1e6:.1f} MSPS"
+        )
+        try:
+            source = rtlsdr_source(
+                1_090_000_000, self._rate, self._gain, self._ppm, self._idx
+            )
+        except Exception as exc:
+            self._err(f"RTL-SDR no disponible: {exc}")
+            self._warn("Iniciando modo demo como alternativa…")
+            self._iniciar_demo()
+            return
         ADSBPipeline(
-            rtlsdr_source(1_090_000_000, a.rate, a.gain),
-            sr=a.rate, rx_lat=a.lat, rx_lon=a.lon,
+            source,
+            sr=self._rate,
+            rx_lat=self._rx_lat,
+            rx_lon=self._rx_lon,
+            console=self._con,
         ).run()
-    else:
-        run_demo(a.lat, a.lon)
 
+    def _iniciar_demo(self) -> None:
+        self._info("Modo demo ADS-B (sin hardware SDR)")
+        run_demo(self._rx_lat, self._rx_lon, self._con)
 
-if __name__ == "__main__":
-    main()
+    def _configurar(self) -> None:
+        from rich.prompt import Prompt
+        try:
+            self._rx_lat = float(Prompt.ask(
+                "Latitud del receptor", default=str(self._rx_lat), console=self._con
+            ))
+            self._rx_lon = float(Prompt.ask(
+                "Longitud del receptor", default=str(self._rx_lon), console=self._con
+            ))
+            self._gain   = float(Prompt.ask(
+                "Ganancia RTL-SDR (dB)", default=str(self._gain), console=self._con
+            ))
+            self._info(
+                f"Receptor configurado — "
+                f"lat={self._rx_lat:.4f}° lon={self._rx_lon:.4f}° "
+                f"gain={self._gain} dB"
+            )
+        except ValueError as exc:
+            self._err(f"Valor inválido: {exc}")

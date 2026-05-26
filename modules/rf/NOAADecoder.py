@@ -13,7 +13,7 @@ import numpy as np
 from rich.console import Console
 from rich.prompt import Prompt
 
-from rf_source import Source, SourceFactory
+from modules.rf.rf_source import Source, SourceFactory, rtlsdr_source, null_source
 
 log = logging.getLogger("sentinel.rf.noaa")
 
@@ -528,16 +528,37 @@ class PassCalculator:
 
 
 class NOAADecoder:
-    def __init__(
-        self,
-        rf_factory: SourceFactory,
-        console:    Console,
-    ) -> None:
-        self._rf_factory = rf_factory
-        self.console     = console
-        self._pll        = SyncPLL(APT_AUDIO_RATE)
-        self._decoder    = APTLineDecoder(APT_AUDIO_RATE)
-        self._render     = TerminalRenderer(console)
+    """
+    Decodificador NOAA APT — imágenes satelitales en 137 MHz.
+
+    Sigue el patrón Sentinel estándar: NOAADecoder(sentinel).
+    Construye internamente la SourceFactory desde la configuración
+    de RF del sentinel o usa rtlsdr_source con valores por defecto.
+    """
+
+    def __init__(self, sentinel: object) -> None:
+        self._s      = sentinel
+        self.console: Console = getattr(sentinel, "console", Console())
+        self._pll    = SyncPLL(APT_AUDIO_RATE)
+        self._decoder = APTLineDecoder(APT_AUDIO_RATE)
+        self._render  = TerminalRenderer(self.console)
+
+        # Extraer parámetros de hardware desde sentinel.rf si está disponible
+        rf_cfg = getattr(getattr(sentinel, "rf", None), "cfg", None)
+        hw     = getattr(rf_cfg, "hardware", None)
+
+        gain  = getattr(hw, "gain_db",        49.6)
+        ppm   = getattr(hw, "ppm_correction",  0)
+        idx   = getattr(hw, "device_index",    0)
+
+        def _factory(freq_hz: float, sample_rate: int) -> Source:
+            try:
+                return rtlsdr_source(freq_hz, sample_rate, gain, ppm, idx)
+            except Exception as exc:
+                log.warning("NOAADecoder: RTL-SDR no disponible (%s) — null source", exc)
+                return null_source()
+
+        self._rf_factory: SourceFactory = _factory
 
     def menu(self) -> None:
         self.console.print()

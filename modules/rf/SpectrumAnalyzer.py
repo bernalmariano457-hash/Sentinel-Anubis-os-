@@ -24,27 +24,17 @@ from rich.text import Text
 
 from core.platform import PlatformInfo, detect as detect_platform
 from core.keybindings import BandPreset, KeyBindings, load as load_keys
-from modules.rf.rf_mock import MockSDRManager, SyntheticSignal
-
 if TYPE_CHECKING:
     from Main import ApexSentinel
+    from modules.rf.rf_source import SDRBackend
 
 log = logging.getLogger("sentinel.rf.spectrum")
 
-_SDR_CLASS  = None
-_SDR_DRIVER = "MockSDR"
-try:
-    from rtlsdr import RtlSdr as _RtlSdr
-    _SDR_CLASS  = _RtlSdr
-    _SDR_DRIVER = "RTL-SDR"
-except ImportError:
-    pass
-
-_SUB          = " ▁▂▃▄▅▆▇█"
-_PEAK_CHR     = "▪"
-_MARKER_CHR   = "▼"
-_THRESH_CHR   = "╌"
-_FREQ_MIN_MHZ =  24.0
+_SUB = " ▁▂▃▄▅▆▇█"
+_PEAK_CHR = "▪"
+_MARKER_CHR = "▼"
+_THRESH_CHR = "╌"
+_FREQ_MIN_MHZ = 24.0
 _FREQ_MAX_MHZ = 1766.0
 _EVIDENCE_DIR = Path("data/evidence/rf")
 
@@ -68,20 +58,20 @@ class SAConfig:
     rbw_khz:        float = 12.5
     ref_dbm:        float = -20.0
     floor_dbm:      float = -110.0
-    gain:           str   = "auto"
-    avg_frames:     int   = 1
-    peak_hold:      bool  = False
-    display_width:  int   = 120
-    display_height: int   = 14
-    sample_rate:    int   = 2_048_000
-    band_label:     str   = ""
+    gain:           str = "auto"
+    avg_frames:     int = 1
+    peak_hold:      bool = False
+    display_width:  int = 120
+    display_height: int = 14
+    sample_rate:    int = 2_048_000
+    band_label:     str = ""
     # v2: corrección y detección
     ppm_offset:     float = 0.0     # PPM de error del reloj RTL-SDR
     threshold_dbm:  float = -80.0   # umbral de detección de señales
-    waterfall_h:    int   = 8       # filas del waterfall
-    waterfall_on:   bool  = True    # mostrar waterfall
-    show_labels:    bool  = True    # etiquetar picos detectados
-    record_wf:      bool  = False   # grabar frames a disco
+    waterfall_h:    int = 8       # filas del waterfall
+    waterfall_on:   bool = True    # mostrar waterfall
+    show_labels:    bool = True    # etiquetar picos detectados
+    record_wf:      bool = False   # grabar frames a disco
 
     def fft_size(self) -> int:
         raw = int(1.5 * self.sample_rate / (self.rbw_khz * 1_000))
@@ -104,11 +94,11 @@ class SAConfig:
 
     @classmethod
     def from_platform(cls, info: PlatformInfo, kb: KeyBindings) -> SAConfig:
-        sc   = info.screen
+        sc = info.screen
         cols = kb.display_cols if kb.display_cols > 0 else sc.spectrum_width
         # Repartir filas: fijas ~14 (header+axis+bar+status+ctrl+bordes)
         # variables = rows - 14 → 2/3 espectro, 1/3 waterfall
-        var  = max(16, sc.rows - 14)
+        var = max(16, sc.rows - 14)
         wf_h = max(4, min(10, var // 3))
         sp_h = max(8, var - wf_h)
         if kb.display_rows > 0:
@@ -125,7 +115,7 @@ class Marker:
     name:      str
     freq_mhz:  float = 0.0
     power_dbm: float = 0.0
-    active:    bool  = False
+    active:    bool = False
 
 
 @dataclass
@@ -246,11 +236,11 @@ class _SignalDetector:
             bw_khz = max(0.1, (freqs_mhz[hi] - freqs_mhz[lo]) * 1_000)
 
             signals.append(_DetectedSignal(
-                bin_idx   = i,
-                freq_mhz  = float(freqs_mhz[i]),
-                power_dbm = float(psd_db[i]),
-                snr_db    = float(psd_db[i] - noise_floor),
-                bw_khz    = bw_khz,
+                bin_idx=i,
+                freq_mhz=float(freqs_mhz[i]),
+                power_dbm=float(psd_db[i]),
+                snr_db=float(psd_db[i] - noise_floor),
+                bw_khz=bw_khz,
             ))
 
         signals.sort(key=lambda s: s.power_dbm, reverse=True)
@@ -266,14 +256,15 @@ class _KeyReader(threading.Thread):
     def __init__(self) -> None:
         super().__init__(daemon=True, name="sa-keyreader")
         self._q:    queue.Queue[str] = queue.Queue()
-        self._stop: threading.Event  = threading.Event()
+        self._stop: threading.Event = threading.Event()
 
     def run(self) -> None:
         if not sys.stdin.isatty():
             return
         try:
-            import termios, tty  # noqa: PLC0415
-            fd  = sys.stdin.fileno()
+            import termios
+            import tty  # noqa: PLC0415
+            fd = sys.stdin.fileno()
             old = termios.tcgetattr(fd)
             tty.setraw(fd)
             try:
@@ -332,61 +323,57 @@ class _KeyReader(threading.Thread):
 # ══════════════════════════════════════════════════════════════════════
 
 class _SDRAdapter:
+    """
+    Adaptador fino sobre SDRBackend de rf_source.
+    Mantiene la API histórica (tune en MHz, read_iq, set_gain, close)
+    y delega toda la lógica de hardware al backend centralizado,
+    eliminando el código de inicialización duplicado.
 
-    def __init__(self, cfg: SAConfig) -> None:
-        self._cfg   = cfg
-        self._hw    = None
-        self._mock: MockSDRManager | None = None
-        self._toff: float = 0.0
-        self.hw_name = "MockSDR"
-        self._init()
+    Para conectar un SDR remoto o reproducir un archivo IQ:
+        adapter.swap_backend(rf_source.tcp_backend(...))
+        adapter.swap_backend(rf_source.file_backend(path))
+    """
 
-    def _init(self) -> None:
-        if _SDR_CLASS is not None:
-            try:
-                sdr             = _SDR_CLASS()
-                sdr.sample_rate = self._cfg.sample_rate
-                sdr.center_freq = int(self._cfg.center_mhz * 1e6)
-                sdr.gain        = self._cfg.gain
-                self._hw        = sdr
-                self.hw_name    = f"{_SDR_DRIVER} · {self._cfg.sample_rate/1e6:.2f} MSPS"
-                return
-            except Exception as exc:
-                log.warning("Hardware SDR no disponible: %s — MockSDR activo", exc)
+    def __init__(self, cfg: "SAConfig") -> None:
+        self._cfg = cfg
+        from modules.rf.rf_source import open_backend
+        self._backend = open_backend(
+            freq_hz=int(cfg.center_mhz * 1e6),
+            sample_rate=cfg.sample_rate,
+            gain=float(cfg.gain) if str(cfg.gain).lower() != "auto" else 49.6,
+        )
+        log.info("SA backend: %s", self._backend.hw_name)
 
-        self._mock   = MockSDRManager(sample_rate=self._cfg.sample_rate)
-        self.hw_name = f"MockSDR · {self._cfg.sample_rate/1e6:.2f} MSPS"
-        for sig in (
-            SyntheticSignal(freq_offset= 200_000, power_dbm=-44, mode="nfm", bw_hz=12_500),
-            SyntheticSignal(freq_offset=-300_000, power_dbm=-58, mode="wfm", bw_hz=200_000),
-            SyntheticSignal(freq_offset= 500_000, power_dbm=-72, mode="tone", bw_hz=500),
-            SyntheticSignal(freq_offset=-700_000, power_dbm=-81, mode="tone", bw_hz=1_000),
-        ):
-            self._mock.add_signal(sig)
+    # ── API pública (sin cambios de interfaz) ─────────────────────────
+
+    @property
+    def hw_name(self) -> str:
+        return self._backend.hw_name
 
     def tune(self, mhz: float) -> None:
-        if self._hw is not None:
-            self._hw.center_freq = int(mhz * 1e6)
+        self._backend.tune(mhz * 1e6)
+        self._cfg.center_mhz = mhz
 
-    def set_gain(self, gain: str | float) -> None:
-        if self._hw is not None:
-            self._hw.gain = gain
+    def set_gain(self, gain: "str | float") -> None:
+        self._backend.set_gain(gain)
         self._cfg.gain = str(gain)
 
     def read_iq(self, n: int) -> np.ndarray:
-        if self._hw is not None:
-            return np.array(self._hw.read_samples(n), dtype=np.complex64)
-        assert self._mock is not None
-        iq = self._mock.capture(int(self._cfg.center_mhz * 1e6), n, t_offset=self._toff)
-        self._toff += n / self._cfg.sample_rate
-        return iq
+        iq = self._backend.read_raw(n)
+        if iq is None or len(iq) == 0:
+            return np.zeros(n, dtype=np.complex64)
+        return iq.astype(np.complex64)
 
     def close(self) -> None:
-        if self._hw is not None:
-            try:
-                self._hw.close()
-            except Exception:
-                pass
+        self._backend.close()
+
+    # ── Hot-swap de backend (TCP / archivo IQ) ────────────────────────
+
+    def swap_backend(self, backend: "SDRBackend") -> None:
+        """Sustituye el backend en caliente; cierra el anterior."""
+        self._backend.close()
+        self._backend = backend
+        log.info("SA backend cambiado → %s", backend.hw_name)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -412,7 +399,7 @@ class _SpectrumFrame:
 class _Renderer:
 
     def __init__(self, cfg: SAConfig, info: PlatformInfo) -> None:
-        self._cfg  = cfg
+        self._cfg = cfg
         self._info = info
 
     def render(
@@ -425,8 +412,8 @@ class _Renderer:
         kb:      KeyBindings,
     ) -> Panel:
         cfg = self._cfg
-        W   = cfg.display_width
-        H   = cfg.display_height
+        W = cfg.display_width
+        H = cfg.display_height
 
         # Interpolar PSD al ancho de display
         powers = _interp(frame.powers_dbm, W)
@@ -448,7 +435,8 @@ class _Renderer:
         det_cols: dict[int, _DetectedSignal] = {}
         if cfg.show_labels:
             for s in frame.detected:
-                rel = (s.freq_mhz - cfg.freq_start_mhz()) / max(cfg.span_mhz, 1e-9)
+                rel = (s.freq_mhz - cfg.freq_start_mhz()) / \
+                    max(cfg.span_mhz, 1e-9)
                 col = int(np.clip(rel * W, 0, W - 1))
                 det_cols[col] = s
 
@@ -488,9 +476,9 @@ class _Renderer:
         # ── Etiquetas de señales detectadas ───────────────────────────
         if cfg.show_labels and frame.detected:
             lbl_line = Text("       ")
-            prev_end  = 0
+            prev_end = 0
             for col in sorted(det_cols):
-                s   = det_cols[col]
+                s = det_cols[col]
                 txt = f"{s.freq_mhz:.2f}"
                 pad = max(0, col - prev_end)
                 lbl_line.append(" " * pad)
@@ -516,7 +504,8 @@ class _Renderer:
                 ch, st = _cell(powers[col], row, H, cfg.ref_dbm, cfg.floor_dbm)
                 # Peak hold
                 if ch == " " and peak_psd is not None:
-                    pch, _ = _cell(peak_psd[col], row, H, cfg.ref_dbm, cfg.floor_dbm)
+                    pch, _ = _cell(peak_psd[col], row,
+                                   H, cfg.ref_dbm, cfg.floor_dbm)
                     if pch != " ":
                         ch, st = _PEAK_CHR, "dim white"
                 # Línea de umbral
@@ -526,7 +515,8 @@ class _Renderer:
             body.append("\n")
 
         body.append("       └" + "─" * W + "\n", style="dim green")
-        body.append("        " + _freq_axis(cfg.freq_start_mhz(), cfg.freq_end_mhz(), W))
+        body.append(
+            "        " + _freq_axis(cfg.freq_start_mhz(), cfg.freq_end_mhz(), W))
         body.append("\n")
 
         # ── Waterfall ─────────────────────────────────────────────────
@@ -552,8 +542,8 @@ class _Renderer:
         mbar.append("   │   ", style="dim")
         mbar.append_text(_marker_txt(m2, "bold cyan", "cyan"))
         if m1.active and m2.active:
-            df   = abs(m2.freq_mhz - m1.freq_mhz) * 1_000
-            dp   = abs(m2.power_dbm - m1.power_dbm)
+            df = abs(m2.freq_mhz - m1.freq_mhz) * 1_000
+            dp = abs(m2.power_dbm - m1.power_dbm)
             ch_p = _channel_power(
                 frame.powers_dbm, frame.freqs_mhz,
                 min(m1.freq_mhz, m2.freq_mhz),
@@ -580,11 +570,11 @@ class _Renderer:
             body.append("\n")
 
         # ── Estado ────────────────────────────────────────────────────
-        pk  = "[green]ON[/green]"  if cfg.peak_hold   else "[dim]OFF[/dim]"
+        pk = "[green]ON[/green]" if cfg.peak_hold else "[dim]OFF[/dim]"
         avg = (f"[green]{cfg.avg_frames}f[/green]"
                if cfg.avg_frames > 1 else "[dim]OFF[/dim]")
-        wf  = "[green]ON[/green]"  if cfg.waterfall_on else "[dim]OFF[/dim]"
-        lbl = "[green]ON[/green]"  if cfg.show_labels  else "[dim]OFF[/dim]"
+        wf = "[green]ON[/green]" if cfg.waterfall_on else "[dim]OFF[/dim]"
+        lbl = "[green]ON[/green]" if cfg.show_labels else "[dim]OFF[/dim]"
         status = Text.from_markup(
             f"[dim]PEAK[/dim] {pk}  [dim]AVG[/dim] {avg}  "
             f"[dim]WF[/dim] {wf}  [dim]LABELS[/dim] {lbl}  "
@@ -624,26 +614,26 @@ class _Renderer:
 class SpectrumAnalyzer:
 
     def __init__(self, sentinel: ApexSentinel) -> None:
-        self._s        = sentinel
+        self._s = sentinel
         self._console: Console = sentinel.console
-        self._log      = sentinel.log
+        self._log = sentinel.log
         _EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 
         self._platform = detect_platform()
-        self._kb       = load_keys(self._platform)
+        self._kb = load_keys(self._platform)
         self._log.info(f"SpectrumAnalyzer v2 listo — {self._platform}", "SA")
 
     # ── API pública ───────────────────────────────────────────────────
 
     def run(self, cfg: SAConfig | None = None) -> None:
-        self._cfg      = cfg or SAConfig.from_platform(self._platform, self._kb)
-        self._buf      = FrameBuffer()
-        self._wf_buf   = _WaterfallBuffer(self._cfg.waterfall_h)
-        self._markers  = [Marker("M1"), Marker("M2")]
-        self._sdr      = _SDRAdapter(self._cfg)
-        self._keys     = _KeyReader()
+        self._cfg = cfg or SAConfig.from_platform(self._platform, self._kb)
+        self._buf = FrameBuffer()
+        self._wf_buf = _WaterfallBuffer(self._cfg.waterfall_h)
+        self._markers = [Marker("M1"), Marker("M2")]
+        self._sdr = _SDRAdapter(self._cfg)
+        self._keys = _KeyReader()
         self._renderer = _Renderer(self._cfg, self._platform)
-        self._action   = self._kb.key_to_action()
+        self._action = self._kb.key_to_action()
 
         # Teclas nuevas en v2 (sin pasar por TOML si no están)
         for k, a in {
@@ -653,8 +643,8 @@ class SpectrumAnalyzer:
         }.items():
             self._action.setdefault(k, a)
 
-        self._stop     = threading.Event()
-        self._lock     = threading.Lock()
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
         self._frame:   _SpectrumFrame | None = None
         self._fps_buf: list[float] = []
 
@@ -665,7 +655,8 @@ class SpectrumAnalyzer:
             "SA",
         )
 
-        acq = threading.Thread(target=self._acq_loop, daemon=True, name="sa-acq")
+        acq = threading.Thread(target=self._acq_loop,
+                               daemon=True, name="sa-acq")
         self._keys.start()
         acq.start()
         try:
@@ -693,13 +684,30 @@ class SpectrumAnalyzer:
             "dsi":          str(p.screen.has_dsi),
         }
 
+    def use_tcp(self, host: str, port: int = 1234, gain: int = 400) -> None:
+        """Conecta el analizador a un SDR remoto vía rtl_tcp."""
+        from modules.rf.rf_source import tcp_backend
+        if hasattr(self, "_sdr"):
+            freq_hz = int(self._cfg.center_mhz * 1e6)
+            self._sdr.swap_backend(
+                tcp_backend(host, port, freq_hz, self._cfg.sample_rate, gain)
+            )
+            self._log.info(f"SA → rtl_tcp://{host}:{port}", "SA")
+
+    def use_file(self, path: str, loop: bool = True) -> None:
+        """Carga un archivo IQ (u8 interleaved) para replay en el analizador."""
+        from modules.rf.rf_source import file_backend
+        if hasattr(self, "_sdr"):
+            self._sdr.swap_backend(file_backend(path, loop))
+            self._log.info(f"SA → FILE:{path}", "SA")
+
     # ── Adquisición IQ + FFT ──────────────────────────────────────────
 
     def _acq_loop(self) -> None:
-        cfg    = self._cfg
-        n_fft  = cfg.fft_size()
+        cfg = self._cfg
+        n_fft = cfg.fft_size()
         window = np.hanning(n_fft).astype(np.float32)
-        wgain  = float(np.sum(window ** 2))
+        wgain = float(np.sum(window ** 2))
 
         while not self._stop.is_set():
             t0 = time.perf_counter()
@@ -707,15 +715,15 @@ class SpectrumAnalyzer:
                 iq = self._sdr.read_iq(n_fft)
                 if len(iq) < n_fft:
                     continue
-                iq_w  = iq[:n_fft].astype(np.complex64) * window
-                spec  = np.fft.fftshift(np.fft.fft(iq_w))
-                psd   = (np.abs(spec) ** 2) / (cfg.sample_rate * wgain)
-                pdb   = 10 * np.log10(psd + 1e-20) + 30
+                iq_w = iq[:n_fft].astype(np.complex64) * window
+                spec = np.fft.fftshift(np.fft.fft(iq_w))
+                psd = (np.abs(spec) ** 2) / (cfg.sample_rate * wgain)
+                pdb = 10 * np.log10(psd + 1e-20) + 30
 
                 # Submuestrear al ancho de display
                 if len(pdb) > cfg.display_width * 2:
                     step = len(pdb) // cfg.display_width
-                    pdb  = np.array([
+                    pdb = np.array([
                         pdb[i: i + step].max()
                         for i in range(0, len(pdb) - step + 1, step)
                     ])
@@ -727,9 +735,10 @@ class SpectrumAnalyzer:
                         pdb = avg
 
                 # Vector de frecuencias con corrección PPM
-                freqs = np.linspace(cfg.freq_start_mhz(), cfg.freq_end_mhz(), len(pdb))
+                freqs = np.linspace(cfg.freq_start_mhz(),
+                                    cfg.freq_end_mhz(), len(pdb))
                 noise = float(np.percentile(pdb, 15))
-                pidx  = int(np.argmax(pdb))
+                pidx = int(np.argmax(pdb))
 
                 # Detección de señales
                 detected = _SignalDetector.detect(
@@ -743,14 +752,14 @@ class SpectrumAnalyzer:
                 now_ts = time.time()
                 with self._lock:
                     self._frame = _SpectrumFrame(
-                        freqs_mhz   = freqs,
-                        powers_dbm  = pdb,
-                        noise_floor = noise,
-                        peak_freq   = float(freqs[pidx]),
-                        peak_power  = float(pdb[pidx]),
-                        fps         = 1.0 / (sum(self._fps_buf) / len(self._fps_buf)),
-                        ts          = datetime.now(UTC).strftime("%H:%M:%S"),
-                        detected    = detected,
+                        freqs_mhz=freqs,
+                        powers_dbm=pdb,
+                        noise_floor=noise,
+                        peak_freq=float(freqs[pidx]),
+                        peak_power=float(pdb[pidx]),
+                        fps=1.0 / (sum(self._fps_buf) / len(self._fps_buf)),
+                        ts=datetime.now(UTC).strftime("%H:%M:%S"),
+                        detected=detected,
                     )
                 self._wf_buf.push(pdb, now_ts)
 
@@ -786,31 +795,31 @@ class SpectrumAnalyzer:
                 self._jump_band(preset)
             return True
 
-        cfg  = self._cfg
+        cfg = self._cfg
         step = cfg.span_mhz / 10
 
         runners: dict[str, object] = {
-            "tune_right":    lambda: self._tune(cfg.center_mhz + step),
-            "tune_left":     lambda: self._tune(cfg.center_mhz - step),
-            "span_up":       lambda: self._set_span(cfg.span_mhz * 2),
-            "span_down":     lambda: self._set_span(cfg.span_mhz / 2),
-            "ref_up":        lambda: setattr(cfg, "ref_dbm",  min(-10.0,  cfg.ref_dbm + 5)),
-            "ref_down":      lambda: setattr(cfg, "ref_dbm",  max(-140.0, cfg.ref_dbm - 5)),
-            "thresh_up":     lambda: setattr(cfg, "threshold_dbm",
-                                     min(cfg.ref_dbm - 5, cfg.threshold_dbm + 5)),
-            "thresh_down":   lambda: setattr(cfg, "threshold_dbm",
-                                     max(cfg.floor_dbm, cfg.threshold_dbm - 5)),
-            "toggle_peak":   lambda: setattr(cfg, "peak_hold",   not cfg.peak_hold),
-            "toggle_avg":    lambda: self._cycle_avg(),
-            "toggle_wf":     lambda: setattr(cfg, "waterfall_on", not cfg.waterfall_on),
-            "toggle_labels": lambda: setattr(cfg, "show_labels",  not cfg.show_labels),
+            "tune_right": lambda: self._tune(cfg.center_mhz + step),
+            "tune_left": lambda: self._tune(cfg.center_mhz - step),
+            "span_up": lambda: self._set_span(cfg.span_mhz * 2),
+            "span_down": lambda: self._set_span(cfg.span_mhz / 2),
+            "ref_up": lambda: setattr(cfg, "ref_dbm",  min(-10.0,  cfg.ref_dbm + 5)),
+            "ref_down": lambda: setattr(cfg, "ref_dbm",  max(-140.0, cfg.ref_dbm - 5)),
+            "thresh_up": lambda: setattr(cfg, "threshold_dbm",
+                                         min(cfg.ref_dbm - 5, cfg.threshold_dbm + 5)),
+            "thresh_down": lambda: setattr(cfg, "threshold_dbm",
+                                           max(cfg.floor_dbm, cfg.threshold_dbm - 5)),
+            "toggle_peak": lambda: setattr(cfg, "peak_hold", not cfg.peak_hold),
+            "toggle_avg": lambda: self._cycle_avg(),
+            "toggle_wf": lambda: setattr(cfg, "waterfall_on", not cfg.waterfall_on),
+            "toggle_labels": lambda: setattr(cfg, "show_labels", not cfg.show_labels),
             "toggle_record": lambda: self._toggle_record(),
-            "clear_buffer":  lambda: self._clear_all(),
-            "auto_tune":     lambda: self._auto_tune(),
-            "marker_1":      lambda: self._place_marker(0),
-            "marker_2":      lambda: self._place_marker(1),
-            "cycle_gain":    lambda: self._cycle_gain(),
-            "export_frame":  lambda: self._export(),
+            "clear_buffer": lambda: self._clear_all(),
+            "auto_tune": lambda: self._auto_tune(),
+            "marker_1": lambda: self._place_marker(0),
+            "marker_2": lambda: self._place_marker(1),
+            "cycle_gain": lambda: self._cycle_gain(),
+            "export_frame": lambda: self._export(),
         }
 
         if action in ("quit", "CTRL_C") or key in ("\x03", "ESC"):
@@ -826,7 +835,7 @@ class SpectrumAnalyzer:
     def _tune(self, mhz: float) -> None:
         mhz = float(np.clip(mhz, _FREQ_MIN_MHZ, _FREQ_MAX_MHZ))
         self._cfg.center_mhz = mhz
-        self._cfg.band_label  = ""
+        self._cfg.band_label = ""
         self._sdr.tune(mhz)
         self._buf.clear()
         self._wf_buf.clear()
@@ -846,8 +855,8 @@ class SpectrumAnalyzer:
 
     def _jump_band(self, p: BandPreset) -> None:
         self._cfg.center_mhz = p.freq_mhz
-        self._cfg.span_mhz   = p.span_mhz
-        self._cfg.band_label  = p.label
+        self._cfg.span_mhz = p.span_mhz
+        self._cfg.band_label = p.label
         self._sdr.tune(p.freq_mhz)
         self._buf.clear()
         self._wf_buf.clear()
@@ -856,14 +865,15 @@ class SpectrumAnalyzer:
     def _set_span(self, span: float) -> None:
         lo = self._cfg.rbw_actual_khz() * 2 / 1_000
         hi = self._cfg.sample_rate / 1e6
-        self._cfg.span_mhz   = float(np.clip(span, lo, hi))
-        self._cfg.band_label  = ""
+        self._cfg.span_mhz = float(np.clip(span, lo, hi))
+        self._cfg.band_label = ""
         self._buf.clear()
         self._wf_buf.clear()
 
     def _cycle_avg(self) -> None:
         ciclo = [1, 4, 8, 16, 32]
-        idx   = ciclo.index(self._cfg.avg_frames) if self._cfg.avg_frames in ciclo else 0
+        idx = ciclo.index(
+            self._cfg.avg_frames) if self._cfg.avg_frames in ciclo else 0
         self._cfg.avg_frames = ciclo[(idx + 1) % len(ciclo)]
         self._buf.clear()
 
@@ -892,7 +902,7 @@ class SpectrumAnalyzer:
         data = self._wf_buf.stop_recording()
         if not data:
             return
-        ts       = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         csv_path = _EVIDENCE_DIR / f"waterfall_rec_{ts}.csv"
         with open(csv_path, "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
@@ -907,7 +917,8 @@ class SpectrumAnalyzer:
                 w.writerow(["timestamp"] + [f"{f:.4f}" for f in freqs])
             for ts_row, psd in data:
                 w.writerow([f"{ts_row:.3f}"] + [f"{p:.2f}" for p in psd])
-        self._log.info(f"Waterfall grabado: {csv_path} ({len(data)} frames)", "SA")
+        self._log.info(
+            f"Waterfall grabado: {csv_path} ({len(data)} frames)", "SA")
         if hasattr(self._s, "gp") and self._s.gp and self._s.gp.proyecto_activo:
             self._s.gp.registrar_evidencia(
                 "waterfall_rec",
@@ -922,7 +933,8 @@ class SpectrumAnalyzer:
             return
         pows = frame.powers_dbm.copy()
         if idx == 1 and self._markers[0].active:
-            m0c = int(np.argmin(np.abs(frame.freqs_mhz - self._markers[0].freq_mhz)))
+            m0c = int(
+                np.argmin(np.abs(frame.freqs_mhz - self._markers[0].freq_mhz)))
             pows[max(0, m0c - 5):min(len(pows), m0c + 5)] = -999.0
         pi = int(np.argmax(pows))
         self._markers[idx] = Marker(
@@ -937,7 +949,7 @@ class SpectrumAnalyzer:
             frame = self._frame
         if frame is None:
             return
-        ts   = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         stem = f"spectrum_{self._cfg.center_mhz:.3f}MHz_{ts}"
 
         m1, m2 = self._markers
@@ -987,7 +999,8 @@ class SpectrumAnalyzer:
         with open(csv_path, "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
             w.writerow(["freq_mhz", "power_dbm"])
-            w.writerows(zip(frame.freqs_mhz.tolist(), frame.powers_dbm.tolist()))
+            w.writerows(zip(frame.freqs_mhz.tolist(),
+                        frame.powers_dbm.tolist()))
 
         if hasattr(self._s, "gp") and self._s.gp and self._s.gp.proyecto_activo:
             self._s.gp.registrar_evidencia(
@@ -1018,22 +1031,33 @@ def _cell(p: float, row: int, H: int, ref: float, floor: float) -> tuple[str, st
 
 
 def _color(r: float) -> str:
-    if r >= 0.90: return "bold bright_red"
-    if r >= 0.75: return "red"
-    if r >= 0.55: return "bright_yellow"
-    if r >= 0.35: return "yellow"
-    if r >= 0.15: return "green"
+    if r >= 0.90:
+        return "bold bright_red"
+    if r >= 0.75:
+        return "red"
+    if r >= 0.55:
+        return "bright_yellow"
+    if r >= 0.35:
+        return "yellow"
+    if r >= 0.15:
+        return "green"
     return "dim green"
 
 
 def _wf_style(power: float, threshold: float) -> str:
     delta = power - threshold
-    if delta >= 40: return "bold bright_red"
-    if delta >= 30: return "bright_red"
-    if delta >= 20: return "yellow"
-    if delta >= 10: return "bright_green"
-    if delta >=  0: return "cyan"
-    if delta >= -10: return "blue"
+    if delta >= 40:
+        return "bold bright_red"
+    if delta >= 30:
+        return "bright_red"
+    if delta >= 20:
+        return "yellow"
+    if delta >= 10:
+        return "bright_green"
+    if delta >= 0:
+        return "cyan"
+    if delta >= -10:
+        return "blue"
     return "dim"
 
 
@@ -1051,11 +1075,11 @@ def _channel_power(
 
 
 def _freq_axis(start: float, end: float, W: int) -> str:
-    n    = min(6, W // 12)
+    n = min(6, W // 12)
     line = [" "] * W
     for pos, f in zip(np.linspace(0, W - 1, n).astype(int), np.linspace(start, end, n)):
         lbl = f"{f:.1f}"
-        s   = max(0, pos - len(lbl) // 2)
+        s = max(0, pos - len(lbl) // 2)
         for i, ch in enumerate(lbl):
             if s + i < W:
                 line[s + i] = ch

@@ -176,16 +176,30 @@ class RFCommands(_DomainBase):
             self.console.print(f"[red][!] Error NOAA: {e}[/red]")
 
     def adsb(self):
-        # Monitor ADS-B — decodifica transponders de aeronaves en 1090 MHz
-        duracion_s = self.console.input(
-            "\n[bold cyan][?] Duración segundos (Enter = indefinido): [/bold cyan]"
-        ).strip()
-        duracion = int(duracion_s) if duracion_s.isdigit() else None
+        # Monitor ADS-B — decodifica transponders de aeronaves en 1090 MHz.
+        # Intenta ADSBDecoder (implementación nativa) y cae en AircraftMonitor
+        # (pyModeS + Rich) cuando no está disponible.
         try:
             from modules.rf.adsb_decoder import ADSBDecoder
+            duracion_s = self.console.input(
+                "\n[bold cyan][?] Duración segundos (Enter = indefinido): [/bold cyan]"
+            ).strip()
+            duracion = int(duracion_s) if duracion_s.isdigit() else None
             ADSBDecoder(self.s).iniciar(duracion_seg=duracion)
         except ImportError:
-            self.console.print("[red][!] adsb_decoder.py no encontrado.[/red]")
+            # adsb_decoder no disponible → usar AircraftMonitor (adsb_pymodes)
+            monitor = getattr(self.s, "adsb", None)
+            if monitor is not None:
+                self.console.print(
+                    "[dim][ADS-B] adsb_decoder no disponible — "
+                    "iniciando AircraftMonitor (pyModeS)[/dim]"
+                )
+                monitor.menu()
+            else:
+                self.console.print(
+                    "[red][!] Ningún backend ADS-B disponible.[/red]\n"
+                    "[dim]Instala pyModeS:  pip install pyModeS --break-system-packages[/dim]"
+                )
 
     # ── Analizador de espectro RF ──────────────────────────────────────
 
