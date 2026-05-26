@@ -15,7 +15,7 @@ class ModuleSpec:
     cls_name:       str    # nombre de la clase
     module_path:    str    # ruta Python: "modules.network.RadarSentinel"
     needs_sentinel: bool = True   # True → Cls(sentinel) | False → Cls()
-    display_name:   str  = ""     # nombre en bootscreen
+    display_name:   str = ""     # nombre en bootscreen
     critico:        bool = False
 
     def __post_init__(self):
@@ -49,6 +49,9 @@ MODULOS: list[ModuleSpec] = [
                display_name="BluetoothModule"),
     ModuleSpec("hydra",        "HydraModule",       "modules.network.HydraModule",
                display_name="HydraModule"),
+    ModuleSpec("wifitri", "LiveTriangulator",
+               "modules.network.wifi_triangulation",
+               display_name="WiFiTriangulator"),
 
     # ── Forense ───────────────────────────────────────────────────────
     ModuleSpec("reader",       "ForensicReader",    "modules.forense.ForensicReader",
@@ -90,7 +93,11 @@ MODULOS: list[ModuleSpec] = [
     ModuleSpec("rf",           "RFModuleIntegrado", "modules.rf.rf_module",
                display_name="RFModuleIntegrado"),
     ModuleSpec("sa",            "SpectrumAnalyzer",  "modules.rf.SpectrumAnalyzer",
-               display_name="SpectrumAnalyzer"),   # Analizador de espectro v2
+               display_name="SpectrumAnalyzer"),   # Analizador de espectro
+    ModuleSpec("adsb",  "AircraftMonitor",  "modules.rf.adsb_pymodes",
+               display_name="ADS-B pyModeS"),
+    ModuleSpec("noaa",  "NOAADecoder",      "modules.rf.NOAADecoder",
+               display_name="NOAADecoder"),
 ]
 
 
@@ -122,7 +129,8 @@ class ModuleRegistry:
     def _cargar_uno(self, spec: ModuleSpec) -> bool:
         Cls = self._importar(spec.module_path, spec.cls_name)
         if Cls is None:
-            self._warn(f"{spec.display_name} — no encontrado en '{spec.module_path}'")
+            self._warn(
+                f"{spec.display_name} — no encontrado en '{spec.module_path}'")
             setattr(self._sentinel, spec.attr, None)
             return False
         try:
@@ -196,9 +204,9 @@ class ModuleRegistry:
         # Scapy primitivas
         try:
             from scapy.all import ARP, Ether, srp
-            self._sentinel._ARP   = ARP
+            self._sentinel._ARP = ARP
             self._sentinel._Ether = Ether
-            self._sentinel._srp   = srp
+            self._sentinel._srp = srp
         except Exception:
             self._sentinel._ARP = self._sentinel._Ether = self._sentinel._srp = None
 
