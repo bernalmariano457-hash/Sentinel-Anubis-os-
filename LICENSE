@@ -1,15 +1,66 @@
-Copyright (c) 2026 Mariano Bernal
-All rights reserved.
+Copyright (c) 2026 Mariano Bernal González
+Todos los derechos reservados.
 
-Este software, su código fuente, documentación y todos los archivos
-asociados son propiedad exclusiva del autor.
+PROYECTO: Sentinel Anubis OS (APEX SENTINEL)
+AUTOR: Mariano Bernal González
+FECHA DE CREACIÓN: Enero 2026
 
-No se permite el uso, copia, modificación, fusión, distribución,
-sublicencia ni venta de este software, ni de ninguna parte de él,
-sin autorización expresa y por escrito del autor.
+────────────────────────────────────────────────────────────────────
 
-El acceso a este repositorio con fines de revisión o evaluación no
-implica la transferencia de ningún derecho sobre el software.
+PROPIEDAD INTELECTUAL
 
-Para solicitar una licencia de uso o llegar a un acuerdo de
+Este software, su código fuente, arquitectura, documentación y todos
+los archivos asociados son propiedad exclusiva de Mariano Bernal
+González, desarrollados de forma original e independiente a partir de
+enero de 2026.
+
+────────────────────────────────────────────────────────────────────
+
+USO NO AUTORIZADO
+
+Queda estrictamente prohibido, sin autorización expresa y por escrito
+del autor:
+
+  - Usar este software con cualquier fin, comercial o no
+  - Copiar, reproducir o distribuir el código fuente o cualquier
+    parte de él
+  - Modificar, adaptar o crear trabajos derivados
+  - Sublicenciar o transferir cualquier derecho sobre el software
+  - Incorporar cualquier parte de este software en otros proyectos
+
+────────────────────────────────────────────────────────────────────
+
+ACCESO PARA EVALUACIÓN
+
+El acceso a este repositorio concedido a terceros tiene carácter
+exclusivamente evaluativo. Dicho acceso no implica ni transfiere
+ningún derecho de uso, propiedad, licencia o explotación del
+software. Cualquier uso fuera de la revisión del código requiere
+un acuerdo formal por escrito con el autor.
+
+────────────────────────────────────────────────────────────────────
+
+ACUERDOS COMERCIALES
+
+Cualquier colaboración, licencia de uso, acuerdo comercial o
+transferencia de derechos sobre este software deberá formalizarse
+mediante contrato escrito firmado por el autor. Ningún acuerdo
+verbal o informal tendrá validez legal sobre los derechos aquí
+establecidos.
+
+────────────────────────────────────────────────────────────────────
+
+EVIDENCIA DE AUTORÍA
+
+El autor conserva evidencia del desarrollo de este proyecto desde
+enero de 2026, incluyendo historial de versiones, archivos con fecha
+de creación y registro de actividad en el repositorio. Esta evidencia
+podrá ser presentada ante cualquier instancia legal en caso de
+disputa sobre la autoría o propiedad del software.
+
+────────────────────────────────────────────────────────────────────
+
+Para solicitar una licencia de uso o formalizar un acuerdo de
 colaboración, contactar al autor directamente.
+
+© 2026 Mariano Bernal González — All Rights Reserved.
