@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING, Callable, Deque, Dict, List, Optional, Tuple
 import numpy as np
 from rich import box
 from rich.layout import Layout
-from rich.live   import Live
-from rich.panel  import Panel
-from rich.table  import Table
-from rich.text   import Text
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -26,23 +26,23 @@ log = logging.getLogger("sentinel.rf.adsb")
 try:
     from pyModeS.message import Message as _PMMessage
     from pyModeS.position import (
-        airborne_position_pair       as _pm_pair,
-        airborne_position_with_ref   as _pm_ref,
+        airborne_position_pair as _pm_pair,
+        airborne_position_with_ref as _pm_ref,
     )
     _PYMODES_OK = True
 except ImportError:
     _PYMODES_OK = False
-    _PMMessage  = None
-    _pm_pair    = None
-    _pm_ref     = None
+    _PMMessage = None
+    _pm_pair = None
+    _pm_ref = None
 
 IcaoHex = str
 
-CPR_MAX_AGE   = 10.0
+CPR_MAX_AGE = 10.0
 STALE_TIMEOUT = 60.0
-HISTORY       = 30
-RATE_WINDOW   = 90
-CRC24_POLY    = 0xFFF409
+HISTORY = 30
+RATE_WINDOW = 90
+CRC24_POLY = 0xFFF409
 
 SQUAWK_MAP: Dict[str, Tuple[str, str]] = {
     "7500": ("HIJACK", "bold white on red"),
@@ -60,12 +60,14 @@ _BANDS: List[Tuple[int, int, str]] = [
     (0xE00000, 0xE3FFFF, "🇦🇷"),
 ]
 
+
 def _flag(icao: IcaoHex) -> str:
     n = int(icao, 16)
     for lo, hi, f in _BANDS:
         if lo <= n <= hi:
             return f
     return "  "
+
 
 def _crc24(data: bytes) -> int:
     crc = 0
@@ -77,10 +79,13 @@ def _crc24(data: bytes) -> int:
                 crc ^= CRC24_POLY
     return crc & 0xFFFFFF
 
+
 def _crc_ok(raw: bytes) -> bool:
     return _crc24(raw[:-3]) == int.from_bytes(raw[-3:], "big")
 
+
 _R = 6_371.0
+
 
 def _haversine(la1: float, lo1: float, la2: float, lo2: float) -> float:
     φ1, φ2 = radians(la1), radians(la2)
@@ -88,13 +93,17 @@ def _haversine(la1: float, lo1: float, la2: float, lo2: float) -> float:
     a = sin(Δφ / 2) ** 2 + cos(φ1) * cos(φ2) * sin(Δλ / 2) ** 2
     return _R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
+
 def _bearing(la1: float, lo1: float, la2: float, lo2: float) -> float:
     Δλ = radians(lo2 - lo1)
-    y  = sin(Δλ) * cos(radians(la2))
-    x  = cos(radians(la1)) * sin(radians(la2)) - sin(radians(la1)) * cos(radians(la2)) * cos(Δλ)
+    y = sin(Δλ) * cos(radians(la2))
+    x = cos(radians(la1)) * sin(radians(la2)) - \
+        sin(radians(la1)) * cos(radians(la2)) * cos(Δλ)
     return (degrees(atan2(y, x)) + 360) % 360
 
+
 _ARROW = "↑↗→↘↓↙←↖"
+
 
 def _compass(deg: float) -> str:
     return _ARROW[round(deg / 45) % 8]
@@ -112,20 +121,20 @@ class _CprFrame:
 @dataclass
 class Aircraft:
     icao:     IcaoHex
-    cs:       Optional[str]   = None
+    cs:       Optional[str] = None
     lat:      Optional[float] = None
     lon:      Optional[float] = None
     alt:      Optional[float] = None
     gs:       Optional[float] = None
     hdg:      Optional[float] = None
     vr:       Optional[float] = None
-    squawk:   Optional[str]   = None
-    ra:       bool            = False
-    msgs:     int             = 0
-    pos_msgs: int             = 0
-    last:     float           = field(default_factory=time.monotonic)
+    squawk:   Optional[str] = None
+    ra:       bool = False
+    msgs:     int = 0
+    pos_msgs: int = 0
+    last:     float = field(default_factory=time.monotonic)
     trail:    Deque[Tuple[float, float]] = field(
-                  default_factory=lambda: deque(maxlen=HISTORY), repr=False)
+        default_factory=lambda: deque(maxlen=HISTORY), repr=False)
     _even:    Optional[_CprFrame] = field(default=None, repr=False)
     _odd:     Optional[_CprFrame] = field(default=None, repr=False)
     _gs_e:    Optional[float] = field(default=None, repr=False)
@@ -139,15 +148,15 @@ class Aircraft:
 
     def smooth_vel(self, gs: Optional[float], hdg: Optional[float],
                    vr: Optional[float]) -> None:
-        if gs  is not None:
-            self._gs_e  = self._ema(self._gs_e,  gs)
-            self.gs     = self._gs_e
+        if gs is not None:
+            self._gs_e = self._ema(self._gs_e,  gs)
+            self.gs = self._gs_e
         if hdg is not None:
             self._hdg_e = self._ema(self._hdg_e, hdg)
-            self.hdg    = self._hdg_e
-        if vr  is not None:
-            self._vr_e  = self._ema(self._vr_e,  vr)
-            self.vr     = self._vr_e
+            self.hdg = self._hdg_e
+        if vr is not None:
+            self._vr_e = self._ema(self._vr_e,  vr)
+            self.vr = self._vr_e
 
     def absorb_cpr(self, frame: _CprFrame) -> bool:
         if not _PYMODES_OK:
@@ -165,7 +174,8 @@ class Aircraft:
             try:
                 la, lo = _pm_ref(
                     frame.fmt, frame.lat, frame.lon, self.lat, self.lon)
-                self._commit(la, lo, frame.alt or (other.alt if other else None))
+                self._commit(la, lo, frame.alt or (
+                    other.alt if other else None))
                 return True
             except Exception:
                 pass
@@ -205,13 +215,13 @@ class Aircraft:
 class FlightTracker:
     def __init__(self, rx_lat: float = 0.0, rx_lon: float = 0.0) -> None:
         self._db:    Dict[IcaoHex, Aircraft] = {}
-        self._rx     = (rx_lat, rx_lon)
-        self._total  = 0
-        self._pos    = 0
-        self._err    = 0
-        self._t0     = time.monotonic()
+        self._rx = (rx_lat, rx_lon)
+        self._total = 0
+        self._pos = 0
+        self._err = 0
+        self._t0 = time.monotonic()
         self._rbuf:  Deque[float] = deque(maxlen=RATE_WINDOW)
-        self._rlast  = time.monotonic()
+        self._rlast = time.monotonic()
 
     def feed(self, d: dict, ts: Optional[float] = None) -> None:
         if not d.get("crc_valid", True):
@@ -225,13 +235,13 @@ class FlightTracker:
         self._total += 1
         self._tick()
 
-        t  = ts or time.monotonic()
+        t = ts or time.monotonic()
         ac = self._db.setdefault(icao, Aircraft(icao=icao, last=t))
-        ac.last  = t
+        ac.last = t
         ac.msgs += 1
 
         bds = d.get("bds", "")
-        df  = d.get("df", 0)
+        df = d.get("df", 0)
 
         if bds == "0,8":
             cs = d.get("callsign", "").strip()
@@ -295,12 +305,12 @@ class FlightTracker:
         return (buf[-1] - buf[-2]) if len(buf) >= 2 else self._total / max(1.0, self.up())
 
     def spark(self, w: int = 20) -> str:
-        _B  = " ▁▂▃▄▅▆▇█"
+        _B = " ▁▂▃▄▅▆▇█"
         buf = list(self._rbuf)
         if len(buf) < 2:
             return " " * w
-        rs  = [max(0, buf[i] - buf[i - 1]) for i in range(1, len(buf))]
-        mx  = max(rs) or 1
+        rs = [max(0, buf[i] - buf[i - 1]) for i in range(1, len(buf))]
+        mx = max(rs) or 1
         return "".join(_B[min(8, int(v / mx * 8))] for v in rs[-w:])
 
     def up(self) -> float:
@@ -311,13 +321,13 @@ def demodulate(raw_iq: np.ndarray, sr: int = 2_000_000) -> List[bytes]:
     sps = sr // 1_000_000
     pre = 8 * sps
 
-    I   = raw_iq[0::2].astype(np.float32) - 127.5
-    Q   = raw_iq[1::2].astype(np.float32) - 127.5
+    I = raw_iq[0::2].astype(np.float32) - 127.5
+    Q = raw_iq[1::2].astype(np.float32) - 127.5
     amp = np.hypot(I, Q)
 
-    mad   = np.median(np.abs(amp - np.median(amp)))
+    mad = np.median(np.abs(amp - np.median(amp)))
     noise = mad * 1.4826
-    thr   = max(noise * 3.5, 20.0)
+    thr = max(noise * 3.5, 20.0)
 
     n = len(amp)
     L = n - pre - 112 * sps - 4
@@ -341,19 +351,20 @@ def demodulate(raw_iq: np.ndarray, sr: int = 2_000_000) -> List[bytes]:
 
         lo = max(0, i - 1)
         hi = min(L, i + 2)
-        i  = lo + int(np.argmax(score[lo:hi]))
+        i = lo + int(np.argmax(score[lo:hi]))
 
-        bs  = i + pre
+        bs = i + pre
         seg = amp[bs: bs + 112 * sps]
         if len(seg) < 112 * sps:
             break
 
-        pwr     = seg.reshape(112, sps).mean(axis=1)
+        pwr = seg.reshape(112, sps).mean(axis=1)
         msg_thr = (pwr.max() + pwr.min()) * 0.5
-        bits    = (pwr > msg_thr).astype(np.uint8)
+        bits = (pwr > msg_thr).astype(np.uint8)
 
-        df_val  = int.from_bytes(np.packbits(bits[:8]).tobytes()[:1], "big") >> 3
-        n_bits  = 112 if df_val >= 16 else 56
+        df_val = int.from_bytes(np.packbits(
+            bits[:8]).tobytes()[:1], "big") >> 3
+        n_bits = 112 if df_val >= 16 else 56
         raw_msg = np.packbits(bits[:n_bits]).tobytes()[: n_bits // 8]
 
         if _crc_ok(raw_msg):
@@ -370,6 +381,7 @@ _ALT_BANDS = (
     (99_999, "bright_cyan"),
 )
 
+
 def _alt_color(alt: Optional[float]) -> str:
     if alt is None:
         return "dim white"
@@ -378,15 +390,18 @@ def _alt_color(alt: Optional[float]) -> str:
             return c
     return "bright_cyan"
 
+
 def _v(x, fmt: str = ".0f") -> str:
     return f"{x:{fmt}}" if x is not None else "[dim]·[/dim]"
+
 
 def _vr_str(vr: Optional[float]) -> str:
     if vr is None:
         return "[dim]·[/dim]"
-    sym   = "↑" if vr > 64 else "↓" if vr < -64 else "→"
+    sym = "↑" if vr > 64 else "↓" if vr < -64 else "→"
     color = "green" if vr > 64 else "red" if vr < -64 else "dim"
     return f"[{color}]{sym}{abs(vr):.0f}[/{color}]"
+
 
 def _sq_str(sq: Optional[str]) -> str:
     if sq is None:
@@ -396,24 +411,25 @@ def _sq_str(sq: Optional[str]) -> str:
         return f"[{style}] {sq} {label} [/{style}]"
     return f"[yellow]{sq}[/yellow]"
 
+
 def _age_bar(age: float, width: int = 6) -> str:
-    ratio  = min(1.0, age / STALE_TIMEOUT)
+    ratio = min(1.0, age / STALE_TIMEOUT)
     filled = round(ratio * width)
-    bar    = "█" * filled + "░" * (width - filled)
-    color  = "green" if ratio < 0.33 else "yellow" if ratio < 0.66 else "red"
+    bar = "█" * filled + "░" * (width - filled)
+    color = "green" if ratio < 0.33 else "yellow" if ratio < 0.66 else "red"
     return f"[{color}]{bar}[/{color}]"
 
 
 def _table(tracker: FlightTracker) -> Table:
     t = Table(
-        show_header  = True,
-        header_style = "bold grey82",
-        border_style = "grey27",
-        box          = box.SIMPLE_HEAD,
-        row_styles   = ["", "on grey7"],
-        expand       = True,
-        show_edge    = False,
-        padding      = (0, 1),
+        show_header=True,
+        header_style="bold grey82",
+        border_style="grey27",
+        box=box.SIMPLE_HEAD,
+        row_styles=["", "on grey7"],
+        expand=True,
+        show_edge=False,
+        padding=(0, 1),
     )
     cols = [
         ("",       dict(width=2,  no_wrap=True)),
@@ -435,11 +451,11 @@ def _table(tracker: FlightTracker) -> Table:
         t.add_column(col, **kw)
 
     for ac in tracker.live():
-        ac_    = _alt_color(ac.alt)
-        row_   = "on dark_red" if ac.ra else ("dim" if ac.age > 30 else "")
-        dist   = tracker.dist(ac)
-        brg    = tracker.brg(ac)
-        hdg    = f"{_v(ac.hdg, '.0f')} {_compass(ac.hdg) if ac.hdg is not None else ''}"
+        ac_ = _alt_color(ac.alt)
+        row_ = "on dark_red" if ac.ra else ("dim" if ac.age > 30 else "")
+        dist = tracker.dist(ac)
+        brg = tracker.brg(ac)
+        hdg = f"{_v(ac.hdg, '.0f')} {_compass(ac.hdg) if ac.hdg is not None else ''}"
         t.add_row(
             _flag(ac.icao),
             ac.icao,
@@ -461,9 +477,9 @@ def _table(tracker: FlightTracker) -> Table:
 
 
 def _stats(tracker: FlightTracker) -> Panel:
-    n     = len(tracker.live())
+    n = len(tracker.live())
     spark = tracker.spark(18)
-    body  = Text.assemble(
+    body = Text.assemble(
         ("Aviones  ", "dim"), (f"{n:>4}\n",              "bold bright_white"),
         ("Msgs     ", "dim"), (f"{tracker._total:>4}\n", "white"),
         ("Pos.     ", "dim"), (f"{tracker._pos:>4}\n",   "bright_green"),
@@ -476,14 +492,15 @@ def _stats(tracker: FlightTracker) -> Panel:
 
 
 def _layout(tracker: FlightTracker) -> Layout:
-    n   = len(tracker.live())
+    n = len(tracker.live())
     hdr = Text(
         f"  ✈  ADS-B · 1090 MHz · {n} aviones · pyModeS  ",
         style="bold white on grey15", justify="center",
     )
     root = Layout()
     root.split_column(Layout(name="h", size=1), Layout(name="b"))
-    root["b"].split_row(Layout(name="tbl", ratio=5), Layout(name="st", minimum_size=22))
+    root["b"].split_row(Layout(name="tbl", ratio=5),
+                        Layout(name="st", minimum_size=22))
     root["h"].update(hdr)
     root["tbl"].update(_table(tracker))
     root["st"].update(_stats(tracker))
@@ -494,25 +511,25 @@ class ADSBPipeline:
     def __init__(
         self,
         source:     Source,
-        sr:         int   = 2_000_000,
-        hz:         int   = 4,
+        sr:         int = 2_000_000,
+        hz:         int = 4,
         rx_lat:     float = 0.0,
         rx_lon:     float = 0.0,
         console:    Optional["Console"] = None,
     ) -> None:
         from rich.console import Console as _Console
-        self._src    = source
-        self._sr     = sr
-        self._hz     = hz
+        self._src = source
+        self._sr = sr
+        self._hz = hz
         self.tracker = FlightTracker(rx_lat, rx_lon)
-        self._con    = console or _Console()
+        self._con = console or _Console()
 
     def feed_hex(self, h: str, ts: Optional[float] = None) -> None:
         self.tracker.feed_hex(h, ts)
 
     def _consume(self, iq: bytes) -> None:
         arr = np.frombuffer(iq, dtype=np.uint8)
-        ts  = time.monotonic()
+        ts = time.monotonic()
         if not _PYMODES_OK:
             return
         for raw in demodulate(arr, self._sr):
@@ -523,7 +540,8 @@ class ADSBPipeline:
 
     def run(self) -> None:
         if not _PYMODES_OK:
-            self._con.print("[bold red]pyModeS no instalado — pip install pyModeS[/bold red]")
+            self._con.print(
+                "[bold red]pyModeS no instalado — pip install pyModeS[/bold red]")
             return
         with Live(
             _layout(self.tracker),
@@ -568,7 +586,8 @@ def run_demo(
     from rich.console import Console as _Console
     con = console or _Console()
     if not _PYMODES_OK:
-        con.print("[bold red]pyModeS no instalado — pip install pyModeS[/bold red]")
+        con.print(
+            "[bold red]pyModeS no instalado — pip install pyModeS[/bold red]")
         return
     tracker = FlightTracker(rx_lat, rx_lon)
     idx = 0
@@ -595,21 +614,10 @@ def run_demo(
 # ═══════════════════════════════════════════════════════════════════════════
 
 class AircraftMonitor:
-    """
-    Monitoreo ADS-B integrado en Sentinel.
-
-    Recibe la instancia ``sentinel`` y reutiliza ``sentinel.console``
-    y ``sentinel.log``, eliminando toda dependencia de argparse y de
-    instancias globales de Console.
-
-    Parámetros de RF se leen desde ``sentinel.rf.cfg.hardware`` cuando
-    están disponibles, con valores sensatos como fallback.
-    """
-
     _MODULE = "ADS-B"
 
     def __init__(self, sentinel: object) -> None:
-        self._s   = sentinel
+        self._s = sentinel
         self._con: "Console" = getattr(sentinel, "console", None)
         if self._con is None:
             from rich.console import Console as _Console
@@ -618,11 +626,11 @@ class AircraftMonitor:
 
         # Parámetros de hardware desde sentinel.rf cuando esté presente
         rf_cfg = getattr(getattr(sentinel, "rf", None), "cfg", None)
-        hw     = getattr(rf_cfg, "hardware", None)
-        self._gain  = float(getattr(hw, "gain_db",        49.6))
-        self._rate  = int(  getattr(hw, "sample_rate",    2_000_000))
-        self._ppm   = int(  getattr(hw, "ppm_correction", 0))
-        self._idx   = int(  getattr(hw, "device_index",   0))
+        hw = getattr(rf_cfg, "hardware", None)
+        self._gain = float(getattr(hw, "gain_db",        49.6))
+        self._rate = int(getattr(hw, "sample_rate",    2_000_000))
+        self._ppm = int(getattr(hw, "ppm_correction", 0))
+        self._idx = int(getattr(hw, "device_index",   0))
 
         # Coordenadas del receptor (tomadas de sentinel.geo si existe)
         geo = getattr(sentinel, "geo", None)
@@ -650,9 +658,8 @@ class AircraftMonitor:
     # ── API pública ───────────────────────────────────────────────────
 
     def menu(self) -> None:
-        """Menú interactivo del módulo ADS-B."""
         from rich.prompt import Prompt
-        from rich.panel  import Panel
+        from rich.panel import Panel
 
         while True:
             self._con.print(Panel(
@@ -716,7 +723,7 @@ class AircraftMonitor:
             self._rx_lon = float(Prompt.ask(
                 "Longitud del receptor", default=str(self._rx_lon), console=self._con
             ))
-            self._gain   = float(Prompt.ask(
+            self._gain = float(Prompt.ask(
                 "Ganancia RTL-SDR (dB)", default=str(self._gain), console=self._con
             ))
             self._info(

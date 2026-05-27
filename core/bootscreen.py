@@ -12,7 +12,6 @@ from rich import box
 from rich.align import Align
 from rich.columns import Columns
 from rich.console import Console
-from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.rule import Rule
@@ -112,12 +111,18 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
         ("sweep",            "Barrido ICMP de subred"),
         ("sniff",            "Captura de paquetes"),
         ("radar",            "Modo radar Wi-Fi RSSI"),
+        ("wifitri",          "Triangulación Wi-Fi por RSSI"),
+        ("btjumper",         "Escaneo Bluetooth LE básico"),
+        ("btmapa",           "Mapa radar BLE en tiempo real"),
     ],
     "RF / SDR": [
         ("spectrum / sa",    "Analizador de espectro en tiempo real"),
         ("rfscan",           "Escaneo de frecuencias RF"),
+        ("rfmenu",           "Menú interactivo de opciones RF"),
         ("rfbarrido",        "Barrido de espectro por rango"),
         ("rfbandas",         "Escanear todas las bandas conocidas"),
+        ("rfstats",          "Estadísticas de sesión RF"),
+        ("rfstatus",         "Estado del hardware SDR"),
         ("radio",            "Escuchar y demodular señal"),
         ("rfgrabar",         "Grabar señal IQ a archivo"),
         ("rfplay",           "Reproducir grabación IQ"),
@@ -127,6 +132,7 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     "ATAQUES": [
         ("audit",            "Auditoría de credenciales"),
         ("vulnscan",         "Análisis de vulnerabilidades"),
+        ("sqlcheck",         "Auditoría de inyección SQL"),
         ("wifi",             "Auditoría Wi-Fi"),
         ("eviltwin",         "Portal cautivo wireless"),
         ("phishing",         "Clonar página de phishing"),
@@ -135,6 +141,7 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     "FORENSE": [
         ("geofoto",          "Extraer GPS de fotografías EXIF"),
         ("locate / locate -p","Localización por IP / GPS activo"),
+        ("view",             "Leer archivo forense"),
         ("mobile",           "Triaje básico de móvil"),
         ("mobile-deep",      "Análisis profundo de móvil"),
         ("stealth",          "Verificar identidad digital"),
@@ -294,61 +301,72 @@ def mostrar_bootloader(
     modulos = list(estados_modulos.keys()) if estados_modulos else [m for m, _ in MODULOS_BOOT]
     total   = len(modulos)
 
+    # ── Fase 1: Barra de carga animada ───────────────────────────────
     with Live(console=console, refresh_per_second=30, screen=False) as live:
-
-        # ── Fase 1: Mostrar hero + barra de verificación ──────────────
         for i, nombre_mod in enumerate(modulos, 1):
-            cuerpo = Text()
-            cuerpo.append_text(_linea_modulo_live(i, total, nombre_mod))
-            cuerpo.append("\n")
+            pct    = int((i / total) * 100)
+            bar_w  = 26
+            filled = int(bar_w * i / total)
+            bar    = "█" * filled + "░" * (bar_w - filled)
+            estado = "[bold green]OK[/bold green]" if (
+                estados_modulos is None or estados_modulos.get(nombre_mod, True)
+            ) else "[yellow]—[/yellow]"
+
+            contenido = (
+                f"\n  [green][{bar}][/green]  "
+                f"[bold green]{pct:>3}%[/bold green]  "
+                f"[dim green]{nombre_mod:<30}[/dim green]  {estado}\n"
+            )
             live.update(Panel(
-                cuerpo,
+                contenido,
                 title="[bold green]◈  A N U B I S   O S  ◈[/bold green]",
+                subtitle=f"[dim green]Verificando módulos — {i}/{total}[/dim green]",
                 border_style="green",
                 box=box.ROUNDED,
                 padding=(0, 2),
             ))
-            time.sleep(0.03)   # 15 módulos × 0.03s = 0.45s total
+            time.sleep(0.03)
 
-        # ── Fase 2: Mostrar el hero panel completo ────────────────────
-        live.update(hero)
-        time.sleep(0.25)
+    # ── Fase 2: Hero panel ────────────────────────────────────────────
+    console.print(hero)
 
-        # ── Fase 3: Resumen de módulos inline en el hero ──────────────
-        resumen_txt = _resumen_modulos(estados_modulos)
-        ok_count    = (
-            sum(1 for v in estados_modulos.values() if v)
-            if estados_modulos else total
-        )
-        degradados  = (
-            [k for k, v in estados_modulos.items() if not v]
-            if estados_modulos else []
-        )
+    # ── Fase 3: Resumen de módulos (sin Layout — evita espacios vacíos)
+    ok_count   = (
+        sum(1 for v in estados_modulos.values() if v)
+        if estados_modulos else total
+    )
+    degradados = (
+        [k for k, v in estados_modulos.items() if not v]
+        if estados_modulos else []
+    )
 
-        resumen_panel_content = Text()
-        resumen_panel_content.append_text(resumen_txt)
-        if degradados:
-            resumen_panel_content.append(
-                f"\n  [yellow]○ Sin cargar:[/yellow] "
-                + ", ".join(f"[dim]{d}[/dim]" for d in degradados[:5])
-                + ("..." if len(degradados) > 5 else "")
-            )
+    # Línea de grupos con colores
+    grupos_str = "  "
+    for grupo, nombres in _GRUPOS_MODULOS.items():
+        tiene_activos   = any(estados_modulos.get(n, False) for n in nombres) if estados_modulos else True
+        tiene_degradado = any(n in estados_modulos and not estados_modulos[n] for n in nombres) if estados_modulos else False
+        if not any(n in (estados_modulos or {}) for n in nombres):
+            continue
+        if tiene_degradado and not tiene_activos:
+            grupos_str += f"[red]✖ {grupo}[/red]  "
+        elif tiene_degradado:
+            grupos_str += f"[yellow]◐ {grupo}[/yellow]  "
+        else:
+            grupos_str += f"[green]● {grupo}[/green]  "
 
-        resumen_panel = Panel(
-            resumen_panel_content,
-            title=f"[dim green]{ok_count}/{total} módulos activos[/dim green]",
-            border_style="dim green",
-            box=box.ROUNDED,
-            padding=(0, 2),
-        )
+    resumen_content = grupos_str
+    if degradados:
+        degrad_str = "  ".join(f"[dim]{d}[/dim]" for d in degradados[:6])
+        extra      = f"  [dim]+{len(degradados) - 6} más[/dim]" if len(degradados) > 6 else ""
+        resumen_content += f"\n\n  [yellow]○ Sin cargar:[/yellow]  {degrad_str}{extra}"
 
-        layout = Layout()
-        layout.split_column(
-            Layout(hero,          name="hero",    ratio=4),
-            Layout(resumen_panel, name="resumen", ratio=1),
-        )
-        live.update(layout)
-        time.sleep(0.3)
+    console.print(Panel(
+        resumen_content,
+        title=f"[dim green]{ok_count}/{total} módulos activos[/dim green]",
+        border_style="dim green",
+        box=box.ROUNDED,
+        padding=(0, 1),
+    ))
 
     # ── Cierre: ready line ────────────────────────────────────────────
     console.print(Rule(style="dim green"))

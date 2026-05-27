@@ -232,6 +232,25 @@ class ApexSentinel:
         c = self._cmd
 
         # Comandos con subargumentos
+        # ── Helper BLE Mapa ───────────────────────────────────────────────
+        def _ble_mapa(s: "ApexSentinel") -> None:
+            try:
+                from modules.network.bt_mapa import BLEMapaRadar
+            except ImportError:
+                self.console.print(
+                    "[red][!] bt_mapa.py no encontrado en modules/network/[/red]")
+                return
+            duracion = 120
+            try:
+                raw = self.console.input(
+                    "\n[bold cyan]  [?] Duración en segundos (Enter = 120)[/bold cyan]: "
+                ).strip()
+                if raw.isdigit():
+                    duracion = int(raw)
+            except (KeyboardInterrupt, EOFError):
+                pass
+            BLEMapaRadar(s.bt).iniciar(duracion_seg=duracion)
+
         if cmd == "proyecto":
             c.proyecto(args)
             return True
@@ -276,6 +295,8 @@ class ApexSentinel:
             # Wireless
             "wifi":    c.wifi,    "eviltwin": c.eviltwin,
             "btjumper": lambda: (self.bt.iniciar_jumper()
+                                 if self._modulo_ok("bt") else None),
+            "btmapa":   lambda: (_ble_mapa(self)
                                  if self._modulo_ok("bt") else None),
             # RF / SDR
             "rfscan":    c.rfscan,    "rfmenu":    c.rfmenu,
