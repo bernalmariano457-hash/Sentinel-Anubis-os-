@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-
 
 import numpy as np
 
@@ -38,16 +38,46 @@ class SyntheticSignal:
 # GENERADOR DE MUESTRAS IQ
 # ════════════════════════════════════════════════════════════════════
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _meta_path_for(data_path: Path) -> Path:
+    # Deriva la ruta del archivo .sigmf-meta asociado a un archivo de datos.
+    s = str(data_path)
+    for ext in (".sigmf-data", ".cf32", ".iq"):
+        if s.endswith(ext):
+            return Path(s[: -len(ext)] + ".sigmf-meta")
+    return data_path.with_suffix(".sigmf-meta")
+
+
+def _load_sigmf_meta(meta_path: Path) -> tuple[int | None, float]:
+    # Retorna (sample_rate, center_freq_hz) del archivo de metadata SigMF.
+    # Soporta tanto SigMF estándar (clave "global") como formato interno legacy.
+    try:
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        if "global" in meta:
+            sr   = meta["global"].get("core:sample_rate")
+            freq = meta.get("captures", [{}])[0].get("core:frequency", 0.0)
+        else:
+            sr   = meta.get("sample_rate")
+            freq = meta.get("frecuencia_hz", 0.0)
+        return (int(sr) if sr else None), float(freq)
+    except Exception as exc:
+        log.debug("No se pudo leer metadata %s: %s", meta_path.name, exc)
+        return None, 0.0
+
+
 def generate_iq(sample_rate: int, n_samples: int,
                 signals: list[SyntheticSignal],
                 noise_floor_dbm: float = -100.0,
-                t_offset_s: float = 0.0) -> np.ndarray:
+                t_offset_s: float = 0.0,
+                rng: np.random.Generator | None = None) -> np.ndarray:
     t   = np.arange(n_samples, dtype=np.float64) / sample_rate + t_offset_s
     out = np.zeros(n_samples, dtype=np.complex64)
 
     noise_power = 10 ** ((noise_floor_dbm - 30) / 10) / 50
     noise_amp   = float(np.sqrt(noise_power / 2))
-    rng         = np.random.default_rng()
+    rng         = rng if rng is not None else np.random.default_rng()
     out += (noise_amp * rng.standard_normal(n_samples)
             + 1j * noise_amp * rng.standard_normal(n_samples)).astype(np.complex64)
 
@@ -109,8 +139,10 @@ def generate_iq(sample_rate: int, n_samples: int,
             pulse_period = int(sample_rate * 0.001)
             pulse_width  = int(sample_rate * 50e-6)
             envelope     = np.zeros(n_samples)
-            for start in range(0, n_samples, pulse_period):
-                envelope[start:start + pulse_width] = 1.0
+            starts       = np.arange(0, n_samples, pulse_period)
+            ends         = np.minimum(starts + pulse_width, n_samples)
+            for s, e in zip(starts, ends):
+                envelope[s:e] = 1.0
             iq = amp * envelope * carrier
 
         else:
@@ -160,41 +192,22 @@ class MockSDRManager:
         p    = Path(path)
         mock = cls(sample_rate=sample_rate)
 
-        meta_path = Path(
-            str(p)
-            .replace(".sigmf-data", ".sigmf-meta")
-            .replace(".cf32", ".sigmf-meta")
-            .replace(".iq", ".json")
-        )
+        meta_path = _meta_path_for(p)
         if meta_path.exists():
-            try:
-                with open(meta_path, encoding="utf-8") as f:
-                    meta = json.load(f)
-                if "global" in meta:
-                    cap_sr   = meta["global"].get("core:sample_rate")
-                    cap_freq = meta.get("captures", [{}])[0].get(
-                        "core:frequency", 0
-                    )
-                else:
-                    cap_sr   = meta.get("sample_rate")
-                    cap_freq = meta.get("frecuencia_hz", 0)
-                if cap_sr:
-                    mock.sample_rate = int(cap_sr)
-                mock._current_freq = float(cap_freq)
-                log.debug("Metadata: SR=%d freq=%.3fMHz",
-                          mock.sample_rate, cap_freq / 1e6)
-            except Exception as e:
-                log.debug("No se pudo leer metadata: %s", e)
+            sr, freq = _load_sigmf_meta(meta_path)
+            if sr:
+                mock.sample_rate = sr
+            mock._current_freq = freq
+            log.debug("Metadata: SR=%d freq=%.3fMHz", mock.sample_rate, freq / 1e6)
 
         suffix = p.suffix.lower()
         if suffix in (".sigmf-data", ".cf32", ".iq"):
-            raw = np.fromfile(str(p), dtype=np.float32)
+            raw           = np.fromfile(str(p), dtype=np.float32)
             mock._iq_data = (raw[0::2] + 1j * raw[1::2]).astype(np.complex64)
         else:
             mock._iq_data = np.fromfile(str(p), dtype=np.complex64)
 
-        log.info("MockSDR cargo %d muestras desde %s",
-                 len(mock._iq_data), p.name)
+        log.info("MockSDR cargo %d muestras desde %s", len(mock._iq_data), p.name)
         return mock
 
     def add_signal(self, sig: SyntheticSignal):
@@ -236,6 +249,10 @@ class MockSDRManager:
     def set_ppm(self, ppm: int):
         self.cfg.ppm_correction = ppm
 
+    def set_agc(self, enable: bool = True):
+        self.cfg.agc = enable
+        log.debug("MockSDR: AGC %s", "activado" if enable else "desactivado")
+
     def connect(self, **_) -> bool:
         return True
 
@@ -257,29 +274,25 @@ def generate_fixture(path: str, freq_hz: float, sample_rate: int,
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Datos en formato interleaved float32 (SigMF cf32_le)
-    interleaved = np.empty(n_samples * 2, dtype=np.float32)
-    interleaved[0::2] = iq.real
-    interleaved[1::2] = iq.imag
+    interleaved        = np.empty(n_samples * 2, dtype=np.float32)
+    interleaved[0::2]  = iq.real
+    interleaved[1::2]  = iq.imag
     interleaved.tofile(str(out_path))
 
-    from datetime import timezone as _tz
-    meta_path = Path(
-        str(out_path)
-        .replace(".cf32", ".sigmf-meta")
-        .replace(".sigmf-data", ".sigmf-meta")
-    )
+    now       = datetime.now(timezone.utc).isoformat()
+    meta_path = _meta_path_for(out_path)
     meta = {
         "global": {
             "core:datatype":    "cf32_le",
             "core:sample_rate": sample_rate,
             "core:version":     "1.0.0",
             "core:description": f"Test fixture — {duration_s}s",
-            "core:date":        datetime.now(_tz.utc).isoformat(),
+            "core:date":        now,
         },
         "captures": [{
             "core:sample_start": 0,
             "core:frequency":    freq_hz,
-            "core:datetime":     datetime.now(_tz.utc).isoformat(),
+            "core:datetime":     now,
         }],
         "annotations": [
             {
@@ -301,7 +314,3 @@ def generate_fixture(path: str, freq_hz: float, sample_rate: int,
         out_path.name, n_samples, out_path.stat().st_size / 1e6,
     )
     return out_path
-
-
-# Importación diferida de datetime para generate_fixture
-from datetime import datetime

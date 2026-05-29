@@ -43,9 +43,8 @@ class RFModuleIntegrado:
         self._scanner = RFScanner(sentinel, config_path=config_path)
 
         # Exponer cfg y hw_nombre directamente para accesos externos
-        self.cfg:        RFConfig = self._scanner.cfg
-        self.hw_nombre:  str = self._scanner.hw_nombre
-        self.hw_disponible: bool = self._scanner._hw_disponible
+        self.cfg:       RFConfig = self._scanner.cfg
+        self.hw_nombre: str      = self._scanner.hw_nombre
 
         # Si el backend activo es Mock (sin SDR físico), poblar señales
         # útiles para desarrollo y demos
@@ -64,15 +63,11 @@ class RFModuleIntegrado:
 
     def _poblar_mock_desarrollo(self) -> None:
         senales = [
-            dict(freq_offset_hz=0,       power_dbm=-
-                 55, mode="nfm",  bw_hz=12_500),
-            dict(freq_offset_hz=200_000, power_dbm=-
-                 65, mode="wfm",  bw_hz=200_000),
-            dict(freq_offset_hz=-150_000, power_dbm=-
-                 72, mode="am",   bw_hz=9_000),
-            dict(freq_offset_hz=400_000, power_dbm=-80, mode="tone", bw_hz=500),
-            dict(freq_offset_hz=-400_000, power_dbm=-
-                 78, mode="nfm",  bw_hz=12_500),
+            dict(freq_offset_hz=       0, power_dbm=-55, mode="nfm",  bw_hz=12_500),
+            dict(freq_offset_hz= 200_000, power_dbm=-65, mode="wfm",  bw_hz=200_000),
+            dict(freq_offset_hz=-150_000, power_dbm=-72, mode="am",   bw_hz=9_000),
+            dict(freq_offset_hz= 400_000, power_dbm=-80, mode="tone", bw_hz=500),
+            dict(freq_offset_hz=-400_000, power_dbm=-78, mode="nfm",  bw_hz=12_500),
         ]
         for s in senales:
             self._scanner.agregar_senal_mock(**s)
@@ -83,6 +78,10 @@ class RFModuleIntegrado:
     @property
     def sample_rate(self) -> int:
         return self._scanner.sample_rate
+
+    @property
+    def hw_disponible(self) -> bool:
+        return self._scanner._hw_disponible
 
     @property
     def _db(self):
@@ -116,10 +115,15 @@ class RFModuleIntegrado:
     def configurar_ganancia(self, ganancia):
         self._scanner.configurar_ganancia(ganancia)
 
+    def activar_agc(self, activar: bool = True):
+        self._scanner.activar_agc(activar)
+        estado = "activado" if activar else "desactivado"
+        self._print(f"[dim][RF] AGC {estado}[/dim]")
+        self._log_sentinel(f"AGC {estado}")
+
     def cargar_iq_archivo(self, path: str):
         self._scanner.cargar_iq_archivo(path)
         self.hw_nombre = self._scanner.hw_nombre
-        self.hw_disponible = self._scanner._hw_disponible
 
     def agregar_senal_mock(self, freq_offset_hz: float,
                            power_dbm: float = -60.0,
@@ -174,6 +178,8 @@ class RFModuleIntegrado:
         ))
 
     def escaneo_tactico(self, duracion_por_banda: int = 5):
+        from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+
         bandas = tactical_bands()
         if not bandas:
             self._print("[dim]Sin bandas tácticas definidas.[/dim]")
@@ -181,16 +187,40 @@ class RFModuleIntegrado:
 
         self._print(
             f"\n[bold red][RF] Escaneo táctico — "
-            f"{len(bandas)} bandas de alto interés[/bold red]\n"
+            f"{len(bandas)} bandas  ·  {duracion_por_banda}s c/u[/bold red]\n"
         )
-        for b in bandas:
-            freq = (b["freq_min"] + b["freq_max"]) / 2.0
-            col = b.get("color", "red")
-            self._print(
-                f"[{col}]  ▶ {b['nombre']:<24} "
-                f"{freq:.3f} MHz[/{col}]"
-            )
-            self._scanner.escanear_frecuencia(freq, duracion_por_banda)
+
+        senales_antes = len(self._scanner._senales_sesion)
+
+        with Progress(
+            SpinnerColumn(style="red"),
+            TextColumn("[bold]{task.description}"),
+            BarColumn(bar_width=28, style="red", complete_style="bright_red"),
+            TextColumn("[dim]{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            console=self.console,
+            transient=False,
+        ) as progress:
+            tarea = progress.add_task("Escaneando bandas tácticas", total=len(bandas))
+
+            for b in bandas:
+                freq = (b["freq_min"] + b["freq_max"]) / 2.0
+                col  = b.get("color", "red")
+                progress.update(
+                    tarea,
+                    description=f"[{col}]{b['nombre']:<26} {freq:.3f} MHz[/{col}]",
+                )
+                self._scanner.escanear_frecuencia(freq, duracion_por_banda)
+                progress.advance(tarea)
+
+        detectadas = len(self._scanner._senales_sesion) - senales_antes
+        self._print(
+            f"\n[bold red][RF] Escaneo táctico completado — "
+            f"{detectadas} señal(es) detectada(s) en {len(bandas)} bandas[/bold red]"
+        )
+        self._log_sentinel(
+            f"Escaneo táctico: {len(bandas)} bandas, {detectadas} señales detectadas"
+        )
 
     def db_consultar(self, freq_min: float | None = None,
                      freq_max: float | None = None,
@@ -260,7 +290,7 @@ class RFModuleIntegrado:
             " [green][1][/green]  Escanear frecuencia específica\n"
             " [green][2][/green]  Barrido de espectro (rango)\n"
             " [green][3][/green]  Escaneo de bandas conocidas\n"
-            " [green][4][/green]  Escaneo táctico (bandas de alto interés)\n"
+            " [green][4][/green]  Escaneo táctico (progreso + resumen)\n"
             " [green][5][/green]  Ajustar ganancia\n"
             " [green][6][/green]  Ver señales de esta sesión\n"
             " [green][7][/green]  Estado del hardware\n"
@@ -271,7 +301,8 @@ class RFModuleIntegrado:
             " [green][12][/green] Estadísticas DB\n"
             " [green][13][/green] Frecuencias activas\n"
             " [green][14][/green] Top señales\n"
-            " [green][15][/green] Bandas tácticas (tabla)",
+            " [green][15][/green] Bandas tácticas (tabla)\n"
+            " [green][16][/green] Activar / desactivar AGC",
             border_style="green",
             title="[bold green]RF MODULE v3.0[/bold green]",
         ))
@@ -338,7 +369,11 @@ class RFModuleIntegrado:
         elif opt == "6":
             senales = list(self._scanner._senales_sesion)[-50:]
             if senales:
-                self.console.print(self._scanner.render.tabla_picos(senales))
+                self.console.print(
+                    self._scanner.render.tabla_picos(
+                        senales, tracker=self._scanner.tracker
+                    )
+                )
             else:
                 self._print("[dim]Sin señales en esta sesión.[/dim]")
 
@@ -422,6 +457,12 @@ class RFModuleIntegrado:
         elif opt == "15":
             self.bandas_tacticas()
 
+        elif opt == "16":
+            act_s = self.console.input(
+                "[bold cyan][?] Activar AGC (s/n) [s]: [/bold cyan]"
+            ).strip().lower()
+            self.activar_agc(act_s != "n")
+
         else:
             self._print("[yellow][!] Opción no reconocida.[/yellow]")
 
@@ -444,7 +485,6 @@ class RFModuleIntegrado:
 
     def _sync_hw_estado(self):
         self.hw_nombre = self._scanner.hw_nombre
-        self.hw_disponible = self._scanner._hw_disponible
 
     def _log_sentinel(self, msg: str):
         if self.log_s:
