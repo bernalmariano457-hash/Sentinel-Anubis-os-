@@ -38,10 +38,7 @@ _WF_CHARS = " ·░▒▓█"
 _RTL_FREQ_MIN = 24.0
 _RTL_FREQ_MAX = 1766.0
 
-# ════════════════════════════════════════════════════════════════════
 # DC SPIKE REMOVER
-# ════════════════════════════════════════════════════════════════════
-
 
 class DCRemover:
     def remove(self, psd: np.ndarray, n_bins: int = 5) -> np.ndarray:
@@ -57,10 +54,7 @@ class DCRemover:
             )
         return result
 
-
-# ════════════════════════════════════════════════════════════════════
 # PEAK HOLD + PROMEDIO ACUMULADO
-# ════════════════════════════════════════════════════════════════════
 
 class PeakHoldBuffer:
     def __init__(self, avg_frames: int = 8) -> None:
@@ -88,10 +82,7 @@ class PeakHoldBuffer:
         self._frames.clear()
         self._hold = None
 
-
-# ════════════════════════════════════════════════════════════════════
 # SIGNAL PERSISTENCE TRACKER — filtra falsos positivos
-# ════════════════════════════════════════════════════════════════════
 
 @dataclass
 class _FreqTrack:
@@ -111,7 +102,6 @@ class _FreqTrack:
 
     def potencia_media(self) -> float:
         return float(np.mean(self.potencias)) if self.potencias else -999.0
-
 
 class SignalTracker:
     BIN_KHZ = 5.0    # resolución de agrupación de frecuencias
@@ -170,10 +160,7 @@ class SignalTracker:
         self._consec.clear()
         self._total_frames = 0
 
-
-# ════════════════════════════════════════════════════════════════════
 # AGC — CONTROL AUTOMÁTICO DE GANANCIA
-# ════════════════════════════════════════════════════════════════════
 
 class AGCController:
     SAT_THRESHOLD = -5.0    # dBm — señal saturando
@@ -218,10 +205,7 @@ class AGCController:
             log.warning("AGC set_gain: %s", exc)
             return None
 
-
-# ════════════════════════════════════════════════════════════════════
 # RENDERIZADOR
-# ════════════════════════════════════════════════════════════════════
 
 class Renderizador:
 
@@ -229,8 +213,7 @@ class Renderizador:
         self.console = console
         self.cfg = cfg
 
-    # ── Espectro con peak hold y promedio ─────────────────────────────
-
+    # Espectro con peak hold y promedio
     def espectro(
         self,
         freqs_hz:       np.ndarray,
@@ -327,8 +310,7 @@ class Renderizador:
             box=box.HEAVY_HEAD,
         )
 
-    # ── Waterfall ─────────────────────────────────────────────────────
-
+    # Waterfall
     def waterfall(self, historial: deque, freq_centro_mhz: float) -> Panel:
         if not historial:
             return Panel("[dim]Sin datos.[/dim]",
@@ -366,8 +348,7 @@ class Renderizador:
             box=box.SIMPLE,
         )
 
-    # ── Tabla de señales con duty cycle ──────────────────────────────
-
+    # Tabla de señales con duty cycle
     def tabla_picos(
         self,
         picos:   list[Signal],
@@ -431,8 +412,7 @@ class Renderizador:
             box=box.HEAVY_HEAD,
         )
 
-    # ── Panel de stats en tiempo real ────────────────────────────────
-
+    # Panel de stats en tiempo real
     def panel_stats(
         self,
         freq_mhz:   float,
@@ -471,8 +451,7 @@ class Renderizador:
         return Panel(g, title="[bold green]ESCANEO[/bold green]",
                      border_style="green", box=box.ROUNDED)
 
-    # ── Mapa de barrido con ocupación ────────────────────────────────
-
+    # Mapa de barrido con ocupación
     def mapa_barrido(self, resultados: list[dict[str, Any]]) -> Panel:
         tb = Table(box=box.SIMPLE_HEAD, header_style="bold green",
                    show_edge=False, expand=True)
@@ -516,8 +495,7 @@ class Renderizador:
         return Panel(tb, title="[bold green]MAPA DE ACTIVIDAD RF[/bold green]",
                      border_style="green", box=box.HEAVY_HEAD)
 
-    # ── Resumen de escaneo enriquecido ────────────────────────────────
-
+    # Resumen de escaneo enriquecido
     def resumen_escaneo(
         self,
         freq_mhz:   float,
@@ -555,10 +533,7 @@ class Renderizador:
         return Panel(g, title="[bold green]RESUMEN[/bold green]",
                      border_style="green")
 
-
-# ════════════════════════════════════════════════════════════════════
 # RF SCANNER — orquestador principal
-# ════════════════════════════════════════════════════════════════════
 
 class RFScanner:
 
@@ -596,8 +571,7 @@ class RFScanner:
         self._setup_logging()
         self._conectar_hardware()
 
-    # ── Logging ───────────────────────────────────────────────────────
-
+    # Logging
     def _setup_logging(self) -> None:
         lc = self.cfg.logging
         root = logging.getLogger("sentinel.rf")
@@ -617,8 +591,7 @@ class RFScanner:
         ))
         root.addHandler(fh)
 
-    # ── Hardware ──────────────────────────────────────────────────────
-
+    # Hardware
     def _conectar_hardware(self) -> None:
         from modules.rf.rf_source import open_backend
         hw = self.cfg.hardware
@@ -644,8 +617,7 @@ class RFScanner:
         )
         log.info("RF backend: %s", self.hw_nombre)
 
-    # ── Propiedades ───────────────────────────────────────────────────
-
+    # Propiedades
     @property
     def sample_rate(self) -> int:
         return self.cfg.hardware.sample_rate
@@ -658,8 +630,7 @@ class RFScanner:
     def _hw_disponible(self) -> bool:
         return self._backend is not None
 
-    # ── Configuración en caliente ─────────────────────────────────────
-
+    # Configuración en caliente
     def configurar_ganancia(self, ganancia: object) -> None:
         if not self._hw_disponible:
             self._print("[red][!] Sin hardware conectado.[/red]")
@@ -720,8 +691,7 @@ class RFScanner:
             mode=mode, bw_hz=bw_hz,
         ))
 
-    # ── Captura IQ ────────────────────────────────────────────────────
-
+    # Captura IQ
     def _capturar(self, freq_hz: float) -> np.ndarray | None:
         if not self._hw_disponible:
             self._print("[red][!] Sin hardware SDR disponible.[/red]")
@@ -754,8 +724,7 @@ class RFScanner:
             self._demod = Demodulator(self.cfg.demod, self.sample_rate)
         return self._demod
 
-    # ── Pipeline DSP — captura → suprimir DC → PSD → peaks ───────────
-
+    # Pipeline DSP — captura → suprimir DC → PSD → peaks
     def _procesar_muestra(
         self, freq_hz: float
     ) -> tuple[np.ndarray, np.ndarray, list[Signal], float] | None:
@@ -772,9 +741,7 @@ class RFScanner:
 
         return freqs_hz, psd_dbm, picos, piso
 
-    # ════════════════════════════════════════════════════════════════
     # API PÚBLICA
-    # ════════════════════════════════════════════════════════════════
 
     def escanear_frecuencia(self, freq_mhz: float, duracion: int = 10) -> None:
         if not self._hw_disponible:
@@ -1109,8 +1076,7 @@ class RFScanner:
         log.info("Escaneo bandas: %d mediciones hw=%s",
                  len(resultados), self.hw_nombre)
 
-    # ── Consultas DB ──────────────────────────────────────────────────
-
+    # Consultas DB
     def estadisticas_db(self) -> None:
         stats = self.db.estadisticas()
         st2 = self.signal_db.stats()
@@ -1182,8 +1148,7 @@ class RFScanner:
                                         f"(últimas {horas}h  SNR≥{snr_min}dB)[/bold green]"),
                                  border_style="green"))
 
-    # ── Grabación / Reproducción IQ ───────────────────────────────────
-
+    # Grabación / Reproducción IQ
     def grabar_iq(self, freq_mhz: float, duracion: int = 10,
                   formato: str = "sigmf") -> None:
         if not self._hw_disponible:
@@ -1256,8 +1221,7 @@ class RFScanner:
         self.recorder.reproducir(
             archivo, modo=modo, sample_rate=self.sample_rate)
 
-    # ── Estado ────────────────────────────────────────────────────────
-
+    # Estado
     def estado(self) -> None:
         stats = self.db.estadisticas()
         st2 = self.signal_db.stats()
@@ -1291,8 +1255,7 @@ class RFScanner:
         self.console.print(Panel(g, title="[bold green]ESTADO RF SCANNER[/bold green]",
                                  border_style="green"))
 
-    # ── Menú interactivo ──────────────────────────────────────────────
-
+    # Menú interactivo
     def menu(self) -> None:
         self.console.print()
         self.console.print(Panel(
@@ -1409,8 +1372,7 @@ class RFScanner:
         else:
             self._print("[yellow][!] Opción no reconocida.[/yellow]")
 
-    # ── Internos ──────────────────────────────────────────────────────
-
+    # Internos
     def _guardar_senales_db(self, senales: list[Signal], escaneo_id: int) -> None:
         rows = [dict(s.to_dict(), banda=s.banda) for s in senales]
         self.db.insertar_senales_bulk(rows, escaneo_id)
@@ -1458,8 +1420,7 @@ class RFScanner:
         except Exception as exc:
             log.warning("registrar_evidencia: %s", exc)
 
-    # ── Ciclo de vida ─────────────────────────────────────────────────
-
+    # Ciclo de vida
     def cerrar(self) -> None:
         if self._demod:
             try:

@@ -13,10 +13,7 @@ from modules.rf.rf_config import HardwareConfig
 
 log = logging.getLogger(__name__)
 
-
-# ════════════════════════════════════════════════════════════════════
 # SEÑAL SINTÉTICA
-# ════════════════════════════════════════════════════════════════════
 
 @dataclass
 class SyntheticSignal:
@@ -33,13 +30,9 @@ class SyntheticSignal:
         power_w = 10 ** ((self.power_dbm - 30) / 10)
         return float(np.sqrt(2 * power_w * 50))
 
-
-# ════════════════════════════════════════════════════════════════════
 # GENERADOR DE MUESTRAS IQ
-# ════════════════════════════════════════════════════════════════════
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
+# Helpers
 def _meta_path_for(data_path: Path) -> Path:
     # Deriva la ruta del archivo .sigmf-meta asociado a un archivo de datos.
     s = str(data_path)
@@ -47,7 +40,6 @@ def _meta_path_for(data_path: Path) -> Path:
         if s.endswith(ext):
             return Path(s[: -len(ext)] + ".sigmf-meta")
     return data_path.with_suffix(".sigmf-meta")
-
 
 def _load_sigmf_meta(meta_path: Path) -> tuple[int | None, float]:
     # Retorna (sample_rate, center_freq_hz) del archivo de metadata SigMF.
@@ -65,7 +57,6 @@ def _load_sigmf_meta(meta_path: Path) -> tuple[int | None, float]:
     except Exception as exc:
         log.debug("No se pudo leer metadata %s: %s", meta_path.name, exc)
         return None, 0.0
-
 
 def generate_iq(sample_rate: int, n_samples: int,
                 signals: list[SyntheticSignal],
@@ -159,10 +150,7 @@ def generate_iq(sample_rate: int, n_samples: int,
 
     return out
 
-
-# ════════════════════════════════════════════════════════════════════
 # MOCK SDR MANAGER
-# ════════════════════════════════════════════════════════════════════
 
 class MockSDRManager:
 
@@ -259,10 +247,7 @@ class MockSDRManager:
     def close(self):
         log.debug("MockSDR cerrado")
 
-
-# ════════════════════════════════════════════════════════════════════
 # GENERADOR DE FIXTURES SIGMF
-# ════════════════════════════════════════════════════════════════════
 
 def generate_fixture(path: str, freq_hz: float, sample_rate: int,
                      duration_s: float, signals: list[SyntheticSignal],

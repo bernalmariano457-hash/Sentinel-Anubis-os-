@@ -9,7 +9,7 @@ from core.platform import Platform, PlatformInfo, detect as detect_platform
 
 _CONFIG_PATH = Path("config/keybindings.toml")
 
-# ── Importar tomllib (stdlib 3.11+) ───────────────────────────────────
+# Importar tomllib (stdlib 3.11+)
 if sys.version_info >= (3, 11):
     import tomllib
 else:
@@ -18,13 +18,11 @@ else:
     except ImportError:
         tomllib = None  # type: ignore[assignment]
 
-
 @dataclass
 class BandPreset:
     freq_mhz: float
     span_mhz: float
     label:    str
-
 
 @dataclass
 class KeyBindings:
@@ -69,7 +67,6 @@ class KeyBindings:
             mapping[fname] = f"band:{fname}"
         return mapping
 
-
 _DEFAULT_BANDS: dict[str, BandPreset] = {
     "F1":  BandPreset(88.0,    20.0, "FM Broadcast"),
     "F2":  BandPreset(137.5,   3.0,  "NOAA Weather Sat"),
@@ -86,7 +83,6 @@ _DEFAULT_BANDS: dict[str, BandPreset] = {
 _TERMUX_BAND_ALIASES: dict[str, str] = {
     "1": "F1", "2": "F2", "3": "F3", "4": "F4", "5": "F5",
 }
-
 
 def load(info: PlatformInfo | None = None) -> KeyBindings:
     info = info or detect_platform()
@@ -133,18 +129,16 @@ def load(info: PlatformInfo | None = None) -> KeyBindings:
 
     return kb
 
-
 def _read_toml() -> dict[str, Any]:
     if not _CONFIG_PATH.exists():
         return {}
     if tomllib is None:
         return {}
     try:
-        with open(_CONFIG_PATH, "rb") as fh:
+        with _CONFIG_PATH.open("rb") as fh:
             return tomllib.load(fh)
     except Exception:
         return {}
-
 
 def _apply_section(kb: KeyBindings, section: dict[str, Any]) -> None:
     str_list_fields = {

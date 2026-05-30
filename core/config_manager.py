@@ -1,49 +1,36 @@
-"""
-core/config_manager.py — Carga y persistencia de config.json
-═════════════════════════════════════════════════════════════
-Responsabilidad única: leer/escribir la configuración del sistema.
-Sin dependencias de Console, Rich ni del sentinel completo.
-"""
 from __future__ import annotations
 
 import json
+import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.log_sistema import LogSistema
 
+log = logging.getLogger("sentinel.config")
+
+_CONFIG_PATH = Path("config.json")
 _DEFAULT_VERSION = "2.3"
 
 
 class ConfigManager:
-    """
-    Lee config.json al arrancar y lo persiste cuando el estado cambia
-    (p. ej. primer_arranque → False).
-
-    Uso:
-        mgr = ConfigManager(version="2.3", log=self.log)
-        config = mgr.cargar()
-        mgr.guardar(config)
-    """
-
     def __init__(
         self,
         version: str = _DEFAULT_VERSION,
-        log: "LogSistema | None" = None,
+        log_sistema: LogSistema | None = None,
     ) -> None:
         self._version = version
-        self._log = log
+        self._log_sistema = log_sistema
 
     def cargar(self) -> dict:
-        """Devuelve el dict de configuración. Crea uno por defecto si no existe."""
         try:
-            with open("config.json", "r", encoding="utf-8") as f:
-                return json.load(f)
+            return json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return {
                 "sistema": {
-                    "nombre": "Sentinel",
-                    "version": self._version,
+                    "nombre":          "Sentinel",
+                    "version":         self._version,
                     "primer_arranque": True,
                 }
             }
@@ -51,10 +38,14 @@ class ConfigManager:
             raise SystemExit("[FATAL] config.json está dañado.")
 
     def guardar(self, config: dict) -> None:
-        """Persiste el dict de configuración en config.json."""
         try:
-            with open("config.json", "w", encoding="utf-8") as f:
-                json.dump(config, f, ensure_ascii=False, indent=2)
+            _CONFIG_PATH.write_text(
+                json.dumps(config, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
         except OSError as e:
-            if self._log:
-                self._log.warning(f"No se pudo guardar config.json: {e}", "Config")
+            msg = f"No se pudo guardar config.json: {e}"
+            if self._log_sistema:
+                self._log_sistema.warning(msg, "Config")
+            else:
+                log.warning(msg)

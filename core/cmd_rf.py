@@ -3,7 +3,6 @@ from __future__ import annotations
 from core._base import _DomainBase
 from core.validators import Validador
 
-
 class RFCommands(_DomainBase):
 
     def rfscan(self):
@@ -201,7 +200,7 @@ class RFCommands(_DomainBase):
                     "[dim]Instala pyModeS:  pip install pyModeS --break-system-packages[/dim]"
                 )
 
-    # ── Analizador de espectro RF ──────────────────────────────────────
+    # Analizador de espectro RF
 
     def spectrum(self) -> None:
         # Analizador de espectro en tiempo real con waterfall, PPM y detección

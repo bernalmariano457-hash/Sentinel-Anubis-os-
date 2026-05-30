@@ -14,7 +14,7 @@ class Session:
     def __init__(self, sentinel: "ApexSentinel") -> None:
         self._s = sentinel
 
-    # ── Helpers internos ──────────────────────────────────────────────
+    # Helpers internos
 
     def _console(self):
         return self._s.console
@@ -23,8 +23,8 @@ class Session:
         from core.bootscreen import mostrar_banner
         s = self._s
         proy = (
-            s.gp.proyecto_actual.nombre
-            if getattr(s, "gp", None) and getattr(s.gp, "proyecto_actual", None)
+            s.gp.proyecto_activo.nombre
+            if getattr(s, "gp", None) and getattr(s.gp, "proyecto_activo", None)
             else None
         )
         mostrar_banner(
@@ -46,7 +46,7 @@ class Session:
             f"[bold white]~#[/bold white]"
         )
 
-    # ── Tabla de despacho ─────────────────────────────────────────────
+    # Tabla de despacho
 
     def _construir_tabla(self) -> dict[str, Any]:
 
@@ -63,7 +63,7 @@ class Session:
                 con.print("[dim]Sin ayuda.[/dim]")
 
         return {
-            # ── Sistema ───────────────────────────────────────────────
+            # Sistema
             "help": lambda: mostrar_ayuda(s.console, s.version, COMANDOS_HELP),
             "?": lambda: mostrar_ayuda(s.console, s.version, COMANDOS_HELP),
             "status":    c.status,
@@ -73,7 +73,7 @@ class Session:
             "cls":       self._banner,
             "logs":      s.log.mostrar_historial,
             "files":     c.files,
-            # ── Red ───────────────────────────────────────────────────
+            # Red
             "scan":      c.scan,
             "netscan":   c.scan,
             "advscan":   c.advscan,
@@ -84,12 +84,12 @@ class Session:
             "audit":     c.audit,
             "vulnscan":  c.vulnscan,
             "sqlcheck":  c.sqlcheck,
-            # ── Wireless ──────────────────────────────────────────────
+            # Wireless
             "wifi":      c.wifi,
             "eviltwin":  c.eviltwin,
             "btjumper": lambda: (
                 s.bt.iniciar_jumper() if s._modulo_ok("bt") else None),
-            # ── RF ────────────────────────────────────────────────────
+            # RF
             "rfscan":    c.rfscan,
             "rfmenu":    c.rfmenu,
             "rfbarrido": c.rfbarrido,
@@ -101,22 +101,22 @@ class Session:
             "rfgrabar":  c.rfgrabar,
             "rfplay":    c.rfplay,
             "adsb":      c.adsb,
-            # ── Mobile / Forense ──────────────────────────────────────
+            # Mobile / Forense
             "mobile":      c.mobile,
             "mobile-deep": c.mobile_deep,
             "view":        c.view,
-            # ── OSINT / Geo ───────────────────────────────────────────
+            # OSINT / Geo
             "geofoto":   c.geofoto,
             "osint":     c.osint,
             "cve":       c.cve,
-            # ── Ofensivo ──────────────────────────────────────────────
+            # Ofensivo
             "phishing":  c.phishing,
             "ducky":     c.ducky,
             "stealth":   c.stealth,
             "panic":     c.panic,
         }
 
-    # ── Despacho ─────────────────────────────────────────────────────
+    # Despacho
 
     def despachar(self, entrada: str) -> bool:
         partes = entrada.strip().lower().split()
@@ -159,7 +159,7 @@ class Session:
 
         return False
 
-    # ── Bucle principal ───────────────────────────────────────────────
+    # Bucle principal
 
     def ejecutar(self) -> None:
         s = self._s

@@ -18,16 +18,14 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
-# ── Importar detección de plataforma (opcional — graceful fallback) ───
+# Importar detección de plataforma (opcional — graceful fallback)
 try:
     from core.platform import detect as _detect_platform
     _PLATFORM_OK = True
 except ImportError:
     _PLATFORM_OK = False
 
-# ══════════════════════════════════════════════════════════════════════
 # ARTE ASCII — mascara de Anubis (sin modificar)
-# ══════════════════════════════════════════════════════════════════════
 
 ANUBIS_ART = "\n".join([
     r"   ▄████████████████████▄",
@@ -44,9 +42,7 @@ ANUBIS_ART = "\n".join([
 
 ANUBIS = ANUBIS_ART
 
-# ══════════════════════════════════════════════════════════════════════
 # ESTILOS DE LOG
-# ══════════════════════════════════════════════════════════════════════
 
 ESTILOS_LOG: dict[str, tuple[str, str]] = {
     "INFO":    ("cyan",         "ℹ"),
@@ -57,9 +53,7 @@ ESTILOS_LOG: dict[str, tuple[str, str]] = {
     "DEBUG":   ("dim",          "·"),
 }
 
-# ══════════════════════════════════════════════════════════════════════
 # MÓDULOS CONOCIDOS — con agrupación por categoría para el resumen
-# ══════════════════════════════════════════════════════════════════════
 
 MODULOS_BOOT: list[tuple[str, str]] = [
     ("HydraModule",      "Fuerza bruta / auditoría"),
@@ -90,9 +84,7 @@ _GRUPOS_MODULOS: dict[str, list[str]] = {
     "Seguridad":["SecurityModule", "Recovery"],
 }
 
-# ══════════════════════════════════════════════════════════════════════
 # TABLA DE AYUDA
-# ══════════════════════════════════════════════════════════════════════
 
 COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     "SISTEMA": [
@@ -163,20 +155,15 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
-
-# ══════════════════════════════════════════════════════════════════════
 # UTILIDADES INTERNAS
-# ══════════════════════════════════════════════════════════════════════
 
 _ip_cache: str | None = None
-
 
 def _limpiar() -> None:
     if os.name == "nt":
         subprocess.run(["cls"], shell=True, check=False)
     else:
         subprocess.run(["clear"], check=False)
-
 
 def _get_ip() -> str:
     global _ip_cache
@@ -192,10 +179,8 @@ def _get_ip() -> str:
     except Exception:
         return "—"
 
-
 def _ts() -> str:
     return datetime.now().strftime("%H:%M:%S")
-
 
 def _plataforma_str() -> str:
     if _PLATFORM_OK:
@@ -207,10 +192,7 @@ def _plataforma_str() -> str:
     import platform
     return f"{platform.machine()}  {sys.platform}"
 
-
-# ══════════════════════════════════════════════════════════════════════
 # COMPONENTES VISUALES
-# ══════════════════════════════════════════════════════════════════════
 
 def _panel_hero(nombre: str, version: str, iface: str) -> Panel:
     arte = Text(ANUBIS_ART, style="bold green")
@@ -247,7 +229,6 @@ def _panel_hero(nombre: str, version: str, iface: str) -> Panel:
         padding=(1, 3),
     )
 
-
 def _resumen_modulos(estados: dict[str, bool] | None) -> Text:
     t = Text("  ")
     if not estados:
@@ -270,7 +251,6 @@ def _resumen_modulos(estados: dict[str, bool] | None) -> Text:
     t.append(f" [{ok}/{total}]", style="dim green")
     return t
 
-
 def _linea_modulo_live(idx: int, total: int, nombre: str) -> Text:
     pct = int((idx / total) * 100)
     bar_w = 20
@@ -283,10 +263,7 @@ def _linea_modulo_live(idx: int, total: int, nombre: str) -> Text:
     t.append(f"{nombre}", style="dim green")
     return t
 
-
-# ══════════════════════════════════════════════════════════════════════
 # BOOTLOADER — pantalla única que se actualiza con Rich Live
-# ══════════════════════════════════════════════════════════════════════
 
 def mostrar_bootloader(
     console: Console,
@@ -301,7 +278,7 @@ def mostrar_bootloader(
     modulos = list(estados_modulos.keys()) if estados_modulos else [m for m, _ in MODULOS_BOOT]
     total   = len(modulos)
 
-    # ── Fase 1: Barra de carga animada ───────────────────────────────
+    # Fase 1: Barra de carga animada
     with Live(console=console, refresh_per_second=30, screen=False) as live:
         for i, nombre_mod in enumerate(modulos, 1):
             pct    = int((i / total) * 100)
@@ -327,10 +304,10 @@ def mostrar_bootloader(
             ))
             time.sleep(0.03)
 
-    # ── Fase 2: Hero panel ────────────────────────────────────────────
+    # Fase 2: Hero panel
     console.print(hero)
 
-    # ── Fase 3: Resumen de módulos (sin Layout — evita espacios vacíos)
+    # Fase 3: resumen de módulos (sin Layout — evita espacios vacíos)
     ok_count   = (
         sum(1 for v in estados_modulos.values() if v)
         if estados_modulos else total
@@ -368,7 +345,7 @@ def mostrar_bootloader(
         padding=(0, 1),
     ))
 
-    # ── Cierre: ready line ────────────────────────────────────────────
+    # Cierre: ready line
     console.print(Rule(style="dim green"))
     console.print(
         Align.center(
@@ -379,10 +356,7 @@ def mostrar_bootloader(
     console.print(Rule(style="dim green"))
     console.print()
 
-
-# ══════════════════════════════════════════════════════════════════════
 # BANNER COMPACTO — comando clear / cls
-# ══════════════════════════════════════════════════════════════════════
 
 def mostrar_banner(
     console: Console,
@@ -427,10 +401,7 @@ def mostrar_banner(
     console.print(Rule(style="dim green"))
     console.print()
 
-
-# ══════════════════════════════════════════════════════════════════════
 # MENÚ DE AYUDA
-# ══════════════════════════════════════════════════════════════════════
 
 def mostrar_ayuda(
     console: Console,
@@ -485,10 +456,7 @@ def mostrar_ayuda(
     console.print(Rule(style="dim green"))
     console.print()
 
-
-# ══════════════════════════════════════════════════════════════════════
 # PRUEBA STANDALONE
-# ══════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     _con = Console()

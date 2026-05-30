@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
-# ── Intentar importar tomllib (Python ≥ 3.11) o tomli (pip) ────────
+# Intentar importar tomllib (Python ≥ 3.11) o tomli (pip)
 try:
     import tomllib                      # stdlib Python 3.11+
     _TOML_READ = tomllib
@@ -27,10 +27,8 @@ try:
 except ImportError:
     pass
 
-
-# ════════════════════════════════════════════════════════════════════
 # DATACLASSES DE CONFIGURACIÓN
-# ════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class HardwareConfig:
@@ -61,11 +59,17 @@ class DemodConfig:
     squelch_db:   float = 5.0
 
 
+_DATA = Path("data")  # relativo al CWD del proyecto (donde se lanza Main.py)
+
+
 @dataclass
 class StorageConfig:
-    evidence_dir:  str = "data/evidence/rf"
-    iq_dir:        str = "data/evidence/rf/iq"
-    db_path:       str = "data/evidence/rf/signals.db"
+    evidence_dir:  Path = field(
+        default_factory=lambda: _DATA / "evidence" / "rf")
+    iq_dir:        Path = field(
+        default_factory=lambda: _DATA / "evidence" / "rf" / "iq")
+    db_path:       Path = field(
+        default_factory=lambda: _DATA / "evidence" / "rf" / "signals.db")
     sigmf_format:  bool = True
     session_max:   int = 10_000
 
@@ -81,20 +85,15 @@ class UiConfig:
 @dataclass
 class LoggingConfig:
     level:        str = "INFO"
-    file:         str = "data/logs/rfscanner.log"
+    file:         Path = field(
+        default_factory=lambda: _DATA / "logs" / "rfscanner.log")
     max_bytes:    int = 5_242_880
     backup_count: int = 3
 
-
-# ════════════════════════════════════════════════════════════════════
 # CONFIG PRINCIPAL
-# ════════════════════════════════════════════════════════════════════
+
 
 class Config:
-    """
-    Configuración global de RFScanner con persistencia TOML.
-    Si TOML no está disponible, opera con defaults en memoria.
-    """
 
     SEARCH_PATHS = [
         Path.home() / ".config" / "rfscanner" / "config.toml",
@@ -123,7 +122,7 @@ class Config:
             else:
                 log.info("Config: sin archivo encontrado, usando defaults")
 
-    # ── Carga ───────────────────────────────────────────────────────
+    # Carga
 
     def _load(self, path: Path) -> None:
         if _TOML_READ is None:
@@ -141,11 +140,14 @@ class Config:
             log.error(f"Error leyendo config {path}: {e}")
 
     def _apply(self, data: dict[str, Any]) -> None:
-        """Aplica un dict TOML sobre los dataclasses, ignorando claves desconocidas."""
         def merge(dc, section: dict):
             for k, v in section.items():
-                if hasattr(dc, k):
-                    setattr(dc, k, v)
+                if not hasattr(dc, k):
+                    continue
+                current = getattr(dc, k)
+                if isinstance(current, Path) and isinstance(v, str):
+                    v = Path(v)
+                setattr(dc, k, v)
         if "hardware" in data:
             merge(self.hardware, data["hardware"])
         if "dsp" in data:
@@ -159,10 +161,9 @@ class Config:
         if "logging" in data:
             merge(self.logging,   data["logging"])
 
-    # ── Guardado ────────────────────────────────────────────────────
+    # Guardado
 
     def save(self, path: str | None = None):
-        """Guarda la configuración actual en TOML."""
         target = Path(path) if path else self._path
         if target is None:
             target = Path.home() / ".config" / "rfscanner" / "config.toml"
@@ -182,7 +183,7 @@ class Config:
             "logging":  asdict(self.logging),
         }
         try:
-            with open(target, "wb") as f:
+            with target.open("wb") as f:
                 _TOML_WRITE.dump(data, f)
             log.info(f"Config guardada: {target}")
             self._path = target
@@ -217,12 +218,10 @@ class Config:
             log.error(f"Error guardando config manual: {e}")
 
     def update_ppm(self, ppm: int):
-        """Actualiza corrección PPM y persiste."""
         self.hardware.ppm_correction = ppm
         self.save()
 
     def update_gain(self, gain: float):
-        """Actualiza ganancia y persiste."""
         self.hardware.gain = gain
         self.save()
 

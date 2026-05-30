@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import subprocess
 
 from rich.panel import Panel
 
 from core._base import _DomainBase
 
-
 class MobileCommands(_DomainBase):
 
-    # ── Triage básico ─────────────────────────────────────────────────
+    # Triage básico
 
     def mobile(self) -> None:
         s = self.s
@@ -46,7 +46,7 @@ class MobileCommands(_DomainBase):
             except Exception as e:
                 self.console.print(f"[red][!] Error inesperado ADB: {e}[/red]")
 
-    # ── Extracción profunda ───────────────────────────────────────────
+    # Extracción profunda
 
     def mobile_deep(self) -> None:
         s = self.s
@@ -88,7 +88,7 @@ class MobileCommands(_DomainBase):
             if not crypt_file or not key_file:
                 self.console.print("[red][!] Rutas inválidas.[/red]")
                 return
-            output_file = os.path.join(path, "whatsapp_decrypted.db")
+            output_file = Path(path) / "whatsapp_decrypted.db"
             try:
                 decryptor = s._wa_decryptor_cls(verbose=False)
                 if decryptor.descifrar(crypt_file, key_file, output_file):
@@ -104,7 +104,7 @@ class MobileCommands(_DomainBase):
                 self.console.print(f"[red][!] Error en descifrado: {e}[/red]")
                 s.log.error(f"WADecryptor: {e}", "MobileDeep")
 
-    # ── Lector forense ────────────────────────────────────────────────
+    # Lector forense
 
     def view(self) -> None:
         s = self.s
@@ -124,7 +124,7 @@ class MobileCommands(_DomainBase):
             return (
                 self.console.input(
                     f"[dim][Enter] = {ruta_base}{default_name} > [/dim]").strip()
-                or os.path.join(ruta_base, default_name)
+                or str(Path(ruta_base) / default_name)
             )
 
         if opcion == "1":
@@ -177,7 +177,7 @@ class MobileCommands(_DomainBase):
                     f"  [{m.fecha_iso}] [bold]{m.contacto}[/bold]: {m.texto}")
         elif opcion == "9":
             db = _db("whatsapp_decrypted.db")
-            out_html = os.path.join(ruta_base, "reporte_forense.html")
+            out_html = Path(ruta_base) / "reporte_forense.html"
             mensajes,  resumen = s.reader.leer_whatsapp_mensajes(db)
             llamadas = s.reader.leer_llamadas_android(db)
             eliminados = s.reader.leer_mensajes_eliminados(db)

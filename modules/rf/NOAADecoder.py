@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable
 
 import numpy as np
 from rich.console import Console
@@ -47,19 +47,19 @@ NOAA_SATELLITES: dict[str, int] = {
     "NOAA-15": 137_620_000,
 }
 
-APT_AUDIO_RATE   = 11_025
-APT_LINE_RATE    = 4
-APT_PIXELS_LINE  = 2080
-APT_SYNC_FREQ    = 2400.0
+APT_AUDIO_RATE = 11_025
+APT_LINE_RATE = 4
+APT_PIXELS_LINE = 2080
+APT_SYNC_FREQ = 2400.0
 APT_SAMPLES_LINE = APT_AUDIO_RATE // APT_LINE_RATE
 
 _A_IMG_S, _A_IMG_E = 86,  995
 _B_IMG_S, _B_IMG_E = 1126, 2035
 
 _SYNC_A = np.array(
-    [0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,
-     0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,
-     0,0,1,1,0,0,1],
+    [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1,
+     0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1,
+     0, 0, 1, 1, 0, 0, 1],
     dtype=np.float32,
 )
 
@@ -90,19 +90,20 @@ class AFC:
         center_freq:  float,
         alpha:        float = 0.05,
     ) -> None:
-        self.sample_rate   = sample_rate
-        self.center_freq   = center_freq
-        self.alpha         = alpha
-        self._offset_hz    = 0.0
+        self.sample_rate = sample_rate
+        self.center_freq = center_freq
+        self.alpha = alpha
+        self._offset_hz = 0.0
         self._sample_offset: int = 0
 
     def estimate_offset(self, iq: np.ndarray) -> float:
-        n    = min(len(iq), 8192)
+        n = min(len(iq), 8192)
         spec = np.abs(np.fft.fftshift(np.fft.fft(iq[:n] * np.blackman(n))))
         freq = np.fft.fftshift(np.fft.fftfreq(n, 1.0 / self.sample_rate))
         mask = np.abs(freq) < 5000
         peak = float(freq[mask][np.argmax(spec[mask])])
-        self._offset_hz = (1 - self.alpha) * self._offset_hz + self.alpha * peak
+        self._offset_hz = (1 - self.alpha) * \
+            self._offset_hz + self.alpha * peak
         return self._offset_hz
 
     def correct(self, iq: np.ndarray) -> np.ndarray:
@@ -112,7 +113,8 @@ class AFC:
             return iq
         # NCO phase-continuous across chunks: use cumulative sample offset
         # so the rotator phase never jumps at chunk boundaries.
-        t = (np.arange(n, dtype=np.float64) + self._sample_offset) / self.sample_rate
+        t = (np.arange(n, dtype=np.float64) +
+             self._sample_offset) / self.sample_rate
         self._sample_offset += n
         rot = np.exp(
             1j * 2.0 * math.pi * (-self._offset_hz) * t
@@ -123,48 +125,48 @@ class AFC:
 class SyncPLL:
     def __init__(self, audio_rate: int = APT_AUDIO_RATE) -> None:
         self.audio_rate = audio_rate
-        self._omega0    = 2 * math.pi * APT_SYNC_FREQ / audio_rate
-        bw              = 50.0 / audio_rate
-        self._kp        = 4 * bw * math.sqrt(2)
-        self._ki        = 4 * bw ** 2
-        self._phase     = 0.0
-        self._freq      = self._omega0
-        self._integr    = 0.0
+        self._omega0 = 2 * math.pi * APT_SYNC_FREQ / audio_rate
+        bw = 50.0 / audio_rate
+        self._kp = 4 * bw * math.sqrt(2)
+        self._ki = 4 * bw ** 2
+        self._phase = 0.0
+        self._freq = self._omega0
+        self._integr = 0.0
 
-    def track(self, audio: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        n       = len(audio)
+    def track(self, audio: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        n = len(audio)
         env_out = np.zeros(n, dtype=np.float32)
-        ph_out  = np.zeros(n, dtype=np.float32)
+        ph_out = np.zeros(n, dtype=np.float32)
 
         phase = self._phase
-        freq  = self._freq
+        freq = self._freq
         integ = self._integr
 
         for i in range(n):
-            ref_i =  math.cos(phase)
+            ref_i = math.cos(phase)
             ref_q = -math.sin(phase)
-            s     = float(audio[i])
+            s = float(audio[i])
 
             in_phase = s * ref_i
-            quad     = s * ref_q
+            quad = s * ref_q
 
-            err    = math.atan2(quad, in_phase + 1e-12)
+            err = math.atan2(quad, in_phase + 1e-12)
             integ += self._ki * err
-            freq   = self._omega0 + self._kp * err + integ
-            freq   = max(self._omega0 * 0.8, min(freq, self._omega0 * 1.2))
+            freq = self._omega0 + self._kp * err + integ
+            freq = max(self._omega0 * 0.8, min(freq, self._omega0 * 1.2))
             phase += freq
             if phase > math.pi:
                 phase -= 2 * math.pi
 
             env_out[i] = abs(in_phase)
-            ph_out[i]  = phase
+            ph_out[i] = phase
 
-        self._phase  = phase
-        self._freq   = freq
+        self._phase = phase
+        self._freq = freq
         self._integr = integ
         return env_out, ph_out
 
-    def find_line_starts(self, audio: np.ndarray) -> List[int]:
+    def find_line_starts(self, audio: np.ndarray) -> list[int]:
         # Fast path: scipy AM envelope is faster and equally robust for NOAA SNR.
         # The Python PLL loop remains as fallback when scipy is unavailable.
         if _SCIPY_OK:
@@ -182,21 +184,21 @@ class SyncPLL:
                 pass
 
         threshold = float(np.mean(env) + np.std(env) * 0.5)
-        binary    = (env > threshold).astype(np.float32)
-        corr      = np.correlate(binary, _SYNC_A, mode="valid")
-        mx        = float(np.max(np.abs(corr)) + 1e-12)
-        corr     /= mx
-        thr       = max(float(np.mean(corr) + 2.0 * np.std(corr)), 0.45)
-        min_sep   = int(APT_SAMPLES_LINE * 0.8)
+        binary = (env > threshold).astype(np.float32)
+        corr = np.correlate(binary, _SYNC_A, mode="valid")
+        mx = float(np.max(np.abs(corr)) + 1e-12)
+        corr /= mx
+        thr = max(float(np.mean(corr) + 2.0 * np.std(corr)), 0.45)
+        min_sep = int(APT_SAMPLES_LINE * 0.8)
         return _find_peaks_fast(corr, thr, min_sep)
 
 
 def _find_peaks_fast(
     arr: np.ndarray, threshold: float, min_sep: int
-) -> List[int]:
-    peaks: List[int] = []
-    last  = -min_sep
-    w     = min_sep // 4
+) -> list[int]:
+    peaks: list[int] = []
+    last = -min_sep
+    w = min_sep // 4
     for i in range(len(arr)):
         if arr[i] >= threshold and (i - last) >= min_sep:
             seg = arr[max(0, i - w): i + w + 1]
@@ -221,8 +223,8 @@ def _resample_2stage(
         ).astype(np.float32)
 
     from math import gcd
-    g    = gcd(src_rate, dst_rate)
-    up   = dst_rate // g
+    g = gcd(src_rate, dst_rate)
+    up = dst_rate // g
     down = src_rate // g
 
     if max(up, down) <= 500:
@@ -235,20 +237,20 @@ def _resample_2stage(
 
     dec = src_rate // dst_rate
     if dec > 1:
-        n_taps  = min(511, 8 * dec + 1)
-        n_taps  = n_taps if n_taps % 2 == 1 else n_taps + 1
-        cutoff  = 0.9 / dec
+        n_taps = min(511, 8 * dec + 1)
+        n_taps = n_taps if n_taps % 2 == 1 else n_taps + 1
+        cutoff = 0.9 / dec
         try:
-            fir      = firwin(n_taps, cutoff, window=("kaiser", 8.0))
-            arr      = lfilter(fir, 1.0, arr.astype(np.float32))[::dec]
+            fir = firwin(n_taps, cutoff, window=("kaiser", 8.0))
+            arr = lfilter(fir, 1.0, arr.astype(np.float32))[::dec]
             src_rate = src_rate // dec
         except Exception:
-            arr      = arr[::dec].astype(np.float32)
+            arr = arr[::dec].astype(np.float32)
             src_rate = src_rate // dec
 
     if src_rate != dst_rate:
-        g    = gcd(src_rate, dst_rate)
-        up   = dst_rate // g
+        g = gcd(src_rate, dst_rate)
+        up = dst_rate // g
         down = src_rate // g
         if max(up, down) <= 500:
             try:
@@ -271,12 +273,12 @@ def _am_envelope(audio: np.ndarray, audio_rate: int) -> np.ndarray:
         return np.abs(audio.astype(np.float32))
     nyq = audio_rate / 2.0
     try:
-        lo  = max(0.01, (APT_SYNC_FREQ - 1200) / nyq)
-        hi  = min(0.99, (APT_SYNC_FREQ + 1200) / nyq)
+        lo = max(0.01, (APT_SYNC_FREQ - 1200) / nyq)
+        hi = min(0.99, (APT_SYNC_FREQ + 1200) / nyq)
         sos = butter(6, [lo, hi], btype="bandpass", output="sos")
-        bp  = sosfiltfilt(sos, audio.astype(np.float64))
+        bp = sosfiltfilt(sos, audio.astype(np.float64))
         env = np.abs(hilbert(bp)).astype(np.float32)
-        lp  = butter(4, min(0.99, 2080.0 / nyq), btype="low", output="sos")
+        lp = butter(4, min(0.99, 2080.0 / nyq), btype="low", output="sos")
         return sosfiltfilt(lp, env).astype(np.float32)
     except Exception as e:
         log.debug("am_envelope scipy error: %s", e)
@@ -298,28 +300,28 @@ def _stretch_contrast(
 
 
 def _block_average(img: np.ndarray, cols: int, rows: int) -> np.ndarray:
-    h, w      = img.shape
-    bh        = max(1, h // rows)
-    bw        = max(1, w // cols)
-    rows_out  = h // bh
-    cols_out  = w // bw
-    cropped   = img[: rows_out * bh, : cols_out * bw]
+    h, w = img.shape
+    bh = max(1, h // rows)
+    bw = max(1, w // cols)
+    rows_out = h // bh
+    cols_out = w // bw
+    cropped = img[: rows_out * bh, : cols_out * bw]
     return cropped.reshape(rows_out, bh, cols_out, bw).mean(axis=(1, 3)).astype(np.uint8)
 
 
 class APTLineDecoder:
     def __init__(self, audio_rate: int = APT_AUDIO_RATE) -> None:
-        self.audio_rate   = audio_rate
+        self.audio_rate = audio_rate
         self.samples_line = audio_rate // APT_LINE_RATE
 
-    def decode(self, line_audio: np.ndarray) -> Optional[np.ndarray]:
+    def decode(self, line_audio: np.ndarray) -> np.ndarray | None:
         if len(line_audio) < self.samples_line // 2:
             return None
         if len(line_audio) != self.samples_line:
             line_audio = _resample_2stage(
                 line_audio, len(line_audio), self.samples_line
             )
-        env    = _am_envelope(line_audio, self.audio_rate)
+        env = _am_envelope(line_audio, self.audio_rate)
         pixels = _resample_2stage(env, self.samples_line, APT_PIXELS_LINE)
         mn, mx = float(np.min(pixels)), float(np.max(pixels))
         if mx - mn < 1e-6:
@@ -330,7 +332,7 @@ class APTLineDecoder:
 
     def channels(
         self, px: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         return px[_A_IMG_S:_A_IMG_E], px[_B_IMG_S:_B_IMG_E]
 
 
@@ -338,20 +340,21 @@ class TerminalRenderer:
     def __init__(
         self, console: Console, max_cols: int = 80, max_rows: int = 36
     ) -> None:
-        self.console  = console
+        self.console = console
         self.max_cols = max_cols
         self.max_rows = max_rows
 
     def render(
         self,
         img_a: np.ndarray,
-        img_b: Optional[np.ndarray] = None,
+        img_b: np.ndarray | None = None,
     ) -> None:
         from rich.text import Text
         self.console.rule("[bold cyan]Canal A — Visible / IR[/bold cyan]")
         self._draw(img_a, "A", thermal=False)
         if img_b is not None and img_b.size > 0:
-            self.console.rule("[bold yellow]Canal B — IR Térmico 10.8 µm[/bold yellow]")
+            self.console.rule(
+                "[bold yellow]Canal B — IR Térmico 10.8 µm[/bold yellow]")
             self._draw(img_b, "B", thermal=True)
 
     def _draw(
@@ -362,11 +365,11 @@ class TerminalRenderer:
             self.console.print(f"[dim]Canal {label}: sin datos[/dim]")
             return
         thumb = _block_average(img, self.max_cols, self.max_rows)
-        h, w  = thumb.shape
+        h, w = thumb.shape
         for row in range(h):
             line = Text()
             for col in range(w):
-                v     = int(thumb[row, col])
+                v = int(thumb[row, col])
                 block = _BLOCKS[min(4, v * 5 // 256)]
                 if thermal:
                     if v < 64:
@@ -381,7 +384,7 @@ class TerminalRenderer:
                     r = g = b = v
                 line.append(
                     block,
-                    style=f"#{min(r,255):02x}{min(g,255):02x}{min(b,255):02x}",
+                    style=f"#{min(r, 255):02x}{min(g, 255):02x}{min(b, 255):02x}",
                 )
             self.console.print(line)
         self.console.print(
@@ -393,10 +396,10 @@ class TerminalRenderer:
 class TLEManager:
     _cache:    dict[str, tuple[str, str]] = {}
     _cache_ts: float = 0.0
-    _TTL       = 3600 * 6
+    _TTL = 3600 * 6
 
     @classmethod
-    def get_tle(cls, sat_name: str) -> Optional[Tuple[str, str]]:
+    def get_tle(cls, sat_name: str) -> tuple[str, str | None]:
         if (time.time() - cls._cache_ts) > cls._TTL or not cls._cache:
             cls._refresh()
         return cls._cache.get(sat_name) or _TLE_FALLBACK.get(sat_name)
@@ -433,14 +436,14 @@ class PassCalculator:
         alt_m: float = 0.0,
         n: int = 5,
         horizon_deg: float = 5.0,
-    ) -> List[dict]:
+    ) -> list[dict]:
         try:
             from sgp4.api import Satrec, jday
         except ImportError:
             return [{"error": "pip install sgp4 --break-system-packages"}]
 
-        now    = datetime.now(timezone.utc)
-        passes: List[dict] = []
+        now = datetime.now(timezone.utc)
+        passes: list[dict] = []
 
         for sat_name in NOAA_SATELLITES:
             tle = TLEManager.get_tle(sat_name)
@@ -451,12 +454,12 @@ class PassCalculator:
             except Exception:
                 continue
 
-            in_pass    = False
+            in_pass = False
             pass_start = 0.0
-            max_elev   = 0.0
+            max_elev = 0.0
 
             for step_s in range(0, 86400, 30):
-                t  = now.timestamp() + step_s
+                t = now.timestamp() + step_s
                 dt = datetime.fromtimestamp(t, tz=timezone.utc)
                 jd, fr = jday(
                     dt.year, dt.month, dt.day,
@@ -468,14 +471,15 @@ class PassCalculator:
                 elev = PassCalculator._elev(r, lat, lon, alt_m, jd + fr)
 
                 if elev > horizon_deg and not in_pass:
-                    in_pass    = True
+                    in_pass = True
                     pass_start = t
-                    max_elev   = elev
+                    max_elev = elev
                 elif elev > horizon_deg and in_pass:
                     max_elev = max(max_elev, elev)
                 elif elev <= horizon_deg and in_pass:
                     in_pass = False
-                    dt_start = datetime.fromtimestamp(pass_start, tz=timezone.utc)
+                    dt_start = datetime.fromtimestamp(
+                        pass_start, tz=timezone.utc)
                     passes.append({
                         "satellite":  sat_name,
                         "freq_mhz":   NOAA_SATELLITES[sat_name] / 1e6,
@@ -499,7 +503,7 @@ class PassCalculator:
         try:
             lat = math.radians(lat_deg)
             lon = math.radians(lon_deg)
-            Re  = 6371.0 + alt_m / 1000.0
+            Re = 6371.0 + alt_m / 1000.0
             obs = np.array([
                 Re * math.cos(lat) * math.cos(lon),
                 Re * math.cos(lat) * math.sin(lon),
@@ -528,43 +532,39 @@ class PassCalculator:
 
 
 class NOAADecoder:
-    """
-    Decodificador NOAA APT — imágenes satelitales en 137 MHz.
-
-    Sigue el patrón Sentinel estándar: NOAADecoder(sentinel).
-    Construye internamente la SourceFactory desde la configuración
-    de RF del sentinel o usa rtlsdr_source con valores por defecto.
-    """
-
     def __init__(self, sentinel: object) -> None:
-        self._s      = sentinel
+        self._s = sentinel
         self.console: Console = getattr(sentinel, "console", Console())
-        self._pll    = SyncPLL(APT_AUDIO_RATE)
+        self._pll = SyncPLL(APT_AUDIO_RATE)
         self._decoder = APTLineDecoder(APT_AUDIO_RATE)
-        self._render  = TerminalRenderer(self.console)
+        self._render = TerminalRenderer(self.console)
 
         # Extraer parámetros de hardware desde sentinel.rf si está disponible
         rf_cfg = getattr(getattr(sentinel, "rf", None), "cfg", None)
-        hw     = getattr(rf_cfg, "hardware", None)
+        hw = getattr(rf_cfg, "hardware", None)
 
-        gain  = getattr(hw, "gain_db",        49.6)
-        ppm   = getattr(hw, "ppm_correction",  0)
-        idx   = getattr(hw, "device_index",    0)
+        gain = getattr(hw, "gain_db",        49.6)
+        ppm = getattr(hw, "ppm_correction",  0)
+        idx = getattr(hw, "device_index",    0)
 
         def _factory(freq_hz: float, sample_rate: int) -> Source:
             try:
                 return rtlsdr_source(freq_hz, sample_rate, gain, ppm, idx)
             except Exception as exc:
-                log.warning("NOAADecoder: RTL-SDR no disponible (%s) — null source", exc)
+                log.warning(
+                    "NOAADecoder: RTL-SDR no disponible (%s) — null source", exc)
                 return null_source()
 
         self._rf_factory: SourceFactory = _factory
 
     def menu(self) -> None:
         self.console.print()
-        self.console.print("[bold cyan]╔══════════════════════════════════════╗[/bold cyan]")
-        self.console.print("[bold cyan]║   NOAA APT — Imágenes Satelitales    ║[/bold cyan]")
-        self.console.print("[bold cyan]╚══════════════════════════════════════╝[/bold cyan]")
+        self.console.print(
+            "[bold cyan]╔══════════════════════════════════════╗[/bold cyan]")
+        self.console.print(
+            "[bold cyan]║   NOAA APT — Imágenes Satelitales    ║[/bold cyan]")
+        self.console.print(
+            "[bold cyan]╚══════════════════════════════════════╝[/bold cyan]")
         self.console.print()
 
         opts = list(NOAA_SATELLITES.items())
@@ -618,30 +618,31 @@ class NOAADecoder:
     def decode(
         self,
         freq_hz:  float,
-        duration: int  = 120,
-        sat_name: str  = "NOAA",
+        duration: int = 120,
+        sat_name: str = "NOAA",
         save_png: bool = True,
-        on_evidence: Optional[Callable[[str, dict], None]] = None,
-    ) -> Optional[Path]:
+        on_evidence: Callable[[str, dict | None, None]] = None,
+    ) -> Path | None:
         self.console.print(
             f"\n[bold green][NOAA] {sat_name}  {freq_hz/1e6:.3f} MHz  {duration}s[/bold green]\n"
             "[dim]  Pipeline: IQ → AFC → WFM → resample → PLL sync → AM demod → píxeles[/dim]\n"
             "[dim]  Ctrl+C detiene la captura y procesa el buffer acumulado[/dim]\n"
         )
 
-        audio_buf:   List[np.ndarray] = []
-        actual_rate: int              = APT_AUDIO_RATE
+        audio_buf:   list[np.ndarray] = []
+        actual_rate: int = APT_AUDIO_RATE
 
         try:
-            from modules.rf.rf_demod  import Demodulator
+            from modules.rf.rf_demod import Demodulator
             from modules.rf.rf_config import DemodConfig
 
-            cfg         = DemodConfig(mode="wfm", audio_rate=APT_AUDIO_RATE, volume=1.0)
-            demod       = Demodulator(cfg, sample_rate=2_048_000)
+            cfg = DemodConfig(
+                mode="wfm", audio_rate=APT_AUDIO_RATE, volume=1.0)
+            demod = Demodulator(cfg, sample_rate=2_048_000)
             actual_rate = demod.audio_rate_actual
-            afc         = AFC(sample_rate=2_048_000, center_freq=freq_hz)
-            source      = self._rf_factory(freq_hz, 2_048_000)
-            t0          = time.time()
+            afc = AFC(sample_rate=2_048_000, center_freq=freq_hz)
+            source = self._rf_factory(freq_hz, 2_048_000)
+            t0 = time.time()
 
             with self.console.status(
                 f"[bold cyan]Recibiendo APT {sat_name}…[/bold cyan]",
@@ -656,7 +657,8 @@ class NOAADecoder:
                     afc.estimate_offset(
                         np.frombuffer(iq, dtype=np.uint8).astype(np.float32)
                     )
-                    iq_arr = np.frombuffer(iq, dtype=np.uint8).view(np.complex64)
+                    iq_arr = np.frombuffer(
+                        iq, dtype=np.uint8).view(np.complex64)
                     iq_cor = afc.correct(iq_arr)
 
                     audio = demod.demodulate(iq_cor)
@@ -664,8 +666,8 @@ class NOAADecoder:
                         audio_buf.append(audio)
 
                     elapsed = time.time() - t0
-                    pct     = min(100, int(elapsed / duration * 100))
-                    lines   = int(elapsed * APT_LINE_RATE)
+                    pct = min(100, int(elapsed / duration * 100))
+                    lines = int(elapsed * APT_LINE_RATE)
                     status.update(
                         f"[bold cyan]APT {sat_name} · {pct}% · "
                         f"~{lines} líneas · AFC {afc._offset_hz:+.0f} Hz[/bold cyan]"
@@ -680,11 +682,12 @@ class NOAADecoder:
             log.exception("Error captura NOAA")
 
         if not audio_buf:
-            self.console.print("[red][!] Buffer vacío — sin señal capturada.[/red]")
+            self.console.print(
+                "[red][!] Buffer vacío — sin señal capturada.[/red]")
             return None
 
         audio_raw = np.concatenate(audio_buf)
-        audio     = _resample_2stage(audio_raw, actual_rate, APT_AUDIO_RATE)
+        audio = _resample_2stage(audio_raw, actual_rate, APT_AUDIO_RATE)
 
         self.console.print(
             f"[dim]  Buffer: {len(audio_raw)/actual_rate:.1f}s "
@@ -703,8 +706,8 @@ class NOAADecoder:
         audio:       np.ndarray,
         sat_name:    str,
         save_png:    bool,
-        on_evidence: Optional[Callable[[str, dict], None]],
-    ) -> Optional[Path]:
+        on_evidence: Callable[[str, dict | None, None]],
+    ) -> Path | None:
         self.console.print("[dim]  Backend: apt3[/dim]")
         try:
             data = apt3.decode(audio.astype(np.float32))
@@ -728,9 +731,10 @@ class NOAADecoder:
         audio:       np.ndarray,
         sat_name:    str,
         save_png:    bool,
-        on_evidence: Optional[Callable[[str, dict], None]],
-    ) -> Optional[Path]:
-        self.console.print("[dim]  Backend: nativo (PLL sync + AM demod)[/dim]")
+        on_evidence: Callable[[str, dict | None, None]],
+    ) -> Path | None:
+        self.console.print(
+            "[dim]  Backend: nativo (PLL sync + AM demod)[/dim]")
 
         with self.console.status("[cyan]PLL — buscando pulsos de sync…[/cyan]"):
             positions = self._pll.find_line_starts(audio)
@@ -747,10 +751,11 @@ class NOAADecoder:
             if end <= len(audio):
                 line_segments.append(audio[pos:end])
 
-        self.console.print(f"[green][+] {len(line_segments)} líneas sincronizadas[/green]")
+        self.console.print(
+            f"[green][+] {len(line_segments)} líneas sincronizadas[/green]")
 
-        rows_a: List[np.ndarray] = []
-        rows_b: List[np.ndarray] = []
+        rows_a: list[np.ndarray] = []
+        rows_b: list[np.ndarray] = []
 
         with self.console.status("[cyan]Decodificando líneas…[/cyan]"):
             for seg in line_segments:
@@ -762,7 +767,8 @@ class NOAADecoder:
                 rows_b.append(b)
 
         if not rows_a:
-            self.console.print("[red][!] No se decodificó ninguna línea.[/red]")
+            self.console.print(
+                "[red][!] No se decodificó ninguna línea.[/red]")
             return None
 
         img_a = _stretch_contrast(np.array(rows_a, dtype=np.uint8))
@@ -788,10 +794,10 @@ class NOAADecoder:
         audio:       np.ndarray,
         sat_name:    str,
         save_png:    bool,
-        on_evidence: Optional[Callable[[str, dict], None]],
-    ) -> Optional[Path]:
-        rows_a: List[np.ndarray] = []
-        rows_b: List[np.ndarray] = []
+        on_evidence: Callable[[str, dict | None, None]],
+    ) -> Path | None:
+        rows_a: list[np.ndarray] = []
+        rows_b: list[np.ndarray] = []
         off = 0
         while off + APT_SAMPLES_LINE <= len(audio):
             px = self._decoder.decode(audio[off: off + APT_SAMPLES_LINE])
@@ -808,7 +814,8 @@ class NOAADecoder:
         img_a = _stretch_contrast(np.array(rows_a, dtype=np.uint8))
         img_b = _stretch_contrast(np.array(rows_b, dtype=np.uint8))
 
-        self.console.print(f"[yellow]  Bruto: {img_a.shape[0]} líneas[/yellow]")
+        self.console.print(
+            f"[yellow]  Bruto: {img_a.shape[0]} líneas[/yellow]")
         self._render.render(img_a, img_b)
         if save_png and _PILLOW_OK:
             return self._save_png(img_a, img_b, sat_name, on_evidence)
@@ -819,12 +826,12 @@ class NOAADecoder:
         img_a:       np.ndarray,
         img_b:       np.ndarray,
         sat_name:    str,
-        on_evidence: Optional[Callable[[str, dict], None]],
-    ) -> Optional[Path]:
+        on_evidence: Callable[[str, dict | None, None]],
+    ) -> Path | None:
         try:
-            ts   = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             slug = sat_name.replace(" ", "_").replace("-", "_")
-            out  = Path("data/evidence/rf/noaa")
+            out = Path("data/evidence/rf/noaa")
             out.mkdir(parents=True, exist_ok=True)
 
             pa = out / f"NOAA_{slug}_A_{ts}.png"
@@ -832,10 +839,10 @@ class NOAADecoder:
             Image.fromarray(img_a, "L").save(str(pa))
             Image.fromarray(img_b, "L").save(str(pb))
 
-            paths: List[str] = [str(pa), str(pb)]
+            paths: list[str] = [str(pa), str(pb)]
 
             if img_a.shape[0] == img_b.shape[0]:
-                pc  = out / f"NOAA_{slug}_composite_{ts}.png"
+                pc = out / f"NOAA_{slug}_composite_{ts}.png"
                 rgb = np.zeros((*img_a.shape, 3), dtype=np.uint8)
                 rgb[..., 0] = img_b
                 rgb[..., 1] = img_a
@@ -866,8 +873,10 @@ class NOAADecoder:
         from rich.table import Table
         from rich import box
 
-        lat_s = Prompt.ask("[bold cyan][?] Latitud  (ej. 21.48)[/bold cyan]").strip()
-        lon_s = Prompt.ask("[bold cyan][?] Longitud (ej. -104.89)[/bold cyan]").strip()
+        lat_s = Prompt.ask(
+            "[bold cyan][?] Latitud  (ej. 21.48)[/bold cyan]").strip()
+        lon_s = Prompt.ask(
+            "[bold cyan][?] Longitud (ej. -104.89)[/bold cyan]").strip()
         try:
             lat, lon = float(lat_s), float(lon_s)
         except ValueError:

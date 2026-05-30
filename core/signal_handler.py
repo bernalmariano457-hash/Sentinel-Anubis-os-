@@ -14,7 +14,6 @@ class SignalManager:
         self._handlers: list[Callable[[], None]] = []
 
     def registrar_cleanup(self, fn: Callable[[], None]) -> None:
-        """Registra un callable sin argumentos que se ejecutará al cerrar."""
         self._handlers.append(fn)
 
     def registrar(self, on_signal: "Callable[[str], None] | None" = None) -> None:

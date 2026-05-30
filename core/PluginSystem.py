@@ -1,44 +1,65 @@
 from __future__ import annotations
 
-import os
-import sys
-import importlib
 import importlib.util
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich import box
+import logging
+from pathlib import Path
+from typing import TYPE_CHECKING
 
-console = Console()
-PLUGINS_PATH = "plugins"
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
+if TYPE_CHECKING:
+    from Main import ApexSentinel
+
+log = logging.getLogger("sentinel.plugins")
+
+_PLUGINS_PATH = Path("plugins")
+
+# Plantilla para nuevos plugins — se escribe una vez en disco como ejemplo.
+_PLUGIN_EJEMPLO = '''\
+from core.PluginSystem import PluginBase
+
+class EjemploPlugin(PluginBase):
+    NOMBRE      = "ejemplo"
+    VERSION     = "1.0"
+    DESCRIPCION = "Plugin de demostración del sistema"
+    AUTOR       = "AnubisOS"
+    COMANDOS    = ["hola", "ejemplo"]
+
+    def ejecutar(self, comando: str, args: list[str] | None = None) -> None:
+        if comando == "hola":
+            self.console.print("[green]¡Hola desde el plugin de ejemplo![/green]")
+        elif comando == "ejemplo":
+            self.console.print(
+                f"[cyan]Plugin:[/cyan] {self.NOMBRE} v{self.VERSION}\\n"
+                f"[cyan]Args:[/cyan]   {args}"
+            )
+            if self.sentinel.gp.proyecto_activo:
+                self.sentinel.gp.registrar_evidencia(
+                    "plugin_ejemplo", "Comando de ejemplo ejecutado", {"args": args}
+                )
+'''
 
 
 class PluginBase:
-    """
-    Clase base que todo plugin debe heredar.
-    Define la interfaz mínima requerida.
-    """
+
     NOMBRE = "plugin_base"
     VERSION = "1.0"
     DESCRIPCION = "Plugin base sin descripción"
     AUTOR = "Anónimo"
-    COMANDOS: list[str] = []     # Comandos que expone este plugin
+    COMANDOS:   list[str] = []
 
-    def __init__(self, sentinel):
-        """sentinel es la instancia de ApexSentinel (acceso a todos los módulos)."""
+    def __init__(self, sentinel: ApexSentinel) -> None:
         self.sentinel = sentinel
         self.console = sentinel.console
 
-    def ejecutar(self, comando: str, args: list = None):
-        """
-        Punto de entrada del plugin.
-        El sistema llama esto cuando el usuario escribe uno de los COMANDOS.
-        """
+    def ejecutar(self, comando: str, args: list[str] | None = None) -> None:
         raise NotImplementedError(
             f"El plugin '{self.NOMBRE}' debe implementar ejecutar()")
 
     def ayuda(self) -> str:
-        """Retorna texto de ayuda para este plugin."""
         cmds = ", ".join(self.COMANDOS) if self.COMANDOS else "ninguno"
         return (
             f"Plugin: {self.NOMBRE} v{self.VERSION}\n"
@@ -49,136 +70,110 @@ class PluginBase:
 
 
 class GestorPlugins:
-    """
-    Carga, registra y despacha plugins desde la carpeta plugins/.
-    Los plugins se cargan en caliente: no requieren reiniciar el sistema.
-    """
 
-    def __init__(self, sentinel):
+    def __init__(self, sentinel: ApexSentinel) -> None:
         self.sentinel = sentinel
-        self._plugins: dict[str, PluginBase] = {}   # nombre → instancia
-        self._comandos: dict[str, PluginBase] = {}   # comando → instancia
-        os.makedirs(PLUGINS_PATH, exist_ok=True)
+        # Usar el Console del sentinel — no crear uno global a nivel de módulo.
+        self._console: Console = sentinel.console
+        self._plugins:  dict[str, PluginBase] = {}
+        self._comandos: dict[str, PluginBase] = {}
+        _PLUGINS_PATH.mkdir(parents=True, exist_ok=True)
         self._crear_readme_plugins()
 
-    # ------------------------------------------------------------------
-    # CARGA
-    # ------------------------------------------------------------------
+    # Carga
 
-    def cargar_todos(self):
-        """Escanea plugins/ y carga todos los archivos .py válidos."""
-        cargados = 0
-        con_error = 0
-
-        archivos = [
-            f for f in os.listdir(PLUGINS_PATH)
-            if f.endswith(".py") and not f.startswith("_")
-        ]
-
-        for archivo in archivos:
-            resultado = self._cargar_archivo(archivo)
-            if resultado:
+    def cargar_todos(self) -> int:
+        cargados = con_error = 0
+        for archivo in sorted(_PLUGINS_PATH.glob("*.py")):
+            if archivo.name.startswith("_"):
+                continue
+            if self._cargar_archivo(archivo):
                 cargados += 1
             else:
                 con_error += 1
-
-        console.print(
-            f"[dim][plugins] {cargados} cargados, {con_error} con error.[/dim]"
-        )
+        self._console.print(
+            f"[dim][plugins] {cargados} cargados, {con_error} con error.[/dim]")
         return cargados
 
-    def recargar(self):
-        """Recarga todos los plugins en caliente sin reiniciar el sistema."""
+    def recargar(self) -> None:
+        """Limpia el registro y recarga todos los plugins sin reiniciar."""
         self._plugins.clear()
         self._comandos.clear()
         n = self.cargar_todos()
-        console.print(f"[green][+] Plugins recargados: {n}[/green]")
+        self._console.print(f"[green][+] Plugins recargados: {n}[/green]")
 
-    def _cargar_archivo(self, archivo: str) -> bool:
-        """Carga un archivo .py como plugin."""
-        ruta = os.path.join(PLUGINS_PATH, archivo)
-        nombre_modulo = archivo[:-3]
-
+    def _cargar_archivo(self, ruta: Path) -> bool:
+        nombre_modulo = ruta.stem
         try:
             spec = importlib.util.spec_from_file_location(nombre_modulo, ruta)
             modulo = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(modulo)
 
-            # Buscar la clase Plugin en el módulo
             clase_plugin = None
             for attr_name in dir(modulo):
                 attr = getattr(modulo, attr_name)
-                if (isinstance(attr, type) and
-                        issubclass(attr, PluginBase) and
-                        attr is not PluginBase):
+                if (isinstance(attr, type)
+                        and issubclass(attr, PluginBase)
+                        and attr is not PluginBase):
                     clase_plugin = attr
                     break
 
             if clase_plugin is None:
-                console.print(
-                    f"[yellow][!] {archivo}: no contiene clase que herede PluginBase.[/yellow]"
-                )
+                self._console.print(
+                    f"[yellow][!] {ruta.name}: no contiene clase que herede PluginBase.[/yellow]")
                 return False
 
             instancia = clase_plugin(self.sentinel)
-
-            # Registrar plugin
             self._plugins[instancia.NOMBRE] = instancia
 
-            # Registrar sus comandos
             for cmd in instancia.COMANDOS:
                 if cmd in self._comandos:
-                    console.print(
+                    self._console.print(
                         f"[yellow][!] Conflicto: comando '{cmd}' ya registrado. "
-                        f"Plugin '{archivo}' no lo sobrescribe.[/yellow]"
-                    )
+                        f"Plugin '{ruta.name}' no lo sobrescribe.[/yellow]")
                 else:
                     self._comandos[cmd] = instancia
 
-            console.print(
+            self._console.print(
                 f"[dim][plugin][/dim] [green]{instancia.NOMBRE}[/green] "
                 f"v{instancia.VERSION} — {instancia.DESCRIPCION}"
             )
+            log.info(
+                f"Plugin cargado: {instancia.NOMBRE} v{instancia.VERSION}")
             return True
 
         except Exception as e:
-            console.print(f"[red][!] Error cargando {archivo}: {e}[/red]")
+            self._console.print(
+                f"[red][!] Error cargando {ruta.name}: {e}[/red]")
+            log.warning(f"Error cargando plugin {ruta.name}: {e}")
             return False
 
-    # ------------------------------------------------------------------
-    # DESPACHO
-    # ------------------------------------------------------------------
+    # Despacho
 
     def tiene_comando(self, comando: str) -> bool:
         return comando in self._comandos
 
-    def ejecutar_comando(self, comando: str, args: list = None) -> bool:
-        """
-        Ejecuta el comando si algún plugin lo maneja.
-        Retorna True si fue manejado, False si no.
-        """
-        if comando in self._comandos:
-            try:
-                self._comandos[comando].ejecutar(comando, args or [])
-            except KeyboardInterrupt:
-                console.print("\n[yellow][!] Plugin cancelado.[/yellow]")
-            except Exception as e:
-                console.print(
-                    f"[red][!] Error en plugin '{comando}': {e}[/red]")
-            return True
-        return False
+    def ejecutar_comando(self, comando: str, args: list[str] | None = None) -> bool:
+        if comando not in self._comandos:
+            return False
+        try:
+            self._comandos[comando].ejecutar(comando, args or [])
+        except KeyboardInterrupt:
+            self._console.print("\n[yellow][!] Plugin cancelado.[/yellow]")
+        except Exception as e:
+            self._console.print(
+                f"[red][!] Error en plugin '{comando}': {e}[/red]")
+            log.error(f"Plugin '{comando}' error: {e}")
+        return True
 
-    # ------------------------------------------------------------------
-    # LISTADO
-    # ------------------------------------------------------------------
+    # Visualización
 
-    def listar(self):
-        """Muestra todos los plugins cargados."""
+    def listar(self) -> None:
         if not self._plugins:
-            console.print(Panel(
-                "[dim]No hay plugins cargados.\n"
-                f"Coloca archivos .py en la carpeta '{PLUGINS_PATH}/'[/dim]",
-                title="PLUGINS", border_style="dim"
+            self._console.print(Panel(
+                f"[dim]No hay plugins cargados.\n"
+                f"Coloca archivos .py en la carpeta '{_PLUGINS_PATH}/'[/dim]",
+                title="PLUGINS", border_style="dim",
             ))
             return
 
@@ -191,108 +186,40 @@ class GestorPlugins:
         tabla.add_column("Descripción", style="white")
         tabla.add_column("Autor",       style="dim",    min_width=10)
 
-        for nombre, p in self._plugins.items():
+        for p in self._plugins.values():
             cmds = ", ".join(p.COMANDOS) if p.COMANDOS else "—"
-            tabla.add_row(nombre, p.VERSION, cmds, p.DESCRIPCION, p.AUTOR)
+            tabla.add_row(p.NOMBRE, p.VERSION, cmds, p.DESCRIPCION, p.AUTOR)
 
-        console.print(Panel(tabla, title="[bold]PLUGINS CARGADOS[/bold]",
-                            border_style="green"))
+        self._console.print(Panel(tabla, title="[bold]PLUGINS CARGADOS[/bold]",
+                                  border_style="green"))
 
-    # ------------------------------------------------------------------
-    # README para desarrolladores de plugins
-    # ------------------------------------------------------------------
+    # Bootstrap
 
-    def _crear_readme_plugins(self):
-        readme = os.path.join(PLUGINS_PATH, "README.md")
-        if os.path.exists(readme):
-            return
-        contenido = '''# AnubisOS — Plugin System
-
-Coloca tus plugins en esta carpeta. Se cargan automáticamente al iniciar.
-
-## Estructura mínima de un plugin
-
-```python
-from core.PluginSystem import PluginBase
-
-class MiPlugin(PluginBase):
-    NOMBRE      = "mi_plugin"
-    VERSION     = "1.0"
-    DESCRIPCION = "Hace algo útil"
-    AUTOR       = "Tu nombre"
-    COMANDOS    = ["micomando", "mc"]   # Comandos que activan este plugin
-
-    def ejecutar(self, comando: str, args: list = None):
-        self.console.print(f"[green]Ejecutando {comando} con args: {args}[/green]")
-        # Tu lógica aquí
-
-    def ayuda(self) -> str:
-        return "Descripción de uso de mi plugin"
-```
-
-## Comandos del sistema relacionados
-
-- `plugins`        → Lista todos los plugins cargados
-- `plugins reload` → Recarga plugins sin reiniciar el sistema
-- `plugins ayuda <nombre>` → Ayuda de un plugin específico
-
-## Acceso a módulos del sistema
-
-Desde el plugin tienes acceso completo a `self.sentinel`:
-
-```python
-# Acceder al logger
-self.sentinel.log.info("Mensaje", "MiPlugin")
-
-# Acceder al proyecto activo
-proyecto = self.sentinel.gp.proyecto_activo
-
-# Registrar evidencia
-self.sentinel.gp.registrar_evidencia("mi_tipo", "descripción", datos={})
-```
-'''
-        with open(readme, "w", encoding="utf-8") as f:
-            f.write(contenido)
-
-
-# ------------------------------------------------------------------
-# PLUGIN DE EJEMPLO — guarda en plugins/ejemplo_plugin.py
-# ------------------------------------------------------------------
-
-PLUGIN_EJEMPLO = '''"""
-Plugin de ejemplo para AnubisOS.
-Archivo: plugins/ejemplo_plugin.py
-"""
-from core.PluginSystem import PluginBase
-
-class EjemploPlugin(PluginBase):
-    NOMBRE      = "ejemplo"
-    VERSION     = "1.0"
-    DESCRIPCION = "Plugin de demostración del sistema"
-    AUTOR       = "AnubisOS"
-    COMANDOS    = ["hola", "ejemplo"]
-
-    def ejecutar(self, comando: str, args: list = None):
-        if comando == "hola":
-            self.console.print("[green]¡Hola desde el plugin de ejemplo![/green]")
-        elif comando == "ejemplo":
-            self.console.print(
-                f"[cyan]Plugin:[/cyan] {self.NOMBRE} v{self.VERSION}\\n"
-                f"[cyan]Args:[/cyan]   {args}"
+    def _crear_readme_plugins(self) -> None:
+        readme = _PLUGINS_PATH / "README.md"
+        if not readme.exists():
+            readme.write_text(
+                "# AnubisOS — Plugin System\n\n"
+                "Coloca tus plugins en esta carpeta. Se cargan automáticamente al iniciar.\n\n"
+                "## Estructura mínima\n\n"
+                "```python\n"
+                "from core.PluginSystem import PluginBase\n\n"
+                "class MiPlugin(PluginBase):\n"
+                "    NOMBRE      = \"mi_plugin\"\n"
+                "    VERSION     = \"1.0\"\n"
+                "    DESCRIPCION = \"Hace algo útil\"\n"
+                "    AUTOR       = \"Tu nombre\"\n"
+                "    COMANDOS    = [\"micomando\"]\n\n"
+                "    def ejecutar(self, comando: str, args: list[str] | None = None):\n"
+                "        self.console.print(f\"Hola desde {self.NOMBRE}\")\n"
+                "```\n\n"
+                "## Comandos de gestión\n\n"
+                "- `plugins`               → Lista plugins cargados\n"
+                "- `plugins reload`        → Recarga sin reiniciar\n"
+                "- `plugins ayuda <nombre>` → Ayuda de un plugin\n",
+                encoding="utf-8",
             )
-            # Registrar evidencia si hay proyecto activo
-            if self.sentinel.gp.proyecto_activo:
-                self.sentinel.gp.registrar_evidencia(
-                    "plugin_ejemplo", "Comando de ejemplo ejecutado", {"args": args}
-                )
-'''
 
-
-def crear_plugin_ejemplo():
-    """Crea el plugin de ejemplo si no existe."""
-    os.makedirs(PLUGINS_PATH, exist_ok=True)
-    ruta = os.path.join(PLUGINS_PATH, "ejemplo_plugin.py")
-    if not os.path.exists(ruta):
-        with open(ruta, "w", encoding="utf-8") as f:
-            f.write(PLUGIN_EJEMPLO)
-        console.print(f"[dim]Plugin de ejemplo creado en {ruta}[/dim]")
+        ejemplo = _PLUGINS_PATH / "ejemplo_plugin.py"
+        if not ejemplo.exists():
+            ejemplo.write_text(_PLUGIN_EJEMPLO, encoding="utf-8")

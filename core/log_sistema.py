@@ -17,7 +17,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-# ── Estilos visuales (compatible con bootscreen.py) ──────────────────
+# Estilos visuales (compatible con bootscreen.py)
 try:
     from core.bootscreen import ESTILOS_LOG
 except ImportError:
@@ -31,7 +31,7 @@ except ImportError:
         "CRITICAL": ("bold red", "💀"),
     }
 
-# ── Constantes ────────────────────────────────────────────────────────
+# Constantes
 _MAX_ENTRADAS_MEMORIA: int = 1_000   # entradas en RAM
 _MAX_BYTES_LOG:        int = 5 * 1024 * 1024  # 5 MB por archivo
 _BACKUP_COUNT:         int = 5        # hasta 5 rotaciones (25 MB total)
@@ -40,17 +40,12 @@ _QUEUE_MAXSIZE:        int = 4_096   # entradas pendientes en cola
 
 
 def _ts_iso() -> str:
-    """Timestamp ISO-8601 con UTC explícito. Apto para correlación forense."""
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
+# Adaptador stdlib → LogSistema
 
-# ── Adaptador stdlib → LogSistema ─────────────────────────────────────
+
 class _StdlibHandler(logging.Handler):
-    """
-    Redirige los mensajes del módulo logging estándar de Python
-    hacia LogSistema, de modo que librerías de terceros (nmap, scapy…)
-    también queden registradas en el historial de Sentinel.
-    """
     _NIVEL_MAP = {
         logging.DEBUG:    "DEBUG",
         logging.INFO:     "INFO",
@@ -68,39 +63,17 @@ class _StdlibHandler(logging.Handler):
         modulo = record.name or "stdlib"
         self._ls._encolar(nivel, self.format(record), modulo, extra={})
 
-
-# ═════════════════════════════════════════════════════════════════════
 # CLASE PRINCIPAL
-# ═════════════════════════════════════════════════════════════════════
+
 
 class LogSistema:
-    """
-    Sistema de logging centralizado para APEX SENTINEL.
-
-    Características:
-      - Thread-safe: múltiples módulos pueden loguear simultáneamente.
-      - Asíncrono: el I/O de disco ocurre en un worker thread separado,
-        nunca bloqueando el hilo principal durante un escaneo.
-      - Rotación: los archivos .log rotan automáticamente al alcanzar
-        5 MB, conservando hasta 5 backups (25 MB total en disco).
-      - Audit trail: los eventos AUDIT van a un archivo separado
-        (`audit.log`) para facilitar análisis forense posterior.
-      - JSONL: exporta a JSON Lines, formato nativo de ELK/Splunk/SIEM.
-
-    Uso básico:
-        log = LogSistema(console, base_dir=Path("/opt/sentinel"))
-        log.info("Escaneo iniciado", "RFScanner")
-        log.audit("Acceso autenticado", "Auth", extra={"user": "admin"})
-        log.cerrar()   # flush final + cierre limpio
-    """
-
     def __init__(
         self,
         console: Console,
         base_dir: Path | None = None,
         session_id: str | None = None,
     ) -> None:
-        # ── Rutas absolutas ──────────────────────────────────────────
+        # Rutas absolutas
         self._base = (base_dir or Path(
             __file__).resolve().parent / "data").resolve()
         self._log_dir = self._base / "logs"
@@ -111,7 +84,7 @@ class LogSistema:
         self._json_file = self._log_dir / "historial.json"
         self._jsonl_file = self._log_dir / "events.jsonl"
 
-        # ── Estado interno ───────────────────────────────────────────
+        # Estado interno
         self.console = console
         self.session_id = session_id or str(uuid.uuid4())
         self._lock = threading.Lock()
@@ -120,7 +93,7 @@ class LogSistema:
             maxsize=_QUEUE_MAXSIZE)
         self._dirty = False   # hay entradas sin persistir en JSON
 
-        # ── Configurar handlers de stdlib logging ────────────────────
+        # Configurar handlers de stdlib logging
         self._logger = self._setup_logger("sentinel",   self._log_file)
         self._audit_logger = self._setup_logger(
             "sentinel.audit", self._audit_file)
@@ -130,10 +103,10 @@ class LogSistema:
         self._stdlib_handler.setLevel(logging.WARNING)
         logging.getLogger().addHandler(self._stdlib_handler)
 
-        # ── Cargar historial previo ──────────────────────────────────
+        # Cargar historial previo
         self._entradas = self._cargar_historial()
 
-        # ── Worker de I/O asíncrono ──────────────────────────────────
+        # Worker de I/O asíncrono
         self._stop_event = threading.Event()
         self._worker = threading.Thread(
             target=self._io_worker,
@@ -143,7 +116,7 @@ class LogSistema:
         self._worker.start()
         atexit.register(self.cerrar)
 
-    # ── Setup stdlib logger con rotación ─────────────────────────────
+    # Setup stdlib logger con rotación
 
     @staticmethod
     def _setup_logger(name: str, filepath: Path) -> logging.Logger:
@@ -165,15 +138,9 @@ class LogSistema:
             logger.addHandler(handler)
         return logger
 
-    # ── Worker de I/O (hilo separado) ────────────────────────────────
+    # Worker de I/O (hilo separado)
 
     def _io_worker(self) -> None:
-        """
-        Lee entradas de la cola y las persiste en disco cada
-        _FLUSH_INTERVAL segundos o cuando llega la señal de cierre.
-        Al agrupar escrituras evitamos abrir/cerrar el archivo en
-        cada log(), lo que sería catastrófico bajo carga alta.
-        """
         pending: list[dict] = []
         while not self._stop_event.is_set():
             try:
@@ -211,8 +178,7 @@ class LogSistema:
             self._flush_to_disk(remaining)
 
     def _flush_to_disk(self, entries: list[dict]) -> None:
-        """Escribe un lote de entradas a JSONL y actualiza historial JSON."""
-        # ── JSONL (append-only, apto para SIEM) ─────────────────────
+        # JSONL (append-only, apto para SIEM)
         try:
             with self._jsonl_file.open("a", encoding="utf-8") as f:
                 for e in entries:
@@ -220,7 +186,7 @@ class LogSistema:
         except OSError:
             pass
 
-        # ── historial.json (snapshot de las últimas N entradas) ──────
+        # historial.json (snapshot de las últimas N entradas)
         with self._lock:
             snapshot = self._entradas[-_MAX_ENTRADAS_MEMORIA:]
         try:
@@ -229,7 +195,7 @@ class LogSistema:
         except OSError:
             pass
 
-    # ── Carga inicial ─────────────────────────────────────────────────
+    # Carga inicial
 
     def _cargar_historial(self) -> list[dict]:
         try:
@@ -241,7 +207,7 @@ class LogSistema:
             pass
         return []
 
-    # ── Núcleo: encolar entrada ───────────────────────────────────────
+    # Núcleo: encolar entrada
 
     def _encolar(
         self,
@@ -295,7 +261,7 @@ class LogSistema:
         # Mostrar en consola
         self._render_consola(entrada)
 
-    # ── Render consola ────────────────────────────────────────────────
+    # Render consola
 
     def _render_consola(self, entrada: dict) -> None:
         color, icono = ESTILOS_LOG.get(entrada["nivel"], ("white", "·"))
@@ -316,7 +282,7 @@ class LogSistema:
             line.append_text(Text.from_markup(kv))
         self.console.print(line)
 
-    # ── API pública ───────────────────────────────────────────────────
+    # API pública
 
     def debug(self, msg: str, modulo: str = "Sistema",
               **extra: Any) -> None:
@@ -344,14 +310,9 @@ class LogSistema:
 
     def audit(self, msg: str, modulo: str = "Auditoría",
               **extra: Any) -> None:
-        """
-        Nivel especial para eventos de seguridad trazables:
-        login, cambio de config, acceso a datos sensibles, etc.
-        Va a audit.log separado además del historial normal.
-        """
         self._encolar("AUDIT", msg, modulo, extra)
 
-    # ── Consulta / visualización ──────────────────────────────────────
+    # Consulta / visualización
 
     def mostrar_historial(
         self,
@@ -359,10 +320,7 @@ class LogSistema:
         nivel: str | None = None,
         modulo: str | None = None,
     ) -> None:
-        """
-        Muestra las últimas `ultimas` entradas, con filtros opcionales
-        por nivel (INFO, WARNING, ERROR, AUDIT…) y/o por módulo.
-        """
+
         with self._lock:
             entradas = list(self._entradas)
 
@@ -381,7 +339,7 @@ class LogSistema:
             ))
             return
 
-        # ── Resumen por nivel ────────────────────────────────────────
+        # Resumen por nivel
         with self._lock:
             todas = list(self._entradas)
         conteos: dict[str, int] = {}
@@ -402,7 +360,7 @@ class LogSistema:
             box=box.SIMPLE,
         ))
 
-        # ── Tabla de eventos ─────────────────────────────────────────
+        # Tabla de eventos
         tabla = Table(
             box=box.SIMPLE_HEAD,
             header_style="bold cyan",
@@ -450,11 +408,6 @@ class LogSistema:
         ))
 
     def exportar_jsonl(self, destino: Path | None = None) -> Path:
-        """
-        Exporta todos los eventos de la sesión actual a un archivo
-        JSONL (JSON Lines). Ideal para ingestar en ELK/Splunk/Graylog.
-        Retorna la ruta del archivo generado.
-        """
         if destino is None:
             ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             destino = self._log_dir / \
@@ -471,17 +424,12 @@ class LogSistema:
         return destino
 
     def verificar_y_limpiar(self, max_entradas: int = _MAX_ENTRADAS_MEMORIA) -> None:
-        """Trunca las entradas en RAM si superan el máximo."""
         with self._lock:
             if len(self._entradas) > max_entradas:
                 self._entradas = self._entradas[-max_entradas:]
 
     def cerrar(self) -> None:
-        """
-        Detiene el worker de I/O y hace flush final a disco.
-        Se llama automáticamente al salir (atexit), pero también
-        se puede llamar explícitamente al shutdown de Sentinel.
-        """
+
         if self._stop_event.is_set():
             return  # ya cerrado
         self._stop_event.set()

@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -15,10 +14,8 @@ from modules.rf.RFScanner import RFScanner
 
 log = logging.getLogger("sentinel.rf.module")
 
-
-# ════════════════════════════════════════════════════════════════════
 # MÓDULO RF INTEGRADO — fachada sobre RFScanner para el sentinel
-# ════════════════════════════════════════════════════════════════════
+
 #
 # Esta clase es el punto de entrada que el sentinel instancia.
 # Toda la lógica de captura, DSP, renderizado, DB y grabación
@@ -28,7 +25,6 @@ log = logging.getLogger("sentinel.rf.module")
 #   3. Expone la API pública que el sentinel espera
 #   4. Agrega operaciones de alto nivel (bandas tácticas, consulta DB)
 #      que combinan varias llamadas a RFScanner
-# ════════════════════════════════════════════════════════════════════
 
 class RFModuleIntegrado:
 
@@ -59,8 +55,7 @@ class RFModuleIntegrado:
         )
         log.info("RFModuleIntegrado inicializado — hw=%s", self.hw_nombre)
 
-    # ── Setup interno ─────────────────────────────────────────────────
-
+    # Setup interno
     def _poblar_mock_desarrollo(self) -> None:
         senales = [
             dict(freq_offset_hz=       0, power_dbm=-55, mode="nfm",  bw_hz=12_500),
@@ -73,8 +68,7 @@ class RFModuleIntegrado:
             self._scanner.agregar_senal_mock(**s)
         log.debug("Mock desarrollo: %d señales sintéticas añadidas", len(senales))
 
-    # ── Propiedades delegadas ─────────────────────────────────────────
-
+    # Propiedades delegadas
     @property
     def sample_rate(self) -> int:
         return self._scanner.sample_rate
@@ -91,8 +85,7 @@ class RFModuleIntegrado:
     def _signal_db(self):
         return self._scanner.signal_db
 
-    # ── API pública — delegación directa a RFScanner ──────────────────
-
+    # API pública — delegación directa a RFScanner
     def escanear_frecuencia(self, freq_mhz: float, duracion: int = 10):
         self._sync_hw_estado()
         self._scanner.escanear_frecuencia(freq_mhz, duracion)
@@ -143,8 +136,7 @@ class RFModuleIntegrado:
     def listar_grabaciones(self):
         self._scanner.recorder.listar()
 
-    # ── Operaciones de alto nivel (exclusivas de rf_module) ───────────
-
+    # Operaciones de alto nivel (exclusivas de rf_module)
     def bandas_tacticas(self):
         bandas = tactical_bands()
         if not bandas:
@@ -276,13 +268,11 @@ class RFModuleIntegrado:
     def top_senales(self, n: int = 10):
         self._scanner.top_senales(n)
 
-    # ── Estado ────────────────────────────────────────────────────────
-
+    # Estado
     def estado(self):
         self._scanner.estado()
 
-    # ── Menú ──────────────────────────────────────────────────────────
-
+    # Menú
     def menu(self):
         self.console.print()
         self.console.print(Panel(
@@ -466,8 +456,7 @@ class RFModuleIntegrado:
         else:
             self._print("[yellow][!] Opción no reconocida.[/yellow]")
 
-    # ── Ciclo de vida ─────────────────────────────────────────────────
-
+    # Ciclo de vida
     def cerrar(self):
         try:
             self._scanner.cerrar()
@@ -481,8 +470,7 @@ class RFModuleIntegrado:
     def __exit__(self, *_):
         self.cerrar()
 
-    # ── Helpers internos ──────────────────────────────────────────────
-
+    # Helpers internos
     def _sync_hw_estado(self):
         self.hw_nombre = self._scanner.hw_nombre
 

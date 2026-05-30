@@ -16,7 +16,6 @@ from modules.rf.rf_config import StorageConfig
 
 log = logging.getLogger(__name__)
 
-
 SCHEMA_SQL = (
     "PRAGMA journal_mode = WAL;\n"
     "PRAGMA foreign_keys = ON;\n"
@@ -77,7 +76,6 @@ SCHEMA_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_signals_snr       ON signals(snr_db DESC);\n"
 )
 
-
 class SignalDB:
 
     def __init__(self, cfg: StorageConfig) -> None:
@@ -126,8 +124,7 @@ class SignalDB:
         finally:
             conn.close()
 
-    # ── Sesiones ─────────────────────────────────────────────────────
-
+    # Sesiones
     def open_session(self, hw_type: str = "", sample_rate: int = 0,
                      notes: str = "") -> int:
         with self._lock, self._connect() as conn:
@@ -152,8 +149,7 @@ class SignalDB:
         log.info("Sesion RF cerrada — ID=%d", self._session_id)
         self._session_id = None
 
-    # ── Señales ──────────────────────────────────────────────────────
-
+    # Señales
     def insert_signal(self, sig) -> int:
         d         = sig.to_dict() if hasattr(sig, "to_dict") else dict(sig)
         banda     = ""
@@ -256,8 +252,7 @@ class SignalDB:
                  hw_type, filename, size_mb, notes)
             )
 
-    # ── Mantenimiento ────────────────────────────────────────────────
-
+    # Mantenimiento
     def purge_old(self, retention_days: int) -> None:
         if retention_days <= 0:
             return
@@ -287,10 +282,7 @@ class SignalDB:
                 ) if self.db_path.exists() else 0,
             }
 
-
-# ════════════════════════════════════════════════════════════════════
 # CSV EXPORT
-# ════════════════════════════════════════════════════════════════════
 
 class CSVExporter:
 
@@ -357,10 +349,7 @@ class CSVExporter:
             log.error("Error exportando CSV barrido: %s", e)
             raise
 
-
-# ════════════════════════════════════════════════════════════════════
 # SigMF WRITER — GRABACION STREAMING
-# ════════════════════════════════════════════════════════════════════
 
 class SigMFWriter:
 
@@ -375,7 +364,6 @@ class SigMFWriter:
         ts   = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         base = self.iq_path / f"iq_{freq_hz/1e6:.3f}MHz_{ts}"
         return SigMFRecording(base, freq_hz, sample_rate, hw_type, notes)
-
 
 class SigMFRecording:
 

@@ -1,23 +1,19 @@
 from __future__ import annotations
 
-
-
-
-# ════════════════════════════════════════════════════════════════════
 # BASE DE DATOS DE BANDAS RF
-# ════════════════════════════════════════════════════════════════════
+
 # (freq_min_MHz, freq_max_MHz, nombre, tipo, descripcion, tactica)
 # tactica: True = banda de alto interés operacional
 
 BANDAS_RF: list[tuple] = [
-    # ── Broadcast ───────────────────────────────────────────────────
+    # Broadcast
     (76.0,    88.0,   "FM Japon",          "BROADCAST",
      "Radio FM banda japonesa",                        False),
     (87.5,   108.0,   "FM Radio",          "BROADCAST",
      "Radio FM comercial",                             False),
     (162.4,  162.55,  "NOAA Weather",      "BROADCAST",
      "Radio meteorologica NOAA (USA)",                 False),
-    # ── Aviacion ────────────────────────────────────────────────────
+    # Aviacion
     (108.0,  118.0,   "VOR/ILS",           "AVIATION",
      "Radionavegacion aerea civil VOR/ILS",            False),
     (118.0,  137.0,   "ATC VHF",           "AVIATION",
@@ -28,7 +24,7 @@ BANDAS_RF: list[tuple] = [
      "Transponders aeronaves 1090ES",                  True),
     (978.0,  978.1,   "UAT ADS-B",         "AVIATION",
      "ADS-B Universal Access Transceiver (978MHz)",    True),
-    # ── Meteorologia y satelites ─────────────────────────────────────
+    # Meteorologia y satelites
     (137.0,  138.0,   "NOAA/MetSat",       "SATELLITE",
      "Satelites meteorologicos NOAA/METEOR",           False),
     (400.0,  406.0,   "Radiosondas",       "SATELLITE",
@@ -37,14 +33,14 @@ BANDAS_RF: list[tuple] = [
      "Balizas de emergencia internacionales",          True),
     (1525.0, 1559.0,  "Inmarsat/Iridium",  "SATELLITE",
      "Comunicaciones satelitales L-Band",              True),
-    # ── Amateur ─────────────────────────────────────────────────────
+    # Amateur
     (144.0,  148.0,   "VHF Amateur",       "AMATEUR",
      "Radio amateur 2m",                               False),
     (430.0,  440.0,   "UHF Amateur",       "AMATEUR",
      "Radio amateur 70cm",                             False),
     (1240.0, 1300.0,  "SHF Amateur 23cm",  "AMATEUR",
      "Radio amateur 23cm",                             False),
-    # ── PMR / Profesional movil ──────────────────────────────────────
+    # PMR / Profesional movil
     (148.0,  174.0,   "VHF PMR",           "PMR",
      "Radio movil profesional VHF",                    False),
     (446.0,  446.2,   "PMR446",            "PMR",
@@ -55,14 +51,14 @@ BANDAS_RF: list[tuple] = [
      "TETRA autoridades de seguridad publica",         True),
     (806.0,  869.0,   "TETRA/LMR 800",     "PMR",
      "Radio digital TETRA / P25",                      True),
-    # ── Militar ─────────────────────────────────────────────────────
+    # Militar
     (138.0,  144.0,   "Militar VHF",       "MILITARY",
      "Comunicaciones militares VHF",                   True),
     (225.0,  400.0,   "Militar UHF/AM",    "MILITARY",
      "SATCOM/datos militares HAVE QUICK / SINCGARS",   True),
     (1350.0, 1390.0,  "Radar L-Band",      "MILITARY",
      "Radar de vigilancia L-Band",                     True),
-    # ── ISM ─────────────────────────────────────────────────────────
+    # ISM
     (315.0,  315.1,   "ISM 315 MHz",       "ISM",
      "Mandos distancia EEUU 315 MHz",                  False),
     (433.0,  435.0,   "ISM 433 MHz",       "ISM",
@@ -71,7 +67,7 @@ BANDAS_RF: list[tuple] = [
      "LoRa, Zigbee, alarmas EU",                       False),
     (902.0,  928.0,   "ISM 915 MHz",       "ISM",
      "LoRa US, RFID, Z-Wave",                          False),
-    # ── Celular ─────────────────────────────────────────────────────
+    # Celular
     (699.0,  716.0,   "LTE 700 UL",        "CELLULAR",
      "Uplink LTE banda 12/17",                         False),
     (729.0,  746.0,   "LTE 700 DL",        "CELLULAR",
@@ -96,7 +92,7 @@ BANDAS_RF: list[tuple] = [
      "LTE banda 7/41 2.6 GHz",                         False),
     (3400.0, 3800.0,  "5G NR n77/n78",     "CELLULAR",
      "5G NR banda media C-band",                       False),
-    # ── GNSS ────────────────────────────────────────────────────────
+    # GNSS
     (1176.4, 1176.5,  "GPS L5",            "GNSS",
      "GPS señal L5 / Galileo E5a",                     False),
     (1227.6, 1227.7,  "GPS L2",            "GNSS",
@@ -107,14 +103,14 @@ BANDAS_RF: list[tuple] = [
      "GPS civil señal principal",                      False),
     (1602.0, 1616.0,  "GLONASS L1",        "GNSS",
      "GLONASS señal L1 FDMA",                          False),
-    # ── Wi-Fi / BT ──────────────────────────────────────────────────
+    # Wi-Fi / BT
     (2400.0, 2484.0,  "ISM 2.4 GHz",       "WIRELESS",
      "Wi-Fi b/g/n + Bluetooth + Zigbee",               False),
     (5150.0, 5850.0,  "Wi-Fi 5 GHz",       "WIRELESS",
      "Wi-Fi a/n/ac/ax 5 GHz",                          False),
     (5925.0, 7125.0,  "Wi-Fi 6 GHz",       "WIRELESS",
      "Wi-Fi 6E banda 6 GHz",                           False),
-    # ── PAGER / Misc ─────────────────────────────────────────────────
+    # PAGER / Misc
     (929.0,  932.0,   "POCSAG/FLEX",       "PAGER",
      "Paginadores POCSAG/FLEX",                        False),
     (26.9,   27.4,    "CB Radio",          "PMR",
@@ -125,9 +121,7 @@ BANDAS_RF: list[tuple] = [
      "Motorola iDEN SMR",                              False),
 ]
 
-# ════════════════════════════════════════════════════════════════════
 # COLORES RICH POR TIPO
-# ════════════════════════════════════════════════════════════════════
 
 COLORES_TIPO: dict[str, str] = {
     "BROADCAST": "cyan",
@@ -162,10 +156,7 @@ TACTICAL_SCORE: dict[str, int] = {
     "MISC":        1,
 }
 
-
-# ════════════════════════════════════════════════════════════════════
 # FUNCIONES DE CLASIFICACIÓN
-# ════════════════════════════════════════════════════════════════════
 
 def identify_band(freq_mhz: float) -> dict | None:
     candidates = []
@@ -189,7 +180,6 @@ def identify_band(freq_mhz: float) -> dict | None:
     # Más específica primero (menor rango), luego mayor puntuacion tactica
     return min(candidates, key=lambda x: (x["rango_mhz"], -x["tactical_score"]))
 
-
 def bands_in_range(freq_min_mhz: float,
                    freq_max_mhz: float) -> list[dict]:
     result = []
@@ -207,7 +197,6 @@ def bands_in_range(freq_min_mhz: float,
             })
     return result
 
-
 def tactical_bands() -> list[dict]:
     return sorted(
         [
@@ -224,7 +213,6 @@ def tactical_bands() -> list[dict]:
         ],
         key=lambda x: -x["tactical_score"],
     )
-
 
 def bands_by_type(tipo: str) -> list[dict]:
     return [

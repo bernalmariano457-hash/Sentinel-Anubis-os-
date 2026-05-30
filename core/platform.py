@@ -8,7 +8,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
 
-# ── Paths de identificación de hardware ──────────────────────────────
+# Paths de identificación de hardware
 _DT_MODEL       = Path("/proc/device-tree/model")
 _DT_BASE        = Path("/sys/firmware/devicetree/base/model")
 _DT_COMPAT      = Path("/proc/device-tree/compatible")
@@ -17,14 +17,12 @@ _DSI_DRM        = Path("/sys/class/drm/card0/card0-DSI-1")
 _FRAMEBUFFER    = Path("/dev/fb0")
 _TTYAMA         = Path("/dev/ttyAMA0")
 
-
 class Platform(Enum):
     UCONSOLE    = auto()   # ClockworkPi uConsole (cualquier modelo)
     TERMUX      = auto()   # Android / Termux
     KALI        = auto()   # Kali Linux / Debian / Ubuntu x86-64
     RASPI       = auto()   # Raspberry Pi genérico (no uConsole)
     GENERIC     = auto()   # Linux genérico
-
 
 @dataclass(frozen=True)
 class ScreenProfile:
@@ -49,7 +47,6 @@ class ScreenProfile:
     def spectrum_height(self) -> int:
         # Deja 8 filas para header, marcadores, controles y bordes
         return max(10, min(self.rows - 9, 30))
-
 
 @dataclass(frozen=True)
 class PlatformInfo:
@@ -79,10 +76,8 @@ class PlatformInfo:
         parts.append(f"{self.screen.cols}×{self.screen.rows}")
         return " | ".join(parts)
 
-
-# ── Cache de instancia única ──────────────────────────────────────────
+# Cache de instancia única
 _cached: Optional[PlatformInfo] = None
-
 
 def detect(force: bool = False) -> PlatformInfo:
     global _cached
@@ -91,8 +86,7 @@ def detect(force: bool = False) -> PlatformInfo:
     _cached = _build()
     return _cached
 
-
-# ── Construcción de PlatformInfo ──────────────────────────────────────
+# Construcción de PlatformInfo
 
 def _build() -> PlatformInfo:
     machine  = platform.machine()
@@ -111,7 +105,6 @@ def _build() -> PlatformInfo:
         is_tty=is_tty,
     )
 
-
 def _read_model() -> str:
     for path in (_DT_MODEL, _DT_BASE, _DT_COMPAT):
         if path.exists():
@@ -120,7 +113,6 @@ def _read_model() -> str:
             except OSError:
                 pass
     return ""
-
 
 def _classify(model: str, machine: str) -> Platform:
     model_lo = model.lower()
@@ -144,7 +136,6 @@ def _classify(model: str, machine: str) -> Platform:
         return Platform.RASPI
 
     return Platform.KALI if sys.platform == "linux" else Platform.GENERIC
-
 
 def _build_screen(model: str, is_tty: bool) -> ScreenProfile:
     # Intentar tamaño real del terminal
@@ -177,7 +168,6 @@ def _build_screen(model: str, is_tty: bool) -> ScreenProfile:
 
     return ScreenProfile(cols=cols, rows=rows, is_tty=is_tty)
 
-
 def _terminal_size() -> tuple[int, int]:
     # 1. os.get_terminal_size (stdout)
     for fd in (1, 2, 0):
@@ -206,7 +196,6 @@ def _terminal_size() -> tuple[int, int]:
 
     return 80, 24
 
-
 def _is_tty() -> bool:
     return (
         not os.environ.get("DISPLAY")
@@ -214,14 +203,11 @@ def _is_tty() -> bool:
         and os.environ.get("XDG_SESSION_TYPE", "") not in ("x11", "wayland")
     )
 
-
 def _is_bcm2711() -> bool:
     return _cpuinfo_has("bcm2711")
 
-
 def _is_bcm27xx() -> bool:
     return any(_cpuinfo_has(s) for s in ("bcm2835", "bcm2836", "bcm2837", "bcm2711"))
-
 
 def _cpuinfo_has(token: str) -> bool:
     if not _CPUINFO.exists():
@@ -230,7 +216,6 @@ def _cpuinfo_has(token: str) -> bool:
         return token in _CPUINFO.read_text(errors="ignore").lower()
     except OSError:
         return False
-
 
 def _read_drm_resolution() -> tuple[int, int]:
     modes_path = _DSI_DRM / "modes"
@@ -242,7 +227,6 @@ def _read_drm_resolution() -> tuple[int, int]:
         except (ValueError, IndexError, OSError):
             pass
     return 1280, 480
-
 
 def _read_fb_resolution() -> tuple[int, int] | None:
     virtual = Path("/sys/class/graphics/fb0/virtual_size")

@@ -5,7 +5,6 @@ import logging.handlers
 import sys
 from pathlib import Path
 
-
 _RICH_OK = False
 try:
     from rich.logging import RichHandler
@@ -23,10 +22,6 @@ def setup_logger(
     backup_count: int = 3,
     rich:         bool = True,
 ) -> logging.Logger:
-    """
-    Configura y retorna el logger raíz de rfscanner.
-    Llamar una sola vez al inicio del programa.
-    """
     root = logging.getLogger(_ROOT_LOGGER)
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
@@ -39,7 +34,7 @@ def setup_logger(
         datefmt="%H:%M:%S",
     )
 
-    # ── Consola ──────────────────────────────────────────────────────
+    # Consola
     if rich and _RICH_OK:
         console_h = RichHandler(
             level=getattr(logging, level.upper(), logging.INFO),
@@ -52,7 +47,7 @@ def setup_logger(
 
     root.addHandler(console_h)
 
-    # ── Archivo con rotación ─────────────────────────────────────────
+    # Archivo con rotación
     if log_file:
         try:
             log_path = Path(log_file)
@@ -73,7 +68,6 @@ def setup_logger(
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Retorna un logger hijo del logger raíz de rfscanner."""
     if not name.startswith(_ROOT_LOGGER):
         name = f"{_ROOT_LOGGER}.{name}"
     return logging.getLogger(name)

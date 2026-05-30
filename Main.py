@@ -1,9 +1,4 @@
 from __future__ import annotations
-from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
-from core.vendor_resolver import VendorResolver
-from core.command_handler import CommandHandler
-from core.ModuleRegistry import ModuleRegistry
-from core.log_sistema import LogSistema
 
 import json
 import os
@@ -19,14 +14,17 @@ from rich.prompt import Prompt
 from rich.panel import Panel
 from rich.rule import Rule
 
-# ── Asegurar ruta del proyecto en modo desarrollo (sin instalar) ───────
+from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
+from core.vendor_resolver import VendorResolver
+from core.command_handler import CommandHandler
+from core.ModuleRegistry import ModuleRegistry
+from core.log_sistema import LogSistema
+
+# Modo desarrollo: asegura que el proyecto esté en el path antes de importar core/
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-# ── Core ──────────────────────────────────────────────────────────────
-
-# ── Bootscreen ────────────────────────────────────────────────────────
 try:
     from core.bootscreen import (
         COMANDOS_HELP,
@@ -49,7 +47,8 @@ except ImportError:
                       cmds: dict[str, Any] | None = None) -> None:
         c.print(Panel("[dim]Sin ayuda.[/dim]", title="AYUDA"))
 
-# ── Auth ──────────────────────────────────────────────────────────────
+# auth es crítico — si no existe el módulo el sistema no debería arrancar,
+# pero mantenemos el fallback para entornos de desarrollo sin el paquete completo
 try:
     from core.auth import GestorAuth
 except ImportError:
@@ -57,7 +56,7 @@ except ImportError:
         def __init__(self, *a: Any, **kw: Any) -> None: pass
         def solicitar_acceso(self) -> bool: return True
 
-# ── Directorios de trabajo ────────────────────────────────────────────
+
 _WORK_DIRS = (
     "data/logs", "data/evidence", "data/evidence/rf",
     "data/evidence/rf/iq", "data/evidence/mobile",
@@ -69,10 +68,6 @@ def _ensure_dirs() -> None:
     for d in _WORK_DIRS:
         os.makedirs(d, exist_ok=True)
 
-
-# ════════════════════════════════════════════════════════════════════
-# CLASE PRINCIPAL
-# ════════════════════════════════════════════════════════════════════
 
 class ApexSentinel:
 
@@ -93,22 +88,17 @@ class ApexSentinel:
 
         self._registrar_senales()
 
-        # Actualiza el User-Agent del VendorResolver con la versión real
         VendorResolver._USER_AGENT = f"ApexSentinel/{self.version}"
 
-        # Carga declarativa de módulos
         self._registry = ModuleRegistry(self)
         self._registry.cargar_todos()
 
-        # Despachador de comandos
         self._cmd = CommandHandler(self)
 
-        # Persistir primer_arranque → False tras el primer boot
         if self.config.get("sistema", {}).get("primer_arranque", False):
             self.config["sistema"]["primer_arranque"] = False
             self._guardar_config()
 
-        # Bootscreen con estados reales de módulos
         mostrar_bootloader(
             self.console,
             nombre=self.nombre,
@@ -117,7 +107,7 @@ class ApexSentinel:
             estados_modulos=self._registry.estados(),
         )
 
-    # ── Señales ───────────────────────────────────────────────────────
+    # Señales del sistema
 
     def _registrar_senales(self) -> None:
         def _handler(signum: int, frame: Any) -> None:
@@ -151,7 +141,6 @@ class ApexSentinel:
                     self.rf.cerrar()
                 except Exception:
                     pass
-            # wifitri / adsb — sin hardware propio, pero cerramos si exponen cerrar()
             for _attr in ("wifitri", "adsb"):
                 _mod = getattr(self, _attr, None)
                 if _mod and hasattr(_mod, "cerrar"):
@@ -162,7 +151,7 @@ class ApexSentinel:
         except Exception:
             pass
 
-    # ── Configuración ─────────────────────────────────────────────────
+    # Config
 
     def _cargar_config(self) -> dict[str, Any]:
         try:
@@ -178,20 +167,18 @@ class ApexSentinel:
             raise SystemExit("[FATAL] config.json está dañado.")
 
     def _guardar_config(self) -> None:
-        # Persiste config.json cuando primer_arranque cambia a False
         try:
             with open("config.json", "w", encoding="utf-8") as f:
                 json.dump(self.config, f, ensure_ascii=False, indent=2)
         except OSError as e:
             self.log.warning(f"No se pudo guardar config.json: {e}", "Config")
 
-    # ── Helpers ───────────────────────────────────────────────────────
+    # Helpers
 
     def _iface(self) -> str:
         return getattr(getattr(self, "bt", None), "iface", "wlan0mon")
 
     def _modulo_ok(self, nombre_attr: str) -> bool:
-        # Verifica que el attr del módulo no es None — avisa si falta
         if getattr(self, nombre_attr, None) is None:
             self.console.print(
                 f"[red][!] Módulo '[bold]{nombre_attr}[/bold]' "
@@ -203,26 +190,21 @@ class ApexSentinel:
     def _limpiar(self) -> None:
         os.system("cls" if os.name == "nt" else "clear")
 
-
-    # ── Delegados de UI (mantienen compatibilidad con módulos existentes) ──
+    # Delegados de UI — compatibilidad con módulos existentes
 
     def obtener_fabricante(self, mac: str) -> str:
-        # Delegado a VendorResolver — compatibilidad con módulos existentes
         return VendorResolver.resolve(mac)
 
     def animar_barra(self, tarea: str, pasos: int = 20) -> None:
-        # Delegado a sentinel_ui.animar_barra
         animar_barra(self.console, tarea, pasos)
 
-    def mostrar_dashboard_exito(self, ip: str, servicio: str,
-                                credencial: str) -> None:
-        # Delegado a sentinel_ui.mostrar_dashboard_exito
+    def mostrar_dashboard_exito(self, ip: str, servicio: str, credencial: str) -> None:
         mostrar_dashboard_exito(
             self.console, self.log, ip, servicio, credencial,
             gp=getattr(self, "gp", None),
         )
 
-    # ── Despachador ───────────────────────────────────────────────────
+    # Despachador de comandos
 
     def _despachar(self, entrada: str) -> bool:
         partes = entrada.strip().lower().split()
@@ -231,8 +213,6 @@ class ApexSentinel:
         cmd, args = partes[0], partes[1:]
         c = self._cmd
 
-        # Comandos con subargumentos
-        # ── Helper BLE Mapa ───────────────────────────────────────────────
         def _ble_mapa(s: "ApexSentinel") -> None:
             try:
                 from modules.network.bt_mapa import BLEMapaRadar
@@ -267,7 +247,6 @@ class ApexSentinel:
             (c.locate_p if "-p" in args else c.locate)()
             return True
 
-        # Banner con proyecto activo
         def _banner() -> None:
             proy = (self.gp.proyecto_actual.nombre
                     if getattr(self, "gp", None) and
@@ -276,28 +255,27 @@ class ApexSentinel:
                            self.version, self._iface(), proyecto=proy)
 
         tabla: dict[str, Any] = {
-            # Sistema
             "help": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
             "?": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
-            "status":   c.status,
+            "status":    c.status,
             "hora": lambda: self.console.print(
                 f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
-            "clear":    _banner,
-            "cls":      _banner,
-            "logs":     self.log.mostrar_historial,
-            "files":    c.files,
+            "clear":     _banner,
+            "cls":       _banner,
+            "logs":      self.log.mostrar_historial,
+            "files":     c.files,
             # Red
-            "scan":     c.scan,     "netscan":  c.scan,
-            "advscan":  c.advscan,  "portscan": c.portscan,
-            "sweep":    c.sweep,    "sniff":    c.sniff,
-            "radar":    c.radar,    "audit":    c.audit,
-            "vulnscan": c.vulnscan, "sqlcheck": c.sqlcheck,
+            "scan":      c.scan,      "netscan":   c.scan,
+            "advscan":   c.advscan,   "portscan":  c.portscan,
+            "sweep":     c.sweep,     "sniff":     c.sniff,
+            "radar":     c.radar,     "audit":     c.audit,
+            "vulnscan":  c.vulnscan,  "sqlcheck":  c.sqlcheck,
             # Wireless
-            "wifi":    c.wifi,    "eviltwin": c.eviltwin,
+            "wifi":      c.wifi,      "eviltwin":  c.eviltwin,
             "btjumper": lambda: (self.bt.iniciar_jumper()
                                  if self._modulo_ok("bt") else None),
-            "btmapa":   lambda: (_ble_mapa(self)
-                                 if self._modulo_ok("bt") else None),
+            "btmapa": lambda: (_ble_mapa(self)
+                               if self._modulo_ok("bt") else None),
             # RF / SDR
             "rfscan":    c.rfscan,    "rfmenu":    c.rfmenu,
             "rfbarrido": c.rfbarrido, "rfbandas":  c.rfbandas,
@@ -306,25 +284,25 @@ class ApexSentinel:
             "rfgrabar":  c.rfgrabar,  "rfplay":    c.rfplay,
             "adsb":      c.adsb,
             "noaa":      c.noaa,
-            # Wi-Fi Triangulación
-            "wifitri":   lambda: (self.wifitri.menu()
-                                  if self._modulo_ok("wifitri") else None),
-            # Analizador de espectro RF
-            "spectrum": c.spectrum,
-            "sa":       c.spectrum,
+            # WiFi triangulación
+            "wifitri": lambda: (self.wifitri.menu()
+                                if self._modulo_ok("wifitri") else None),
+            # Spectrum
+            "spectrum":  c.spectrum,
+            "sa":        c.spectrum,
             # Mobile / Forense
             "mobile":      c.mobile,
             "mobile-deep": c.mobile_deep,
             "view":        c.view,
             # OSINT / Geo
-            "geofoto": c.geofoto,
-            "osint":   c.osint,
-            "cve":     c.cve,
+            "geofoto":   c.geofoto,
+            "osint":     c.osint,
+            "cve":       c.cve,
             # Ofensivo
-            "phishing": c.phishing,
-            "ducky":    c.ducky,
-            "stealth":  c.stealth,
-            "panic":    c.panic,
+            "phishing":  c.phishing,
+            "ducky":     c.ducky,
+            "stealth":   c.stealth,
+            "panic":     c.panic,
         }
 
         if cmd in tabla:
@@ -341,7 +319,7 @@ class ApexSentinel:
 
         return False
 
-    # ── Bucle principal ───────────────────────────────────────────────
+    # Bucle principal
 
     def ejecutar(self) -> None:
         if not self.auth.solicitar_acceso():
@@ -409,8 +387,6 @@ class ApexSentinel:
                 self.console.print(f"[red][!] Error inesperado: {exc}[/red]")
                 self.log.error(str(exc), "Bucle principal")
 
-
-# ── Punto de entrada ──────────────────────────────────────────────────
 
 def main() -> None:
     # Entry point registrado en pyproject.toml → [project.scripts] sentinel

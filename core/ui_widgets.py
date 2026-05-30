@@ -15,13 +15,12 @@ from rich.progress import (
 if TYPE_CHECKING:
     from rich.console import Console
     from core.log_sistema import LogSistema
+    from core.GestorProyectos import GestorProyectos
 
 
 class UIWidgets:
-    def __init__(self, console: "Console") -> None:
+    def __init__(self, console: Console) -> None:
         self._console = console
-
-    # ── Barra de progreso ─────────────────────────────────────────────
 
     def animar_barra(self, tarea: str, pasos: int = 20) -> None:
         with Progress(
@@ -39,23 +38,23 @@ class UIWidgets:
                 pg.advance(tk)
         self._console.print(f"[bold green][OK][/bold green] {tarea}")
 
-    # ── Dashboard de éxito (Hydra) ────────────────────────────────────
-
     def mostrar_dashboard_exito(
         self,
         ip: str,
         servicio: str,
         credencial: str,
         *,
-        log: "LogSistema | None" = None,
-        gp=None,
+        log: LogSistema | None = None,
+        gp: GestorProyectos | None = None,
     ) -> None:
-
         from rich import box
         from rich.table import Table
 
-        tabla = Table(title="ACCESO OBTENIDO",
-                      header_style="bold green", box=box.ROUNDED)
+        tabla = Table(
+            title="ACCESO OBTENIDO",
+            header_style="bold green",
+            box=box.ROUNDED,
+        )
         tabla.add_column("Objetivo",           style="cyan",
                          justify="center")
         tabla.add_column("Protocolo",          style="yellow",
@@ -64,14 +63,12 @@ class UIWidgets:
                          style="bold white", justify="center")
         tabla.add_row(ip, servicio.upper(), credencial)
 
-        self._console.print(
-            Panel(
-                tabla,
-                title="[bold green]MISSION ACCOMPLISHED[/bold green]",
-                border_style="bright_green",
-                expand=False,
-            )
-        )
+        self._console.print(Panel(
+            tabla,
+            title="[bold green]MISSION ACCOMPLISHED[/bold green]",
+            border_style="bright_green",
+            expand=False,
+        ))
 
         if log:
             log.audit(f"Acceso obtenido en {ip} vía {servicio}", "Hydra")

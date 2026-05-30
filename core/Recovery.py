@@ -1,14 +1,3 @@
-"""
-core/Recovery.py — Protocolo de Recuperación APEX SENTINEL
-══════════════════════════════════════════════════════════════
-FIX: Eliminado sistema de cifrado paralelo (panic.key).
-     SentinelRecovery ahora delega en SecurityModule (anubis_master.key),
-     usando la misma clave con la que fueron cifrados los archivos.
-
-Uso:
-    recovery = SentinelRecovery(sentinel.security)
-    recovery.ejecutar_rescate([Path("data/evidence/captura.pcap"), ...])
-"""
 from __future__ import annotations
 
 import logging
@@ -35,7 +24,6 @@ _ARCHIVOS_DEFAULT: list[Path] = [
 
 
 def _expandir_rutas(rutas: list[Path]) -> list[Path]:
-    """Expande directorios a sus archivos hijos recursivamente."""
     resultado: list[Path] = []
     for r in rutas:
         if r.is_dir():
@@ -46,13 +34,6 @@ def _expandir_rutas(rutas: list[Path]) -> list[Path]:
 
 
 class SentinelRecovery:
-    """
-    Protocolo de recuperación post-pánico.
-
-    Descifra archivos cifrados por SecurityModule delegando en él
-    directamente — misma clave, sin sistema paralelo (panic.key eliminado).
-    """
-
     def __init__(self, security_module: "SecurityModule") -> None:
         if security_module is None:
             raise ValueError(
@@ -68,15 +49,6 @@ class SentinelRecovery:
         )
 
     def ejecutar_rescate(self, archivos: list[Path] | None = None) -> int:
-        """
-        Descifra los archivos usando SecurityModule.
-
-        Args:
-            archivos: lista de Path a descifrar. None → usa _ARCHIVOS_DEFAULT.
-
-        Returns:
-            Número de archivos restaurados con éxito.
-        """
         self._console.print(
             Panel(
                 "[bold yellow]⚠  PROTOCOLO DE RECUPERACIÓN INICIADO[/bold yellow]\n"
@@ -96,7 +68,8 @@ class SentinelRecovery:
             )
             return 0
 
-        tabla = Table(box=box.SIMPLE_HEAD, header_style="bold cyan", show_edge=False)
+        tabla = Table(box=box.SIMPLE_HEAD,
+                      header_style="bold cyan", show_edge=False)
         tabla.add_column("Archivo", style="white", min_width=40)
         tabla.add_column("Estado",  justify="center", min_width=14)
 
@@ -116,15 +89,16 @@ class SentinelRecovery:
             self._console.print(
                 f"\n[bold green][+] {restaurados}/{len(rutas)} archivos restaurados.[/bold green]"
             )
-            log.info(f"Recovery: {restaurados}/{len(rutas)} archivos restaurados.")
+            log.info(
+                f"Recovery: {restaurados}/{len(rutas)} archivos restaurados.")
         else:
-            self._console.print("\n[bold red][-] No se restauró ningún archivo.[/bold red]")
+            self._console.print(
+                "\n[bold red][-] No se restauró ningún archivo.[/bold red]")
             log.warning("Recovery: ningún archivo restaurado.")
 
         return restaurados
 
     def listar_archivos_cifrables(self) -> list[Path]:
-        """Lista los archivos de evidencia/logs presentes en disco."""
         return _expandir_rutas(_ARCHIVOS_DEFAULT)
 
 
@@ -138,5 +112,6 @@ if __name__ == "__main__":
 
     sec = SecurityModule(_FakeSentinel())
     recovery = SentinelRecovery(sec)
-    archivos_arg = [Path(a) for a in sys.argv[1:]] if len(sys.argv) > 1 else None
+    archivos_arg = [Path(a)
+                    for a in sys.argv[1:]] if len(sys.argv) > 1 else None
     recovery.ejecutar_rescate(archivos_arg)

@@ -6,7 +6,6 @@ import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from rich.console import Console
@@ -59,7 +58,7 @@ class RecordingConfig:
     freq_mhz:    float
     duration_s:  int   = DEFAULT_DURATION
     sample_rate: int   = DEFAULT_SR
-    name:        Optional[str] = None
+    name:        str | None = None
     format:      str   = "sigmf"
 
     @property
@@ -159,7 +158,7 @@ def _read_meta(meta_path: Path) -> tuple[float, int, float, str]:
     return freq_hz / 1e6, sr, dur, hw
 
 
-def _locate_meta(iq_path: Path) -> Optional[Path]:
+def _locate_meta(iq_path: Path) -> Path | None:
     for ext in META_EXTENSIONS:
         candidate = iq_path.with_suffix(ext)
         if candidate.exists():
@@ -186,7 +185,7 @@ class RFRecorder:
     # API pública
     # -----------------------------------------------------------------------
 
-    def record(self, cfg: RecordingConfig) -> Optional[Path]:
+    def record(self, cfg: RecordingConfig) -> Path | None:
         rf = getattr(self.sentinel, "rf_scanner", None)
         if rf is None:
             self.console.print("[red][!] rf_scanner not available.[/red]")
@@ -215,9 +214,9 @@ class RFRecorder:
         freq_mhz:    float,
         duracion_seg: int  = DEFAULT_DURATION,
         sample_rate:  int  = DEFAULT_SR,
-        nombre:       Optional[str] = None,
+        nombre:       str | None = None,
         formato:      str  = "sigmf",
-    ) -> Optional[Path]:
+    ) -> Path | None:
         # Wrapper de compatibilidad hacia atrás
         return self.record(RecordingConfig(
             freq_mhz   = freq_mhz,
@@ -326,7 +325,7 @@ class RFRecorder:
         cfg:       RecordingConfig,
         out_path:  Path,
         timestamp: str,
-    ) -> Optional[RecordingResult]:
+    ) -> RecordingResult | None:
         sample_counts: list[int] = []
         bytes_written  = 0
         start          = time.monotonic()
@@ -408,7 +407,7 @@ class RFRecorder:
             log.warning("Could not read metadata from %s: %s", meta_path, exc)
             return fallback
 
-    def _load_iq(self, path: Path) -> Optional[np.ndarray]:
+    def _load_iq(self, path: Path) -> np.ndarray | None:
         try:
             return np.fromfile(str(path), dtype=np.complex64)
         except Exception as exc:

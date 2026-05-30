@@ -5,11 +5,11 @@ import socket
 import struct
 import threading
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 
-Source = Callable[[], Optional[bytes]]
+Source = Callable[[], bytes | None]
 SourceFactory = Callable[[float, int], "Source"]
 
 _IQ_SCALE = 1.0 / 127.5
@@ -100,7 +100,7 @@ def tcp_source(
 
     atexit.register(_close)
 
-    def _read() -> Optional[bytes]:
+    def _read() -> bytes | None:
         buf = bytearray()
         while len(buf) < chunk_bytes:
             try:
@@ -123,7 +123,7 @@ def file_source(
     fh = open(path, "rb")
     atexit.register(fh.close)
 
-    def _read() -> Optional[bytes]:
+    def _read() -> bytes | None:
         data = fh.read(chunk_bytes)
         if not data:
             if loop:
@@ -139,47 +139,38 @@ def file_source(
 def null_source() -> Source:
     return lambda: None
 
-
-# ═══════════════════════════════════════════════════════════════════════════
 # TUNABLE BACKEND — backend resintonizable compartido por RFScanner
 #                   y SpectrumAnalyzer. Reemplaza todos los _SDRAdapter
 #                   locales y entrega TCP + replay de archivo IQ gratis.
-# ═══════════════════════════════════════════════════════════════════════════
+
 
 class SDRBackend:
     hw_name: str = "Unknown"
 
-    def read_raw(self, n_samples: int) -> Optional[np.ndarray]:
-        """Lee n_samples muestras IQ como np.ndarray complex64."""
+    def read_raw(self, n_samples: int) -> np.ndarray | None:
         raise NotImplementedError
 
     def tune(self, freq_hz: float) -> None:
-        """Resintoniza a la frecuencia indicada (Hz).  No-op en modo archivo."""
 
     def set_gain(self, gain: object) -> None:
-        """Ajusta la ganancia.  Acepta float, int o la cadena 'auto'."""
 
     def close(self) -> None:
-        """Libera el recurso subyacente."""
 
-    # ------------------------------------------------------------------
-    # Compatibilidad con la interfaz SourceFactory de NOAADecoder
-    # ------------------------------------------------------------------
+        # ------------------------------------------------------------------
+        # Compatibilidad con la interfaz SourceFactory de NOAADecoder
+        # ------------------------------------------------------------------
     def as_source(self, sample_rate: int) -> "Source":
-        """
-        Envuelve este backend como un Source callable (bytes u8 IQ)
-        compatible con NOAADecoder / cualquier consumidor de SourceFactory.
-        """
+
         chunk = sample_rate // 10
 
-        def _read() -> Optional[bytes]:
+        def _read() -> bytes | None:
             iq = self.read_raw(chunk)
             return None if iq is None else _cf32_to_u8(iq)
 
         return _read
 
+# RTL-SDR (pyrtlsdr)
 
-# ── RTL-SDR (pyrtlsdr) ────────────────────────────────────────────────────
 
 class _RTLSDRBackend(SDRBackend):
     def __init__(
@@ -205,7 +196,7 @@ class _RTLSDRBackend(SDRBackend):
         )
         atexit.register(self.close)
 
-    def read_raw(self, n_samples: int) -> Optional[np.ndarray]:
+    def read_raw(self, n_samples: int) -> np.ndarray | None:
         try:
             return np.array(
                 self._sdr.read_samples(n_samples), dtype=np.complex64
@@ -225,8 +216,8 @@ class _RTLSDRBackend(SDRBackend):
         except Exception:
             pass
 
+# rtl_tcp
 
-# ── rtl_tcp ───────────────────────────────────────────────────────────────
 
 class _TCPBackend(SDRBackend):
     def __init__(
@@ -241,7 +232,7 @@ class _TCPBackend(SDRBackend):
         self._port = port
         self._sr = sample_rate
         self._gain = gain
-        self._sock: Optional[socket.socket] = None
+        self._sock: socket.socket | None = None
         self._buf = bytearray()
         self.hw_name = f"rtl_tcp://{host}:{port}  sr={sample_rate / 1e6:.3f} MHz"
         self._connect(freq_hz)
@@ -265,7 +256,7 @@ class _TCPBackend(SDRBackend):
         self._sock = sock
         self._freq_hz = freq_hz
 
-    def read_raw(self, n_samples: int) -> Optional[np.ndarray]:
+    def read_raw(self, n_samples: int) -> np.ndarray | None:
         if self._sock is None:
             return None
         needed = n_samples * 2
@@ -311,8 +302,8 @@ class _TCPBackend(SDRBackend):
                 pass
             self._sock = None
 
+# Archivo IQ (replay)
 
-# ── Archivo IQ (replay) ───────────────────────────────────────────────────
 
 class _FileBackend(SDRBackend):
     def __init__(self, path: str, loop: bool = True) -> None:
@@ -321,7 +312,7 @@ class _FileBackend(SDRBackend):
         self.hw_name = f"FILE:{Path(path).name}"
         atexit.register(self.close)
 
-    def read_raw(self, n_samples: int) -> Optional[np.ndarray]:
+    def read_raw(self, n_samples: int) -> np.ndarray | None:
         needed = n_samples * 2  # pares u8 I+Q
         data = self._fh.read(needed)
         if not data:
@@ -343,8 +334,8 @@ class _FileBackend(SDRBackend):
         except Exception:
             pass
 
+# Mock (señales sintéticas, sin hardware)
 
-# ── Mock (señales sintéticas, sin hardware) ───────────────────────────────
 
 class _MockBackend(SDRBackend):
     def __init__(
@@ -375,7 +366,7 @@ class _MockBackend(SDRBackend):
                     )
                 )
 
-    def read_raw(self, n_samples: int) -> Optional[np.ndarray]:
+    def read_raw(self, n_samples: int) -> np.ndarray | None:
         iq = self._mock.capture(
             int(self._freq), n_samples, t_offset=self._toff)
         self._toff += n_samples / self._sr
@@ -390,8 +381,8 @@ class _MockBackend(SDRBackend):
     def close(self) -> None:
         pass
 
+# Funciones de fábrica públicas
 
-# ── Funciones de fábrica públicas ─────────────────────────────────────────
 
 def open_backend(
     freq_hz:      float = 100_000_000.0,

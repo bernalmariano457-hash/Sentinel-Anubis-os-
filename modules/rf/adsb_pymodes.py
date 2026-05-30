@@ -6,7 +6,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from math import atan2, cos, degrees, radians, sin, sqrt
-from typing import TYPE_CHECKING, Callable, Deque, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Deque
 
 import numpy as np
 from rich import box
@@ -44,13 +44,13 @@ HISTORY = 30
 RATE_WINDOW = 90
 CRC24_POLY = 0xFFF409
 
-SQUAWK_MAP: Dict[str, Tuple[str, str]] = {
+SQUAWK_MAP: dict[str, tuple[str, str]] = {
     "7500": ("HIJACK", "bold white on red"),
     "7600": ("RADIO",  "bold yellow on dark_red"),
     "7700": ("MAYDAY", "bold white on dark_red"),
 }
 
-_BANDS: List[Tuple[int, int, str]] = [
+_BANDS: list[tuple[int, int, str]] = [
     (0x0C0000, 0x0FFFFF, "🇫🇷"), (0x380000, 0x38FFFF, "🇩🇰"),
     (0x3C0000, 0x3FFFFF, "🇩🇪"), (0x400000, 0x43FFFF, "🇪🇸"),
     (0x480000, 0x48FFFF, "🇳🇱"), (0x4CA000, 0x4CAFFF, "🇮🇪"),
@@ -114,40 +114,40 @@ class _CprFrame:
     lat: int
     lon: int
     fmt: int
-    alt: Optional[float]
+    alt: float | None
     ts:  float
 
 
 @dataclass
 class Aircraft:
     icao:     IcaoHex
-    cs:       Optional[str] = None
-    lat:      Optional[float] = None
-    lon:      Optional[float] = None
-    alt:      Optional[float] = None
-    gs:       Optional[float] = None
-    hdg:      Optional[float] = None
-    vr:       Optional[float] = None
-    squawk:   Optional[str] = None
+    cs:       str | None = None
+    lat:      float | None = None
+    lon:      float | None = None
+    alt:      float | None = None
+    gs:       float | None = None
+    hdg:      float | None = None
+    vr:       float | None = None
+    squawk:   str | None = None
     ra:       bool = False
     msgs:     int = 0
     pos_msgs: int = 0
     last:     float = field(default_factory=time.monotonic)
-    trail:    Deque[Tuple[float, float]] = field(
+    trail:    Deque[tuple[float, float]] = field(
         default_factory=lambda: deque(maxlen=HISTORY), repr=False)
-    _even:    Optional[_CprFrame] = field(default=None, repr=False)
-    _odd:     Optional[_CprFrame] = field(default=None, repr=False)
-    _gs_e:    Optional[float] = field(default=None, repr=False)
-    _hdg_e:   Optional[float] = field(default=None, repr=False)
-    _vr_e:    Optional[float] = field(default=None, repr=False)
+    _even:    _CprFrame | None = field(default=None, repr=False)
+    _odd:     _CprFrame | None = field(default=None, repr=False)
+    _gs_e:    float | None = field(default=None, repr=False)
+    _hdg_e:   float | None = field(default=None, repr=False)
+    _vr_e:    float | None = field(default=None, repr=False)
 
     _α = 0.25
 
-    def _ema(self, prev: Optional[float], x: float) -> float:
+    def _ema(self, prev: float | None, x: float) -> float:
         return x if prev is None else self._α * x + (1 - self._α) * prev
 
-    def smooth_vel(self, gs: Optional[float], hdg: Optional[float],
-                   vr: Optional[float]) -> None:
+    def smooth_vel(self, gs: float | None, hdg: float | None,
+                   vr: float | None) -> None:
         if gs is not None:
             self._gs_e = self._ema(self._gs_e,  gs)
             self.gs = self._gs_e
@@ -195,7 +195,7 @@ class Aircraft:
         self._commit(r[0], r[1], frame.alt or (other.alt if other else None))
         return True
 
-    def _commit(self, lat: float, lon: float, alt: Optional[float]) -> None:
+    def _commit(self, lat: float, lon: float, alt: float | None) -> None:
         self.lat = lat
         self.lon = lon
         if alt is not None:
@@ -214,7 +214,7 @@ class Aircraft:
 
 class FlightTracker:
     def __init__(self, rx_lat: float = 0.0, rx_lon: float = 0.0) -> None:
-        self._db:    Dict[IcaoHex, Aircraft] = {}
+        self._db:    dict[IcaoHex, Aircraft] = {}
         self._rx = (rx_lat, rx_lon)
         self._total = 0
         self._pos = 0
@@ -223,7 +223,7 @@ class FlightTracker:
         self._rbuf:  Deque[float] = deque(maxlen=RATE_WINDOW)
         self._rlast = time.monotonic()
 
-    def feed(self, d: dict, ts: Optional[float] = None) -> None:
+    def feed(self, d: dict, ts: float | None = None) -> None:
         if not d.get("crc_valid", True):
             self._err += 1
             return
@@ -270,7 +270,7 @@ class FlightTracker:
         if df in (16, 17):
             ac.ra = bool(d.get("ra_active", False))
 
-    def feed_hex(self, h: str, ts: Optional[float] = None) -> None:
+    def feed_hex(self, h: str, ts: float | None = None) -> None:
         if not _PYMODES_OK:
             return
         try:
@@ -284,18 +284,18 @@ class FlightTracker:
             self._rbuf.append(self._total)
             self._rlast = now
 
-    def live(self) -> List[Aircraft]:
+    def live(self) -> list[Aircraft]:
         return sorted(
             (ac for ac in self._db.values() if not ac.stale),
             key=lambda a: a.last, reverse=True,
         )
 
-    def dist(self, ac: Aircraft) -> Optional[float]:
+    def dist(self, ac: Aircraft) -> float | None:
         if ac.lat is None or self._rx == (0.0, 0.0):
             return None
         return _haversine(*self._rx, ac.lat, ac.lon)
 
-    def brg(self, ac: Aircraft) -> Optional[float]:
+    def brg(self, ac: Aircraft) -> float | None:
         if ac.lat is None:
             return None
         return _bearing(*self._rx, ac.lat, ac.lon)
@@ -317,7 +317,7 @@ class FlightTracker:
         return max(1.0, time.monotonic() - self._t0)
 
 
-def demodulate(raw_iq: np.ndarray, sr: int = 2_000_000) -> List[bytes]:
+def demodulate(raw_iq: np.ndarray, sr: int = 2_000_000) -> list[bytes]:
     sps = sr // 1_000_000
     pre = 8 * sps
 
@@ -342,7 +342,7 @@ def demodulate(raw_iq: np.ndarray, sr: int = 2_000_000) -> List[bytes]:
         if end <= n:
             score -= amp[off * sps: end] * 0.5
 
-    out: List[bytes] = []
+    out: list[bytes] = []
     i = 0
     while i < L - 1:
         if score[i] < thr * 3:
@@ -382,7 +382,7 @@ _ALT_BANDS = (
 )
 
 
-def _alt_color(alt: Optional[float]) -> str:
+def _alt_color(alt: float | None) -> str:
     if alt is None:
         return "dim white"
     for limit, c in _ALT_BANDS:
@@ -395,7 +395,7 @@ def _v(x, fmt: str = ".0f") -> str:
     return f"{x:{fmt}}" if x is not None else "[dim]·[/dim]"
 
 
-def _vr_str(vr: Optional[float]) -> str:
+def _vr_str(vr: float | None) -> str:
     if vr is None:
         return "[dim]·[/dim]"
     sym = "↑" if vr > 64 else "↓" if vr < -64 else "→"
@@ -403,7 +403,7 @@ def _vr_str(vr: Optional[float]) -> str:
     return f"[{color}]{sym}{abs(vr):.0f}[/{color}]"
 
 
-def _sq_str(sq: Optional[str]) -> str:
+def _sq_str(sq: str | None) -> str:
     if sq is None:
         return "[dim]·[/dim]"
     if sq in SQUAWK_MAP:
@@ -515,7 +515,7 @@ class ADSBPipeline:
         hz:         int = 4,
         rx_lat:     float = 0.0,
         rx_lon:     float = 0.0,
-        console:    Optional["Console"] = None,
+        console:    "Console" | None = None,
     ) -> None:
         from rich.console import Console as _Console
         self._src = source
@@ -524,7 +524,7 @@ class ADSBPipeline:
         self.tracker = FlightTracker(rx_lat, rx_lon)
         self._con = console or _Console()
 
-    def feed_hex(self, h: str, ts: Optional[float] = None) -> None:
+    def feed_hex(self, h: str, ts: float | None = None) -> None:
         self.tracker.feed_hex(h, ts)
 
     def _consume(self, iq: bytes) -> None:
@@ -580,9 +580,8 @@ _HEX_DEMO = [
 def run_demo(
     rx_lat:  float = 0.0,
     rx_lon:  float = 0.0,
-    console: Optional["Console"] = None,
+    console: "Console" | None = None,
 ) -> None:
-    """Modo demo sin hardware: reproduce tramas pre-grabadas en bucle."""
     from rich.console import Console as _Console
     con = console or _Console()
     if not _PYMODES_OK:
@@ -606,12 +605,10 @@ def run_demo(
         except KeyboardInterrupt:
             pass
 
-
-# ═══════════════════════════════════════════════════════════════════════════
 #  MÓDULO SENTINEL — AircraftMonitor
 #  Mismo patrón que GeoPrecise / OSINTEngine / NOAADecoder.
 #  Uso:  AircraftMonitor(sentinel).menu()
-# ═══════════════════════════════════════════════════════════════════════════
+
 
 class AircraftMonitor:
     _MODULE = "ADS-B"
@@ -638,8 +635,7 @@ class AircraftMonitor:
         self._rx_lat = float(getattr(pos, "lat", 0.0))
         self._rx_lon = float(getattr(pos, "lon", 0.0))
 
-    # ── Helpers privados ──────────────────────────────────────────────
-
+    # Helpers privados
     def _info(self, msg: str) -> None:
         self._con.print(f"[cyan][{self._MODULE}][/cyan] {msg}")
         if self._log:
@@ -655,8 +651,7 @@ class AircraftMonitor:
         if self._log:
             self._log.error(msg, self._MODULE)
 
-    # ── API pública ───────────────────────────────────────────────────
-
+    # API pública
     def menu(self) -> None:
         from rich.prompt import Prompt
         from rich.panel import Panel

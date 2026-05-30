@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-
 import numpy as np
 from rich.console import Console
 from rich.live import Live
@@ -21,7 +20,7 @@ _FREQ_ADSB = 1_090_000_000   # 1090 MHz — estándar mundial ADS-B
 _SR_ADSB = 2_000_000       # 2 Msps
 _PREAMBLE_US = 8               # µs de preámbulo Mode S
 
-# ── pyModeS — decodificador completo (opcional) ──────────────────
+# pyModeS — decodificador completo (opcional)
 _PYMODES_OK = False
 try:
     import pyModeS as pms
@@ -30,10 +29,8 @@ try:
 except ImportError:
     log.info("pyModeS no disponible — usando decodificador básico integrado")
 
-
-# ══════════════════════════════════════════════════════════════════
 # DATACLASSES
-# ══════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class Aeronave:
@@ -50,7 +47,6 @@ class Aeronave:
 
     @property
     def activo(self) -> bool:
-        """True si se vio en los últimos 60 segundos."""
         return (time.time() - self.ultima_vez) < 60
 
     @property
@@ -62,16 +58,13 @@ class Aeronave:
 
 @dataclass
 class MensajeADSB:
-    """Mensaje ADS-B crudo decodificado."""
     raw_hex:  str
     icao:     str
     tipo_df:  int    # Downlink Format
     timestamp: float = field(default_factory=time.time)
 
-
-# ══════════════════════════════════════════════════════════════════
 # DECODIFICADOR BÁSICO (sin pyModeS)
-# ══════════════════════════════════════════════════════════════════
+
 
 def _crc24(data: bytes) -> int:
     GENERATOR = 0xFFF409
@@ -139,10 +132,8 @@ def _extraer_altitud_basico(hex_str: str) -> int | None:
         pass
     return None
 
-
-# ══════════════════════════════════════════════════════════════════
 # DECODIFICADOR PRINCIPAL
-# ══════════════════════════════════════════════════════════════════
+
 
 class ADSBDecoder:
 
@@ -158,8 +149,7 @@ class ADSBDecoder:
         self._msgs_total = 0
         self._msgs_validos = 0
 
-    # ── API pública ────────────────────────────────────────────────
-
+    # API pública
     def iniciar(self, duracion_seg: int | None = None) -> None:
         if not self._verificar_hardware():
             return
@@ -203,8 +193,7 @@ class ADSBDecoder:
         with self._lock:
             return [a for a in self._aeronaves.values() if a.activo]
 
-    # ── Captura y decodificación ───────────────────────────────────
-
+    # Captura y decodificación
     def _bucle_captura(self, duracion: int | None, inicio: float) -> None:
         sdr = getattr(self.sentinel, "rf_scanner", None)
 
@@ -330,8 +319,7 @@ class ADSBDecoder:
             if alt:
                 aeronave.altitud_ft = alt
 
-    # ── Demo sin hardware ──────────────────────────────────────────
-
+    # Demo sin hardware
     def _modo_demo(self, duracion: int | None, inicio: float) -> None:
         demos = [
             ("ABC123", "AMX001", 35000, 450, 270),
@@ -358,8 +346,7 @@ class ADSBDecoder:
                 self._msgs_validos += 1
             time.sleep(2)
 
-    # ── Renderizado ────────────────────────────────────────────────
-
+    # Renderizado
     def _render_tabla(self) -> Panel:
         tabla = Table(
             box=box.SIMPLE_HEAD,

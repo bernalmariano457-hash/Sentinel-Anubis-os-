@@ -14,7 +14,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-# ── bcrypt (opcional pero recomendado) ────────────────────────────────
 try:
     import bcrypt
     _BCRYPT = True
@@ -23,54 +22,40 @@ except ImportError:
 
 log = logging.getLogger("sentinel.auth")
 
-# ── Rutas de seguridad (relativas al directorio del proyecto) ─────────
 _HERE = Path(__file__).resolve().parent
-_CREDS_FILE = _HERE / "data" / "security" / \
-    ".credentials"   # hash de contraseña
-_LOCKOUT_FILE = _HERE / "data" / "security" / \
-    ".lockout"      # bloqueo persistente
+_CREDS_FILE = _HERE / "data" / "security" / ".credentials"
+_LOCKOUT_FILE = _HERE / "data" / "security" / ".lockout"
 
-# ── Constantes configurables por entorno ──────────────────────────────
 _BCRYPT_ROUNDS = int(os.getenv("BCRYPT_ROUNDS", 12))
 _MAX_INTENTOS = int(os.getenv("MAX_LOGIN_ATTEMPTS", 5))
-_VENTANA_SEG = int(os.getenv("LOCKOUT_WINDOW_SECONDS", 300))  # 5 min
+_VENTANA_SEG = int(os.getenv("LOCKOUT_WINDOW_SECONDS", 300))
 
 
-# ══════════════════════════════════════════════════════════════════════
-# FUNCIONES DE HASHING
-# ══════════════════════════════════════════════════════════════════════
+# Hashing
 
 def _hash_bcrypt(password: str) -> str:
-    """Genera hash bcrypt con sal automática."""
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt(_BCRYPT_ROUNDS)).decode()
 
 
 def _hash_sha256_salted(password: str) -> str:
-    """Hash SHA-256 con sal (fallback si bcrypt no está disponible)."""
+    # Fallback cuando bcrypt no está disponible. Usar solo en entornos donde
+    # no se puede instalar la extensión C.
     salt = os.urandom(16).hex()
     h = hashlib.sha256((salt + password).encode()).hexdigest()
     return f"sha256s:{salt}:{h}"
 
 
 def _hash(password: str) -> str:
-    """Genera el hash más seguro disponible."""
     if len(password) < 8:
         raise ValueError("La contraseña debe tener al menos 8 caracteres.")
     return _hash_bcrypt(password) if _BCRYPT else _hash_sha256_salted(password)
 
 
 def _verificar(password: str, almacenado: str) -> bool:
-    """
-    Verifica una contraseña contra su hash almacenado.
-    Soporta tres formatos para compatibilidad:
-      · bcrypt  → empieza con $2b$
-      · sha256s → formato "sha256s:<salt>:<hash>"  (salted, seguro)
-      · legacy  → 64 hex chars sin prefijo (SHA-256 sin sal, inseguro)
-    """
+    """Verifica password contra hash almacenado. Soporta bcrypt, sha256s y legacy."""
     if not almacenado:
         return False
 
-    # ── bcrypt ───────────────────────────────────────────────────────
     if almacenado.startswith("$2"):
         if not _BCRYPT:
             log.warning(
@@ -81,7 +66,6 @@ def _verificar(password: str, almacenado: str) -> bool:
         except Exception:
             return False
 
-    # ── SHA-256 con sal ──────────────────────────────────────────────
     if almacenado.startswith("sha256s:"):
         try:
             _, salt, h = almacenado.split(":", 2)
@@ -90,7 +74,7 @@ def _verificar(password: str, almacenado: str) -> bool:
         except Exception:
             return False
 
-    # ── Hash legacy (SHA-256 sin sal, 64 hex) ────────────────────────
+    # Legacy: SHA-256 sin sal — se migra automáticamente en el siguiente login
     if len(almacenado) == 64 and all(c in "0123456789abcdef" for c in almacenado):
         candidate = hashlib.sha256(password.encode()).hexdigest()
         return hmac.compare_digest(candidate, almacenado)
@@ -99,16 +83,13 @@ def _verificar(password: str, almacenado: str) -> bool:
 
 
 def _es_legacy(almacenado: str) -> bool:
-    """Detecta hashes inseguros que deben migrarse."""
     return (
         almacenado.startswith("sha256s:") or
         (len(almacenado) == 64 and ":" not in almacenado)
     )
 
 
-# ══════════════════════════════════════════════════════════════════════
-# CONTROL DE BLOQUEO PERSISTENTE
-# ══════════════════════════════════════════════════════════════════════
+# Control de bloqueo persistente
 
 class _LockoutManager:
     def __init__(self):
@@ -131,7 +112,6 @@ class _LockoutManager:
     def registrar_fallo(self) -> None:
         data = self._leer()
         now = time.time()
-        # Mantener solo intentos dentro de la ventana
         data["intentos"] = [t for t in data["intentos"] if now - t < _VENTANA_SEG]
         data["intentos"].append(now)
         if len(data["intentos"]) >= _MAX_INTENTOS:
@@ -140,24 +120,24 @@ class _LockoutManager:
         self._escribir(data)
 
     def esta_bloqueado(self) -> tuple[bool, int]:
-        """Retorna (bloqueado: bool, segundos_restantes: int)."""
+        """Retorna (bloqueado, segundos_restantes)."""
         data = self._leer()
         restante = max(0, int(data.get("bloqueado_hasta", 0) - time.time()))
         return restante > 0, restante
 
     def reiniciar(self) -> None:
+        """Borra el historial de intentos y desbloquea el sistema."""
         self._escribir({"intentos": [], "bloqueado_hasta": 0})
 
     def intentos_restantes(self) -> int:
+        """Retorna cuántos intentos quedan antes del bloqueo automático."""
         data = self._leer()
         now = time.time()
         recientes = [t for t in data["intentos"] if now - t < _VENTANA_SEG]
         return max(0, _MAX_INTENTOS - len(recientes))
 
 
-# ══════════════════════════════════════════════════════════════════════
-# ALMACÉN DE CREDENCIALES
-# ══════════════════════════════════════════════════════════════════════
+# Almacén de credenciales
 
 class _CredentialStore:
     def __init__(self, config: dict):
@@ -165,19 +145,18 @@ class _CredentialStore:
         _CREDS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     def leer(self) -> Optional[str]:
-        # 1. Variable de entorno (máxima prioridad)
+
+        # Prioridad: variable de entorno > archivo > config.json (legacy)
         env_hash = os.getenv("SENTINEL_PASSWORD_HASH")
         if env_hash:
             return env_hash.strip()
 
-        # 2. Archivo de credenciales dedicado
         if _CREDS_FILE.exists():
             try:
                 return _CREDS_FILE.read_text(encoding="utf-8").strip()
             except OSError:
                 pass
 
-        # 3. Legacy: hash en config.json — migrar
         legacy = self._config.get("sistema", {}).get("password_hash")
         if legacy:
             log.info("Migrando password_hash desde config.json a .credentials")
@@ -186,7 +165,6 @@ class _CredentialStore:
         return legacy
 
     def escribir(self, hash_str: str) -> None:
-        """Guarda el hash en el archivo de credenciales con permisos restrictivos."""
         try:
             _CREDS_FILE.write_text(hash_str, encoding="utf-8")
             if sys.platform != "win32":
@@ -196,7 +174,6 @@ class _CredentialStore:
             log.error(f"No se pudo guardar credenciales: {e}")
 
     def _limpiar_config_json(self) -> None:
-        """Elimina password_hash de config.json si está presente."""
         sistema = self._config.get("sistema", {})
         if "password_hash" not in sistema:
             return
@@ -204,8 +181,10 @@ class _CredentialStore:
         self._config.setdefault("sistema", {})["primer_arranque"] = False
         try:
             config_path = _HERE / "config.json"
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(self._config, f, indent=4)
+            config_path.write_text(
+                json.dumps(self._config, indent=4, ensure_ascii=False),
+                encoding="utf-8",
+            )
             if sys.platform != "win32":
                 config_path.chmod(0o644)
             log.info("password_hash eliminado de config.json correctamente.")
@@ -216,9 +195,7 @@ class _CredentialStore:
         return bool(self.leer())
 
 
-# ══════════════════════════════════════════════════════════════════════
-# GESTOR DE AUTENTICACIÓN — API PÚBLICA
-# ══════════════════════════════════════════════════════════════════════
+# API pública
 
 class GestorAuth:
 
@@ -229,13 +206,9 @@ class GestorAuth:
         self._creds = _CredentialStore(config)
         self._lockout = _LockoutManager()
 
-    # ── Hashing (API pública para uso interno) ─────────────────────────
-
     @staticmethod
     def generar_hash(password: str) -> str:
         return _hash(password)
-
-    # ── Flujo de configuración inicial ────────────────────────────────
 
     def configurar_primera_vez(self) -> str:
         self.console.print(Panel(
@@ -264,8 +237,6 @@ class GestorAuth:
 
             h = _hash(nueva)
             self._creds.escribir(h)
-
-            # Asegurarse de que config.json quede limpio
             self._creds._limpiar_config_json()
 
             modo = "bcrypt" if _BCRYPT else "SHA-256 con sal"
@@ -276,10 +247,7 @@ class GestorAuth:
             time.sleep(0.8)
             return h
 
-    # ── Login ──────────────────────────────────────────────────────────
-
     def solicitar_acceso(self) -> bool:
-        # ── Primer arranque ───────────────────────────────────────────
         primer_arranque = self.config.get(
             "sistema", {}).get("primer_arranque", True)
         if primer_arranque or not self._creds.existe():
@@ -287,7 +255,6 @@ class GestorAuth:
             self.config.setdefault("sistema", {})["primer_arranque"] = False
             return True
 
-        # ── Verificar bloqueo persistente ─────────────────────────────
         bloqueado, restante = self._lockout.esta_bloqueado()
         if bloqueado:
             mins = restante // 60
@@ -304,7 +271,6 @@ class GestorAuth:
             )
             return False
 
-        # ── Pantalla de login ─────────────────────────────────────────
         hash_almacenado = self._creds.leer()
 
         self.console.print(
@@ -344,13 +310,12 @@ class GestorAuth:
 
             self.console.print(
                 f"[red][!] Clave incorrecta.[/red] "
-                f"[dim]({restantes} intento{'s' if restantes > 1 else ''} restante{'s' if restantes > 1 else ''})[/dim]"
+                f"[dim]({restantes} intento{'s' if restantes > 1 else ''} "
+                f"restante{'s' if restantes > 1 else ''})[/dim]"
             )
 
         self.log.warning("Acceso denegado: intentos agotados.", "GestorAuth")
         return False
-
-    # ── Cambio de contraseña ───────────────────────────────────────────
 
     def cambiar_password(self, actual: str, nueva: str) -> bool:
         hash_actual = self._creds.leer()
@@ -365,13 +330,9 @@ class GestorAuth:
         self.log.success("Contraseña actualizada correctamente.", "GestorAuth")
         return True
 
-    # ── Migración automática de hashes inseguros ───────────────────────
-
     def _migrar_hash_si_necesario(self, password: str, hash_actual: str) -> None:
-        if not _BCRYPT:
-            return
-        if not _es_legacy(hash_actual):
+        if not _BCRYPT or not _es_legacy(hash_actual):
             return
         nuevo_hash = _hash_bcrypt(password)
         self._creds.escribir(nuevo_hash)
-        log.info("Hash de contraseña migrado de SHA-256 a bcrypt automáticamente.")
+        log.info("Hash migrado de SHA-256 a bcrypt automáticamente.")

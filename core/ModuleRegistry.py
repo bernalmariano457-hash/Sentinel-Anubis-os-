@@ -1,21 +1,17 @@
-# core/ModuleRegistry.py — Registro declarativo de módulos de APEX SENTINEL
-# ══════════════════════════════════════════════════════════════════════════
-# Reemplaza _cargar_modulos() de Main.py (90 líneas god-method).
-# Añadir un módulo nuevo = una línea en la lista MODULOS.
 from __future__ import annotations
 
 import importlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
 @dataclass
 class ModuleSpec:
-    attr:           str    # atributo en el sentinel (self.radar, self.rf…)
-    cls_name:       str    # nombre de la clase
-    module_path:    str    # ruta Python: "modules.network.RadarSentinel"
+    attr:           str   # atributo en el sentinel (self.radar, self.rf…)
+    cls_name:       str   # nombre de la clase a instanciar
+    module_path:    str   # ruta Python dotted: "modules.network.RadarSentinel"
     needs_sentinel: bool = True   # True → Cls(sentinel) | False → Cls()
-    display_name:   str = ""     # nombre en bootscreen
+    display_name:   str = ""
     critico:        bool = False
 
     def __post_init__(self):
@@ -24,86 +20,77 @@ class ModuleSpec:
 
 
 MODULOS: list[ModuleSpec] = [
-    # ── Core ──────────────────────────────────────────────────────────
+    # Core
     ModuleSpec("security",     "SecurityModule",    "core.Security",
                critico=True,  display_name="SecurityModule"),
-    ModuleSpec("cola",         "ColaTareas",        "core.ColaTareas",
-               display_name="ColaTareas"),
-    ModuleSpec("gp",           "GestorProyectos",   "core.GestorProyectos",
-               display_name="GestorProyectos"),
+    ModuleSpec("cola",         "ColaTareas",        "core.ColaTareas"),
+    ModuleSpec("gp",           "GestorProyectos",   "core.GestorProyectos"),
 
-    # ── Red ───────────────────────────────────────────────────────────
-    ModuleSpec("sniffer",      "TacticalSniffer",   "modules.network.TacticalSniffer",
-               display_name="TacticalSniffer"),
-    ModuleSpec("radar",        "RadarSentinel",     "modules.network.RadarSentinel",
-               display_name="RadarSentinel"),
-    ModuleSpec("network",      "Network",           "modules.network.Network",
-               display_name="Network"),
-    ModuleSpec("adv_scanner",  "AdvancedScanner",   "modules.network.AdvancedScanner",
-               display_name="AdvancedScanner"),
-    ModuleSpec("sweep",        "SweepModule",       "modules.network.SweepModule",
-               display_name="SweepModule"),
-    ModuleSpec("wifi_attack",  "WifiAtack",         "modules.network.WifiAtack",
-               display_name="WifiAtack"),
+    # Red
+    ModuleSpec("sniffer",      "TacticalSniffer",
+               "modules.network.TacticalSniffer"),
+    ModuleSpec("radar",        "RadarSentinel",
+               "modules.network.RadarSentinel"),
+    ModuleSpec("network",      "Network",           "modules.network.Network"),
+    ModuleSpec("adv_scanner",  "AdvancedScanner",
+               "modules.network.AdvancedScanner"),
+    ModuleSpec("sweep",        "SweepModule",
+               "modules.network.SweepModule"),
+    ModuleSpec("wifi_attack",  "WifiAtack",
+               "modules.network.WifiAtack"),
     ModuleSpec("bt",           "bt_module",         "modules.network.bt_module",
                display_name="BluetoothModule"),
-    ModuleSpec("hydra",        "HydraModule",       "modules.network.HydraModule",
-               display_name="HydraModule"),
-    ModuleSpec("wifitri", "WiFiTriangulation",
-               "modules.network.wifi_triangulation",
+    ModuleSpec("hydra",        "HydraModule",
+               "modules.network.HydraModule"),
+    ModuleSpec("wifitri",      "WiFiTriangulation",  "modules.network.wifi_triangulation",
                display_name="WiFi Triangulation"),
 
-    # ── Forense ───────────────────────────────────────────────────────
-    ModuleSpec("reader",       "ForensicReader",    "modules.forense.ForensicReader",
-               display_name="ForensicReader"),
-    ModuleSpec("exif",         "ExifAnalyzer",      "modules.forense.ExifAnalyzer",
-               display_name="ExifAnalyzer"),
+    # Forense
+    ModuleSpec("reader",       "ForensicReader",
+               "modules.forense.ForensicReader"),
+    ModuleSpec("exif",         "ExifAnalyzer",
+               "modules.forense.ExifAnalyzer"),
     ModuleSpec("stealth",      "Stealth",           "modules.forense.Stealth",
                display_name="StealthModule"),
-    ModuleSpec("mobile",       "MobileSentinel",    "modules.forense.MobileSentinel",
-               display_name="MobileSentinel"),
+    ModuleSpec("mobile",       "MobileSentinel",
+               "modules.forense.MobileSentinel"),
 
-    # ── Geo ───────────────────────────────────────────────────────────
-    ModuleSpec("locator",      "LocatorModule",     "modules.geo.LocatorModule",
-               display_name="LocatorModule"),
-    ModuleSpec("geoprecise",   "GeoPrecise",        "modules.geo.GeoPrecise",
-               display_name="GeoPrecise"),
-    ModuleSpec("geomap",       "GeomapSentinel",    "modules.geo.GeomapSentinel",
-               display_name="GeomapSentinel"),
+    # Geo
+    ModuleSpec("locator",      "LocatorModule",
+               "modules.geo.LocatorModule"),
+    ModuleSpec("geoprecise",   "GeoPrecise",        "modules.geo.GeoPrecise"),
+    ModuleSpec("geomap",       "GeomapSentinel",
+               "modules.geo.GeomapSentinel"),
 
-    # ── Auditoría ─────────────────────────────────────────────────────
-    ModuleSpec("audit_engine", "AuditEngine",       "modules.audit.AuditEngine",
-               display_name="AuditEngine"),
+    # Auditoría
+    ModuleSpec("audit_engine", "AuditEngine",
+               "modules.audit.AuditEngine"),
     ModuleSpec("dict_manager", "DictionaryManager", "modules.audit.DictionaryManager",
-               needs_sentinel=False, display_name="DictionaryManager"),
-    ModuleSpec("ducky",        "DuckyModule",       "modules.audit.DuckyModule",
-               display_name="DuckyModule"),
+               needs_sentinel=False),
+    ModuleSpec("ducky",        "DuckyModule",
+               "modules.audit.DuckyModule"),
 
-    # ── Reportes ──────────────────────────────────────────────────────
+    # Reportes
     ModuleSpec("reportes",     "ReportManager",     "modules.reporte.ReportManager",
-               needs_sentinel=False, display_name="ReportManager"),
+               needs_sentinel=False),
 
-    # ── OSINT ─────────────────────────────────────────────────────────
-    ModuleSpec("osint",        "OSINTEngine",       "modules.osint.OSINTEngine",
-               display_name="OSINTEngine"),
-    ModuleSpec("cve",          "CVEMatcher",        "modules.osint.CVEMatcher",
-               display_name="CVEMatcher"),
+    # OSINT
+    ModuleSpec("osint",        "OSINTEngine",
+               "modules.osint.OSINTEngine"),
+    ModuleSpec("cve",          "CVEMatcher",
+               "modules.osint.CVEMatcher"),
 
-    # ── RF ────────────────────────────────────────────────────────────
-    ModuleSpec("rf",           "RFModuleIntegrado", "modules.rf.rf_module",
-               display_name="RFModuleIntegrado"),
-    ModuleSpec("sa",            "SpectrumAnalyzer",  "modules.rf.SpectrumAnalyzer",
-               display_name="SpectrumAnalyzer"),   # Analizador de espectro
-    ModuleSpec("adsb",  "AircraftMonitor",  "modules.rf.adsb_pymodes",
+    # RF
+    ModuleSpec("rf",           "RFModuleIntegrado", "modules.rf.rf_module"),
+    ModuleSpec("sa",           "SpectrumAnalyzer",
+               "modules.rf.SpectrumAnalyzer"),
+    ModuleSpec("adsb",         "AircraftMonitor",   "modules.rf.adsb_pymodes",
                display_name="ADS-B pyModeS"),
-    ModuleSpec("noaa",  "NOAADecoder",      "modules.rf.NOAADecoder",
-               display_name="NOAADecoder"),
+    ModuleSpec("noaa",         "NOAADecoder",       "modules.rf.NOAADecoder"),
 ]
 
 
 class ModuleRegistry:
-    # Carga todos los módulos declarados en MODULOS y los asigna
-    # como atributos en el sentinel.
 
     def __init__(self, sentinel):
         self._sentinel = sentinel
@@ -172,8 +159,8 @@ class ModuleRegistry:
     def _cargar_checker(self) -> bool:
         try:
             from core.SystemChecker import SystemChecker
-            console = getattr(self._sentinel, "console", None)
-            self._sentinel.checker = SystemChecker(console=console)
+            self._sentinel.checker = SystemChecker(
+                console=getattr(self._sentinel, "console", None))
             return True
         except Exception as exc:
             self._warn(f"SystemChecker — error: {exc}")
@@ -193,15 +180,14 @@ class ModuleRegistry:
             return False
 
     def _cargar_extras(self) -> None:
-        # Carga callables y primitivas que no son instancias de clase.
-        # EvilTwin
+        # Callables y primitivas que no son instancias de clase
+
         try:
             from modules.network.EvilTwinServer import iniciar_servidor
             self._sentinel._evil_twin_server = iniciar_servidor
         except Exception:
             self._sentinel._evil_twin_server = None
 
-        # Scapy primitivas
         try:
             from scapy.all import ARP, Ether, srp
             self._sentinel._ARP = ARP
@@ -210,12 +196,12 @@ class ModuleRegistry:
         except Exception:
             self._sentinel._ARP = self._sentinel._Ether = self._sentinel._srp = None
 
-        # WADecryptor / DatabaseExtractor (mobile deep)
         try:
             from modules.network.WADecryptor import WADecryptor
             self._sentinel._wa_decryptor_cls = WADecryptor
         except Exception:
             self._sentinel._wa_decryptor_cls = None
+
         try:
             from modules.forense.db_extractor import DatabaseExtractor
             self._sentinel._db_extractor_cls = DatabaseExtractor
@@ -223,19 +209,14 @@ class ModuleRegistry:
             self._sentinel._db_extractor_cls = None
 
     def cargar_todos(self) -> dict[str, bool]:
-        # Carga todos los módulos en orden correcto de dependencias.
-        # Devuelve {attr: bool} para el bootscreen.
         resultados: dict[str, bool] = {}
         _especiales = {"recovery", "motor_rep", "plugins", "checker"}
 
-        # 1. checker (necesita console)
         ok = self._cargar_checker()
         resultados["checker"] = ok
-        checker_spec = ModuleSpec("checker", "SystemChecker", "core.SystemChecker",
-                                  display_name="SystemChecker", critico=False)
-        self._resultados["checker"] = (ok, checker_spec)
+        self._resultados["checker"] = (ok, ModuleSpec(
+            "checker", "SystemChecker", "core.SystemChecker"))
 
-        # 2. Módulos del catálogo (excepto especiales)
         for spec in MODULOS:
             if spec.attr in _especiales:
                 continue
@@ -243,25 +224,19 @@ class ModuleRegistry:
             resultados[spec.attr] = ok
             self._resultados[spec.attr] = (ok, spec)
 
-        # 3. Recovery (depende de security)
         ok = self._cargar_recovery()
         resultados["recovery"] = ok
-        rec_spec = ModuleSpec("recovery", "SentinelRecovery", "core.Recovery",
-                              display_name="SentinelRecovery")
-        self._resultados["recovery"] = (ok, rec_spec)
+        self._resultados["recovery"] = (ok, ModuleSpec(
+            "recovery", "SentinelRecovery", "core.Recovery"))
 
-        # 4. MotorReportes (depende de gp)
         ok = self._cargar_motor_rep()
         resultados["motor_rep"] = ok
-        mr_spec = ModuleSpec("motor_rep", "MotorReportes", "modules.reporte.MotorReportes",
-                             display_name="MotorReportes")
-        self._resultados["motor_rep"] = (ok, mr_spec)
+        self._resultados["motor_rep"] = (ok, ModuleSpec(
+            "motor_rep", "MotorReportes", "modules.reporte.MotorReportes"))
 
-        # 5. Plugins
         ok = self._cargar_plugins()
         resultados["plugins"] = ok
 
-        # 6. Extras (callables/primitivas)
         self._cargar_extras()
 
         n_ok = sum(1 for v in resultados.values() if v)
@@ -269,9 +244,9 @@ class ModuleRegistry:
         return resultados
 
     def estados(self) -> dict[str, bool]:
-        # Para el bootscreen: {display_name: bool}
         return {spec.display_name: ok
                 for attr, (ok, spec) in self._resultados.items()}
 
     def disponible(self, attr: str) -> bool:
+        """True si el sentinel tiene el atributo `attr` instanciado (no None)."""
         return getattr(self._sentinel, attr, None) is not None

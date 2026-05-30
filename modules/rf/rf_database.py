@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-
 log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 3
@@ -23,8 +22,7 @@ class RFDatabase:
         self._schema_init()
         log.debug("RFDatabase abierta: %s", self.db_path)
 
-    # ── Conexión por hilo (thread-local) ─────────────────────────────
-
+    # Conexión por hilo (thread-local)
     def _conn(self) -> sqlite3.Connection:
         if not getattr(self._local, "conn", None):
             conn = sqlite3.connect(
@@ -53,8 +51,7 @@ class RFDatabase:
             conn.execute("ROLLBACK")
             raise
 
-    # ── Esquema ───────────────────────────────────────────────────────
-
+    # Esquema
     def _schema_init(self) -> None:
         ddl = [
             """CREATE TABLE IF NOT EXISTS schema_version (
@@ -113,8 +110,7 @@ class RFDatabase:
                 (SCHEMA_VERSION, datetime.now(timezone.utc).isoformat())
             )
 
-    # ── Inserción ────────────────────────────────────────────────────
-
+    # Inserción
     def iniciar_escaneo(self, freq_mhz: float, hardware: str,
                         sample_rate: int, fft_size: int,
                         notas: str = "") -> int:
@@ -147,7 +143,8 @@ class RFDatabase:
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     escaneo_id,
-                    pico.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                    pico.get("timestamp", datetime.now(
+                        timezone.utc).isoformat()),
                     pico["freq_mhz"],
                     pico["potencia"],
                     pico["snr_db"],
@@ -156,17 +153,17 @@ class RFDatabase:
                     pico.get("kurtosis", 0.0),
                     pico.get("mod_hint"),
                     banda["nombre"] if banda else None,
-                    banda["tipo"]   if banda else None,
+                    banda["tipo"] if banda else None,
                     pico.get("hardware"),
                 )
             )
 
     def insertar_senales_bulk(self, picos: list[dict[str, Any]],
-                               escaneo_id: int | None = None) -> None:
+                              escaneo_id: int | None = None) -> None:
         if not picos:
             return
         ts_now = datetime.now(timezone.utc).isoformat()
-        rows   = []
+        rows = []
         for p in picos:
             banda = p.get("banda")
             rows.append((
@@ -176,7 +173,7 @@ class RFDatabase:
                 p.get("bw_khz"), p.get("piso_dbm"),
                 p.get("kurtosis", 0.0), p.get("mod_hint"),
                 banda["nombre"] if banda else None,
-                banda["tipo"]   if banda else None,
+                banda["tipo"] if banda else None,
                 p.get("hardware"),
             ))
         with self._tx() as db:
@@ -189,7 +186,7 @@ class RFDatabase:
             )
 
     def insertar_barrido(self, freq_ini: float, freq_fin: float,
-                          paso_mhz: float, hardware: str, resultados: list) -> None:
+                         paso_mhz: float, hardware: str, resultados: list) -> None:
         import json
         datos = [
             {
@@ -213,17 +210,16 @@ class RFDatabase:
                 )
             )
 
-    # ── Consultas ────────────────────────────────────────────────────
-
+    # Consultas
     def consultar_senales(self,
                           freq_min: float | None = None,
                           freq_max: float | None = None,
                           snr_min:  float | None = None,
-                          banda:    str | None   = None,
-                          horas:    int | None   = None,
+                          banda:    str | None = None,
+                          horas:    int | None = None,
                           limit:    int = 200) -> list[dict[str, Any]]:
         condiciones: list[str] = []
-        params:      list      = []
+        params:      list = []
 
         if freq_min is not None:
             condiciones.append("freq_mhz >= ?")
@@ -288,7 +284,7 @@ class RFDatabase:
                             horas: int = 24) -> list[dict[str, Any]]:
         desde = (datetime.now(timezone.utc)
                  - timedelta(hours=horas)).isoformat()
-        rows  = self._conn().execute("""
+        rows = self._conn().execute("""
             SELECT
                 ROUND(freq_mhz, 2)  AS freq_mhz,
                 COUNT(*)            AS detecciones,
@@ -304,8 +300,7 @@ class RFDatabase:
         """, (desde, snr_min)).fetchall()
         return [dict(r) for r in rows]
 
-    # ── Mantenimiento ────────────────────────────────────────────────
-
+    # Mantenimiento
     def limpiar_antiguas(self, dias: int) -> None:
         if dias <= 0:
             return
@@ -342,8 +337,7 @@ class RFDatabase:
             w.writerows(senales)
         log.info("Exportadas %d señales a %s", len(senales), ruta)
 
-    # ── Cierre ───────────────────────────────────────────────────────
-
+    # Cierre
     def cerrar(self) -> None:
         conn = getattr(self._local, "conn", None)
         if conn:

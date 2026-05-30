@@ -1,9 +1,7 @@
-"""
-core/commands/cmd_general.py — Comandos generales del sistema
-"""
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import time
 
 from rich import box
@@ -18,7 +16,8 @@ class GeneralCommands(_DomainBase):
         from rich.panel import Panel
         s = self.s
         proy = s.gp.proyecto_activo.nombre if s.gp and s.gp.proyecto_activo else "Ninguno"
-        rf_state = getattr(s.rf, "hw_nombre", "No disponible") if s.rf else "No disponible"
+        rf_state = getattr(s.rf, "hw_nombre",
+                           "No disponible") if s.rf else "No disponible"
         self.console.print(Panel(
             f"[cyan]Sistema:[/cyan]  {s.nombre}\n"
             f"[cyan]Versión:[/cyan]  {s.version}\n"
@@ -39,10 +38,13 @@ class GeneralCommands(_DomainBase):
         tabla.add_column("Tamaño", style="yellow", justify="right")
         tabla.add_column("Tipo",   style="green",  justify="center")
         try:
-            for f in sorted(os.listdir(".")):
+            for entry in sorted(Path(".").iterdir(), key=lambda e: e.name):
                 try:
-                    tabla.add_row(f, f"{os.path.getsize(f):,} bytes",
-                                  "DIR" if os.path.isdir(f) else "FILE")
+                    tabla.add_row(
+                        entry.name,
+                        f"{entry.stat().st_size:,} bytes",
+                        "DIR" if entry.is_dir() else "FILE",
+                    )
                 except OSError:
                     tabla.add_row(f, "N/A", "?")
             self.console.print(tabla)

@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-
 import numpy as np
 
 from modules.rf.rf_config import DspConfig
@@ -12,10 +11,7 @@ from modules.rf.bands import identify_band
 
 log = logging.getLogger(__name__)
 
-
-# ════════════════════════════════════════════════════════════════════
 # TIPOS DE DATOS
-# ════════════════════════════════════════════════════════════════════
 
 @dataclass
 class Signal:
@@ -61,10 +57,7 @@ class Signal:
             "timestamp": self.timestamp,
         }
 
-
-# ════════════════════════════════════════════════════════════════════
 # MOTOR DSP
-# ════════════════════════════════════════════════════════════════════
 
 class DSPEngine:
 
@@ -92,8 +85,7 @@ class DSPEngine:
             sample_rate / cfg.fft_size,
         )
 
-    # ── Construcción de ventana ──────────────────────────────────────
-
+    # Construcción de ventana
     @staticmethod
     def _build_window(n: int, name: str) -> np.ndarray:
         if name == "blackman":
@@ -112,8 +104,7 @@ class DSPEngine:
         log.warning("Ventana '%s' desconocida — usando Blackman", name)
         return np.blackman(n).astype(np.float32)
 
-    # ── PSD con promediado de Welch ──────────────────────────────────
-
+    # PSD con promediado de Welch
     def compute_psd(self, samples: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         fft_size = self.cfg.fft_size
         samples  = np.asarray(samples, dtype=np.complex64)
@@ -146,8 +137,7 @@ class DSPEngine:
 
         return self._freq_axis.copy(), psd_dbm
 
-    # ── OS-CFAR (Order Statistics) ───────────────────────────────────
-
+    # OS-CFAR (Order Statistics)
     def detect_peaks(self, freqs: np.ndarray, psd: np.ndarray,
                      center_freq_hz: float) -> list[Signal]:
         n        = len(psd)
@@ -206,8 +196,7 @@ class DSPEngine:
 
         return signals
 
-    # ── Ancho de banda -3dB ──────────────────────────────────────────
-
+    # Ancho de banda -3dB
     def _measure_bw_3db(self, psd: np.ndarray, idx: int,
                         freqs: np.ndarray) -> float:
         level = float(psd[idx]) - 3.0
@@ -224,8 +213,7 @@ class DSPEngine:
         bin_res = self.sample_rate / self.cfg.fft_size
         return max(bw, bin_res)
 
-    # ── Curtosis espectral ───────────────────────────────────────────
-
+    # Curtosis espectral
     def _spectral_kurtosis(self, psd: np.ndarray, idx: int,
                            window: int = 8) -> float:
         lo  = max(0, idx - window)
@@ -242,15 +230,13 @@ class DSPEngine:
 
         return round(float(np.mean(((seg - mu) / std) ** 4)) - 3.0, 3)
 
-    # ── Piso de ruido (percentil 40%) ───────────────────────────────
-
+    # Piso de ruido (percentil 40%)
     def noise_floor(self, psd: np.ndarray) -> float:
         sorted_psd = np.sort(psd)
         n_noise    = max(1, int(len(sorted_psd) * 0.4))
         return float(np.median(sorted_psd[:n_noise]))
 
-    # ── Propiedades ──────────────────────────────────────────────────
-
+    # Propiedades
     @property
     def freq_resolution_hz(self) -> float:
         return self.sample_rate / self.cfg.fft_size

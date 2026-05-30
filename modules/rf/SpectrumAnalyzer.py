@@ -46,10 +46,8 @@ _FKEY_MAP: dict[bytes, str] = {
     b"A": "UP",  b"B": "DOWN", b"C": "RIGHT", b"D": "LEFT",
 }
 
-
-# ══════════════════════════════════════════════════════════════════════
 # CONFIGURACIÓN
-# ══════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class SAConfig:
@@ -105,10 +103,8 @@ class SAConfig:
             sp_h = kb.display_rows
         return cls(display_width=cols, display_height=sp_h, waterfall_h=wf_h)
 
-
-# ══════════════════════════════════════════════════════════════════════
 # MARCADORES Y SEÑALES
-# ══════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class Marker:
@@ -126,10 +122,8 @@ class _DetectedSignal:
     snr_db:    float
     bw_khz:    float
 
-
-# ══════════════════════════════════════════════════════════════════════
 # BUFFER DE FRAMES — peak hold + promedio
-# ══════════════════════════════════════════════════════════════════════
+
 
 class FrameBuffer:
 
@@ -159,10 +153,8 @@ class FrameBuffer:
         self._frames.clear()
         self._peak = None
 
-
-# ══════════════════════════════════════════════════════════════════════
 # WATERFALL BUFFER — historia de frames para display y grabación
-# ══════════════════════════════════════════════════════════════════════
+
 
 class _WaterfallBuffer:
 
@@ -199,10 +191,8 @@ class _WaterfallBuffer:
     def is_recording(self) -> bool:
         return self._recording
 
-
-# ══════════════════════════════════════════════════════════════════════
 # DETECTOR DE SEÑALES — picos sobre umbral con estimación de BW y SNR
-# ══════════════════════════════════════════════════════════════════════
+
 
 class _SignalDetector:
 
@@ -246,10 +236,8 @@ class _SignalDetector:
         signals.sort(key=lambda s: s.power_dbm, reverse=True)
         return signals[:max_signals]
 
-
-# ══════════════════════════════════════════════════════════════════════
 # TECLADO — raw mode, flechas, F-keys
-# ══════════════════════════════════════════════════════════════════════
+
 
 class _KeyReader(threading.Thread):
 
@@ -317,23 +305,10 @@ class _KeyReader(threading.Thread):
     def stop(self) -> None:
         self._stop.set()
 
-
-# ══════════════════════════════════════════════════════════════════════
 # ADAPTADOR SDR — interfaz uniforme hardware / MockSDR
-# ══════════════════════════════════════════════════════════════════════
+
 
 class _SDRAdapter:
-    """
-    Adaptador fino sobre SDRBackend de rf_source.
-    Mantiene la API histórica (tune en MHz, read_iq, set_gain, close)
-    y delega toda la lógica de hardware al backend centralizado,
-    eliminando el código de inicialización duplicado.
-
-    Para conectar un SDR remoto o reproducir un archivo IQ:
-        adapter.swap_backend(rf_source.tcp_backend(...))
-        adapter.swap_backend(rf_source.file_backend(path))
-    """
-
     def __init__(self, cfg: "SAConfig") -> None:
         self._cfg = cfg
         from modules.rf.rf_source import open_backend
@@ -344,8 +319,7 @@ class _SDRAdapter:
         )
         log.info("SA backend: %s", self._backend.hw_name)
 
-    # ── API pública (sin cambios de interfaz) ─────────────────────────
-
+    # API pública (sin cambios de interfaz)
     @property
     def hw_name(self) -> str:
         return self._backend.hw_name
@@ -367,18 +341,15 @@ class _SDRAdapter:
     def close(self) -> None:
         self._backend.close()
 
-    # ── Hot-swap de backend (TCP / archivo IQ) ────────────────────────
-
+    # Hot-swap de backend (TCP / archivo IQ)
     def swap_backend(self, backend: "SDRBackend") -> None:
         """Sustituye el backend en caliente; cierra el anterior."""
         self._backend.close()
         self._backend = backend
         log.info("SA backend cambiado → %s", backend.hw_name)
 
-
-# ══════════════════════════════════════════════════════════════════════
 # FRAME — resultado de un ciclo de adquisición
-# ══════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class _SpectrumFrame:
@@ -391,10 +362,8 @@ class _SpectrumFrame:
     ts:          str
     detected:    list[_DetectedSignal] = field(default_factory=list)
 
-
-# ══════════════════════════════════════════════════════════════════════
 # RENDERER
-# ══════════════════════════════════════════════════════════════════════
+
 
 class _Renderer:
 
@@ -449,7 +418,7 @@ class _Renderer:
 
         body = Text()
 
-        # ── Encabezado ────────────────────────────────────────────────
+        # Encabezado
         hdr = Text(justify="center")
         if cfg.band_label:
             hdr.append(f"[{cfg.band_label}]  ", style="bold yellow")
@@ -473,7 +442,7 @@ class _Renderer:
         body.append_text(hdr)
         body.append("\n")
 
-        # ── Etiquetas de señales detectadas ───────────────────────────
+        # Etiquetas de señales detectadas
         if cfg.show_labels and frame.detected:
             lbl_line = Text("       ")
             prev_end = 0
@@ -487,7 +456,7 @@ class _Renderer:
             lbl_line.append("\n")
             body.append_text(lbl_line)
 
-        # ── Línea de marcadores ───────────────────────────────────────
+        # Línea de marcadores
         mline = Text("       ")
         for c in range(W):
             m = mcols.get(c)
@@ -496,7 +465,7 @@ class _Renderer:
         body.append_text(mline)
         body.append("\n")
 
-        # ── Espectro con línea de umbral integrada ────────────────────
+        # Espectro con línea de umbral integrada
         for row in range(H - 1, -1, -1):
             db = cfg.floor_dbm + (row / H) * (cfg.ref_dbm - cfg.floor_dbm)
             body.append(f"{db:>6.0f} │", style="dim green")
@@ -519,7 +488,7 @@ class _Renderer:
             "        " + _freq_axis(cfg.freq_start_mhz(), cfg.freq_end_mhz(), W))
         body.append("\n")
 
-        # ── Waterfall ─────────────────────────────────────────────────
+        # Waterfall
         if cfg.waterfall_on:
             wf_rows = wf_buf.rows()
             body.append("  WF   │", style="dim")
@@ -535,7 +504,7 @@ class _Renderer:
                 body.append("       │" + " " * W + "│\n", style="dim")
             body.append("       └" + "─" * W + "┘\n", style="dim")
 
-        # ── Marcadores y canal de potencia ────────────────────────────
+        # Marcadores y canal de potencia
         m1, m2 = markers[0], markers[1]
         mbar = Text()
         mbar.append_text(_marker_txt(m1, "bold yellow", "yellow"))
@@ -557,7 +526,7 @@ class _Renderer:
         body.append_text(mbar)
         body.append("\n")
 
-        # ── Señales detectadas resumidas ──────────────────────────────
+        # Señales detectadas resumidas
         if frame.detected:
             sig_line = Text("  ")
             for i, s in enumerate(frame.detected[:5]):
@@ -569,7 +538,7 @@ class _Renderer:
             body.append_text(sig_line)
             body.append("\n")
 
-        # ── Estado ────────────────────────────────────────────────────
+        # Estado
         pk = "[green]ON[/green]" if cfg.peak_hold else "[dim]OFF[/dim]"
         avg = (f"[green]{cfg.avg_frames}f[/green]"
                if cfg.avg_frames > 1 else "[dim]OFF[/dim]")
@@ -584,7 +553,7 @@ class _Renderer:
         body.append_text(status)
         body.append("\n")
 
-        # ── Controles ────────────────────────────────────────────────
+        # Controles
         ctrl = Text(style="dim")
         ctrl.append(
             "  ←→ tune  +- span  ↑↓ ref  []thr  p peak  v avg  "
@@ -606,10 +575,8 @@ class _Renderer:
             expand=False,
         )
 
-
-# ══════════════════════════════════════════════════════════════════════
 # ANALIZADOR PRINCIPAL
-# ══════════════════════════════════════════════════════════════════════
+
 
 class SpectrumAnalyzer:
 
@@ -623,8 +590,7 @@ class SpectrumAnalyzer:
         self._kb = load_keys(self._platform)
         self._log.info(f"SpectrumAnalyzer v2 listo — {self._platform}", "SA")
 
-    # ── API pública ───────────────────────────────────────────────────
-
+    # API pública
     def run(self, cfg: SAConfig | None = None) -> None:
         self._cfg = cfg or SAConfig.from_platform(self._platform, self._kb)
         self._buf = FrameBuffer()
@@ -695,14 +661,12 @@ class SpectrumAnalyzer:
             self._log.info(f"SA → rtl_tcp://{host}:{port}", "SA")
 
     def use_file(self, path: str, loop: bool = True) -> None:
-        """Carga un archivo IQ (u8 interleaved) para replay en el analizador."""
         from modules.rf.rf_source import file_backend
         if hasattr(self, "_sdr"):
             self._sdr.swap_backend(file_backend(path, loop))
             self._log.info(f"SA → FILE:{path}", "SA")
 
-    # ── Adquisición IQ + FFT ──────────────────────────────────────────
-
+    # Adquisición IQ + FFT
     def _acq_loop(self) -> None:
         cfg = self._cfg
         n_fft = cfg.fft_size()
@@ -767,8 +731,7 @@ class SpectrumAnalyzer:
                 log.debug("Adquisición: %s", exc)
                 time.sleep(0.1)
 
-    # ── Display loop ──────────────────────────────────────────────────
-
+    # Display loop
     def _display_loop(self) -> None:
         with Live(console=self._console, refresh_per_second=15, screen=True) as live:
             while not self._stop.is_set():
@@ -784,8 +747,7 @@ class SpectrumAnalyzer:
                     ))
                 time.sleep(0.04)
 
-    # ── Manejador de teclas ───────────────────────────────────────────
-
+    # Manejador de teclas
     def _handle_key(self, key: str) -> bool:
         action = self._action.get(key, "")
 
@@ -830,8 +792,7 @@ class SpectrumAnalyzer:
             fn()  # type: ignore[operator]
         return True
 
-    # ── Controles ────────────────────────────────────────────────────
-
+    # Controles
     def _tune(self, mhz: float) -> None:
         mhz = float(np.clip(mhz, _FREQ_MIN_MHZ, _FREQ_MAX_MHZ))
         self._cfg.center_mhz = mhz
@@ -1011,10 +972,8 @@ class SpectrumAnalyzer:
             )
         log.info("Exportado → %s", json_path)
 
-
-# ══════════════════════════════════════════════════════════════════════
 # HELPERS DE MÓDULO
-# ══════════════════════════════════════════════════════════════════════
+
 
 def _interp(arr: np.ndarray, n: int) -> np.ndarray:
     return np.interp(np.linspace(0, len(arr) - 1, n), np.arange(len(arr)), arr)

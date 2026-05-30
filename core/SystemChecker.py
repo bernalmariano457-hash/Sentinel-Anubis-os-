@@ -1,10 +1,3 @@
-"""
-core/SystemChecker.py — Diagnóstico de dependencias APEX SENTINEL
-══════════════════════════════════════════════════════════════════
-FIX: Expandido de 5 herramientas genéricas a 20+ herramientas categorizadas.
-     Cubre RF/SDR, Wireless, Forense, Red y Ataque.
-     Usa el Console del sentinel si está disponible (no Console() global).
-"""
 from __future__ import annotations
 
 import shutil
@@ -13,8 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-
-# ── Herramientas por categoría ──────────────────────────────────────────
+# Herramientas por categoría
 # Formato: "Nombre descriptivo": ("ejecutable", "paquete para instalar")
 DEPENDENCIAS: dict[str, dict[str, tuple[str, str]]] = {
     "RF / SDR": {
@@ -57,10 +49,6 @@ _CRITICOS = {"nmap", "aircrack-ng", "tshark", "adb"}
 
 
 class SystemChecker:
-    """
-    Verifica la disponibilidad de herramientas del sistema requeridas
-    por los módulos de APEX SENTINEL.
-    """
 
     def __init__(self, console: Console | None = None) -> None:
         # Acepta el Console del sentinel o crea uno propio como fallback.
@@ -68,15 +56,6 @@ class SystemChecker:
         self._console = console or Console()
 
     def verificar_dependencias(self, silencioso: bool = False) -> bool:
-        """
-        Verifica todas las herramientas y muestra una tabla por categoría.
-
-        Args:
-            silencioso: si True, no imprime nada (solo retorna el bool).
-
-        Returns:
-            True si todas las herramientas críticas están disponibles.
-        """
         resultados: dict[str, dict[str, bool]] = {}
         criticos_faltantes: list[str] = []
 
@@ -127,7 +106,8 @@ class SystemChecker:
             self._console.print(tabla)
 
         # Resumen final
-        color = "green" if total_ok == total else ("red" if total_ok < total // 2 else "yellow")
+        color = "green" if total_ok == total else (
+            "red" if total_ok < total // 2 else "yellow")
         self._console.print(
             Panel(
                 f"[{color}]Herramientas disponibles: {total_ok}/{total}[/{color}]\n"
@@ -144,7 +124,6 @@ class SystemChecker:
         )
 
     def instalar_sugerencia(self, herramienta: str) -> str | None:
-        """Retorna el comando de instalación sugerido para una herramienta."""
         for tools in DEPENDENCIAS.values():
             if herramienta in tools:
                 _, paquete = tools[herramienta]

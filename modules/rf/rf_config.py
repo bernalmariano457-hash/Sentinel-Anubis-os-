@@ -5,7 +5,6 @@ import os
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
-
 log = logging.getLogger(__name__)
 
 try:
@@ -57,10 +56,7 @@ except ImportError:
                         section[k] = v
             return result
 
-
-# ════════════════════════════════════════════════════════════════════
 # DATACLASSES DE CONFIGURACION
-# ════════════════════════════════════════════════════════════════════
 
 _VALID_SAMPLE_RATES = frozenset({
     250_000, 1_024_000, 1_536_000, 1_792_000,
@@ -71,7 +67,6 @@ _VALID_SAMPLE_RATES = frozenset({
 _VALID_WINDOWS = frozenset({"blackman", "hann", "hamming", "flattop"})
 _VALID_MODES   = frozenset({"none", "wfm", "nfm", "am", "usb", "lsb"})
 _VALID_FFT     = frozenset({256, 512, 1024, 2048, 4096, 8192})
-
 
 @dataclass
 class HardwareConfig:
@@ -91,7 +86,6 @@ class HardwareConfig:
             raise ValueError(f"gain_db fuera de rango: {self.gain_db}")
         if self.sample_rate not in _VALID_SAMPLE_RATES:
             raise ValueError(f"sample_rate no soportado: {self.sample_rate}")
-
 
 @dataclass
 class DspConfig:
@@ -114,7 +108,6 @@ class DspConfig:
         if not (0.0 <= self.welch_overlap < 1.0):
             raise ValueError("welch_overlap debe estar en [0, 1)")
 
-
 @dataclass
 class DemodConfig:
     mode:       str   = "none"
@@ -129,17 +122,16 @@ class DemodConfig:
         if not (0.0 <= self.volume <= 1.0):
             raise ValueError("volume debe estar entre 0 y 1")
 
-
 @dataclass
 class StorageConfig:
-    data_dir:          str  = "data/rf"
+    data_dir:          Path = field(default_factory=lambda: Path("data/rf"))
     db_retention_days: int  = 0
     compress_iq:       bool = False
     sigmf_format:      bool = True
 
     @property
     def data_path(self) -> Path:
-        return Path(self.data_dir)
+        return self.data_dir
 
     @property
     def db_path(self) -> Path:
@@ -157,7 +149,6 @@ class StorageConfig:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-
 @dataclass
 class DisplayConfig:
     waterfall_rows:  int   = 16
@@ -167,14 +158,12 @@ class DisplayConfig:
     dbm_ceil:        float = -10.0
     color_scheme:    str   = "default"
 
-
 @dataclass
 class LoggingConfig:
     level:        str = "INFO"
-    file:         str = "data/rf/rfscanner.log"
+    file:         Path = field(default_factory=lambda: Path("data/rf/rfscanner.log"))
     max_mb:       int = 10
     backup_count: int = 3
-
 
 @dataclass
 class RFConfig:
@@ -185,10 +174,7 @@ class RFConfig:
     display:  DisplayConfig  = field(default_factory=DisplayConfig)
     logging:  LoggingConfig  = field(default_factory=LoggingConfig)
 
-
-# ════════════════════════════════════════════════════════════════════
 # CARGADOR
-# ════════════════════════════════════════════════════════════════════
 
 def load_config(path: str | None = None) -> RFConfig:
     cfg_path = Path(path) if path else _find_config()
@@ -232,7 +218,7 @@ def load_config(path: str | None = None) -> RFConfig:
         squelch_db = float(_get("demod", "squelch_db", 0.0)),
     )
     storage = StorageConfig(
-        data_dir          = str(_get("storage", "data_dir",          "data/rf")),
+        data_dir          = Path(_get("storage", "data_dir",         "data/rf")),
         db_retention_days = int(_get("storage", "db_retention_days", 0)),
         compress_iq       = bool(_get("storage", "compress_iq",      False)),
         sigmf_format      = bool(_get("storage", "sigmf_format",     True)),
@@ -247,7 +233,7 @@ def load_config(path: str | None = None) -> RFConfig:
     )
     logging_cfg = LoggingConfig(
         level        = str(_get("logging", "level",        "INFO")),
-        file         = str(_get("logging", "file",         "data/rf/rfscanner.log")),
+        file         = Path(_get("logging", "file",        "data/rf/rfscanner.log")),
         max_mb       = int(_get("logging", "max_mb",       10)),
         backup_count = int(_get("logging", "backup_count", 3)),
     )
@@ -288,7 +274,6 @@ def load_config(path: str | None = None) -> RFConfig:
     Path(storage.data_dir).mkdir(parents=True, exist_ok=True)
     return cfg
 
-
 def _find_config() -> Path | None:
     candidates = [
         Path("config.toml"),
@@ -300,7 +285,6 @@ def _find_config() -> Path | None:
         if p.exists():
             return p
     return None
-
 
 def save_config(cfg: RFConfig, path: str = "config.toml"):
     lines: list[str] = []

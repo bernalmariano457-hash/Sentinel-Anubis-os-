@@ -4,9 +4,8 @@ import re
 
 _MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}$")
 
-
 class VendorResolver:
-    # ── Tabla OUI local ───────────────────────────────────────────────
+    # Tabla OUI local
     _LOCAL: dict[str, str] = {
         # Apple
         "8C:64:A2": "Apple",        "3C:D9:2B": "Apple",        "00:17:F2": "Apple",
@@ -40,11 +39,9 @@ class VendorResolver:
 
     _cache: dict[str, str] = {}
 
-    # ── API pública (lazy import) ─────────────────────────────────────
+    # API pública (lazy import)
     _API_URL = "https://api.macvendors.com/{mac}"
     _USER_AGENT = "ApexSentinel/2.3"
-
-    # ─────────────────────────────────────────────────────────────────
 
     @classmethod
     def resolve(cls, mac: str) -> str:

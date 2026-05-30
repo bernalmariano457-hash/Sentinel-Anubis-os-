@@ -9,7 +9,6 @@ import tempfile
 import wave
 from pathlib import Path
 
-
 import numpy as np
 
 from modules.rf.rf_config import DemodConfig
@@ -68,10 +67,7 @@ except ImportError:
             out[i] = y
         return out
 
-
-# ══════════════════════════════════════════════════════════════════
 # DEMODULADOR
-# ══════════════════════════════════════════════════════════════════
 
 class Demodulator:
 
@@ -99,8 +95,7 @@ class Demodulator:
             self.audio_rate_actual, self.decimation, backend,
         )
 
-    # ── API pública ────────────────────────────────────────────────
-
+    # API pública
     def demodulate(self, iq: np.ndarray) -> np.ndarray | None:
         mode = self.cfg.mode.lower()
         if mode == "none":
@@ -158,8 +153,7 @@ class Demodulator:
                 pass
             self._pa = None
 
-    # ── Demoduladores ──────────────────────────────────────────────
-
+    # Demoduladores
     def _demod_wfm(self, iq: np.ndarray) -> np.ndarray:
         audio = self._fm_discriminator(iq)
         audio = self._deemphasis(audio, tau=75e-6)
@@ -205,8 +199,7 @@ class Demodulator:
         audio = self._soft_agc(audio)
         return np.clip(audio * self.cfg.volume, -1.0, 1.0)
 
-    # ── DSP helpers ────────────────────────────────────────────────
-
+    # DSP helpers
     def _fm_discriminator(self, iq: np.ndarray) -> np.ndarray:
         prev    = np.empty(len(iq), dtype=np.complex64)
         prev[0] = np.exp(1j * self._prev_phase)
@@ -249,8 +242,7 @@ class Demodulator:
         peak = np.max(np.abs(audio))
         return audio / peak if peak > 1e-9 else audio
 
-    # ── Backends de audio ──────────────────────────────────────────
-
+    # Backends de audio
     def _play_android(self, audio: np.ndarray) -> bool:
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         try:

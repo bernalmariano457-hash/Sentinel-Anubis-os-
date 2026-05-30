@@ -11,7 +11,6 @@ from cryptography.fernet import Fernet, InvalidToken
 
 log = logging.getLogger("sentinel.security")
 
-# Rutas absolutas basadas en la ubicación del módulo
 _HERE = Path(__file__).resolve().parent
 _KEY_DIR = _HERE / "data" / "security"
 _KEY_FILE = _KEY_DIR / "anubis_master.key"
@@ -19,28 +18,12 @@ _BACKUP_DIR = _KEY_DIR / "key_backups"
 
 
 class SecurityModule:
-    """
-    Módulo de cifrado simétrico para APEX SENTINEL.
-
-    La clave Fernet se almacena en data/security/anubis_master.key
-    con permisos 0o600 (solo lectura del propietario en POSIX).
-
-    Uso:
-        sec = SecurityModule(sentinel)
-        sec.encriptar_archivo("data/evidence/captura.pcap")
-        sec.desencriptar_archivo("data/evidence/captura.pcap")
-        sec.rotar_clave(archivos_cifrados=["archivo1", "archivo2"])
-    """
-
     def __init__(self, sentinel):
         self.sentinel = sentinel
         self._fernet: Fernet | None = None
         self._inicializar_clave()
 
-    # ── Inicialización ─────────────────────────────────────────────────
-
     def _inicializar_clave(self) -> None:
-        """Carga o genera la clave maestra Fernet."""
         _KEY_DIR.mkdir(parents=True, exist_ok=True)
         _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -50,7 +33,6 @@ class SecurityModule:
             self._fernet = self._generar_clave()
 
     def _generar_clave(self) -> Fernet:
-        """Genera una nueva clave Fernet y la guarda con permisos restrictivos."""
         clave = Fernet.generate_key()
         try:
             _KEY_FILE.write_bytes(clave)
@@ -59,11 +41,10 @@ class SecurityModule:
         except OSError as e:
             log.error(f"No se pudo guardar la clave maestra: {e}")
             raise RuntimeError(
-                f"Error crítico: no se puede guardar la clave de cifrado.") from e
+                "Error crítico: no se puede guardar la clave de cifrado.") from e
         return Fernet(clave)
 
     def _cargar_clave(self, ruta: Path) -> Fernet:
-        """Carga una clave Fernet desde disco."""
         try:
             clave = ruta.read_bytes()
             return Fernet(clave)
@@ -74,7 +55,6 @@ class SecurityModule:
 
     @staticmethod
     def _aplicar_permisos(ruta: Path) -> None:
-        """Aplica permisos 0o600 en sistemas POSIX."""
         if sys.platform != "win32":
             try:
                 ruta.chmod(0o600)
@@ -82,26 +62,16 @@ class SecurityModule:
                 log.warning(
                     f"No se pudieron establecer permisos en {ruta}: {e}")
 
-    # ── Cifrado / Descifrado ───────────────────────────────────────────
+    # Cifrado de archivos
 
     def encriptar_archivo(self, ruta: str | Path) -> bool:
-        """
-        Cifra un archivo en su lugar con la clave maestra.
-
-        Retorna True si tuvo éxito, False en caso de error.
-        """
         archivo = Path(ruta)
-        if not archivo.exists():
+        if not archivo.is_file():
             log.warning(f"Archivo no encontrado para cifrar: {archivo}")
             return False
-        if not archivo.is_file():
-            log.warning(f"La ruta no es un archivo: {archivo}")
-            return False
-
         try:
             datos = archivo.read_bytes()
-            cifrado = self._fernet.encrypt(datos)
-            archivo.write_bytes(cifrado)
+            archivo.write_bytes(self._fernet.encrypt(datos))
             log.info(f"Archivo cifrado: {archivo}")
             return True
         except OSError as e:
@@ -112,26 +82,19 @@ class SecurityModule:
             return False
 
     def desencriptar_archivo(self, ruta: str | Path) -> bool:
-        """
-        Descifra un archivo en su lugar.
-
-        Retorna True si tuvo éxito, False en caso de error.
-        """
         archivo = Path(ruta)
         if not archivo.exists():
             log.warning(f"Archivo no encontrado para descifrar: {archivo}")
             return False
-
         try:
             datos = archivo.read_bytes()
-            original = self._fernet.decrypt(datos)
-            archivo.write_bytes(original)
+            archivo.write_bytes(self._fernet.decrypt(datos))
             log.info(f"Archivo descifrado: {archivo}")
             return True
         except InvalidToken:
             log.error(
                 f"Token inválido al descifrar {archivo}. "
-                "El archivo puede estar corrupto o cifrado con otra clave."
+                "Puede estar corrupto o cifrado con otra clave."
             )
             return False
         except OSError as e:
@@ -139,34 +102,16 @@ class SecurityModule:
             return False
 
     def cifrar_datos(self, datos: bytes) -> bytes:
-        """Cifra datos en memoria y retorna los bytes cifrados."""
         return self._fernet.encrypt(datos)
 
     def descifrar_datos(self, datos_cifrados: bytes) -> bytes:
-        """
-        Descifra datos en memoria.
-
-        Raises:
-            InvalidToken — si los datos están corruptos o la clave es incorrecta.
-        """
         return self._fernet.decrypt(datos_cifrados)
 
-    # ── Rotación de clave ──────────────────────────────────────────────
+    # Rotación de clave
 
     def rotar_clave(self, archivos_cifrados: list[str | Path] | None = None) -> bool:
-        """
-        Genera una nueva clave Fernet, re-cifra los archivos proporcionados
-        con la nueva clave y hace backup de la clave anterior.
-
-        Args:
-            archivos_cifrados: Lista de rutas a re-cifrar. Si es None,
-                               solo rota la clave sin re-cifrar archivos.
-
-        Retorna True si la rotación fue exitosa.
-        """
         log.info("Iniciando rotación de clave maestra...")
 
-        # 1. Backup de la clave actual
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         backup_path = _BACKUP_DIR / f"anubis_master.key.{timestamp}.bak"
         try:
@@ -179,7 +124,6 @@ class SecurityModule:
 
         fernet_antigua = self._fernet
 
-        # 2. Generar nueva clave
         try:
             nueva_clave = Fernet.generate_key()
             fernet_nueva = Fernet(nueva_clave)
@@ -189,7 +133,6 @@ class SecurityModule:
             log.error(f"No se pudo escribir la nueva clave: {e}")
             return False
 
-        # 3. Re-cifrar archivos si se especificaron
         if archivos_cifrados:
             errores = 0
             for ruta in archivos_cifrados:
@@ -199,8 +142,7 @@ class SecurityModule:
                         f"Archivo no encontrado durante rotación: {archivo}")
                     continue
                 try:
-                    datos_cifrados = archivo.read_bytes()
-                    datos_planos = fernet_antigua.decrypt(datos_cifrados)
+                    datos_planos = fernet_antigua.decrypt(archivo.read_bytes())
                     archivo.write_bytes(fernet_nueva.encrypt(datos_planos))
                     log.info(f"Re-cifrado con nueva clave: {archivo}")
                 except InvalidToken:
@@ -218,13 +160,10 @@ class SecurityModule:
         log.info("Rotación de clave completada.")
         return True
 
-    # ── Estado ──────────────────────────────────────────────────────────
-
     def estado(self) -> dict:
-        """Retorna información sobre el estado del módulo de seguridad."""
         return {
-            "clave_cargada":  self._fernet is not None,
-            "ruta_clave":     str(_KEY_FILE),
-            "clave_existe":   _KEY_FILE.exists(),
-            "backups":        len(list(_BACKUP_DIR.glob("*.bak"))),
+            "clave_cargada": self._fernet is not None,
+            "ruta_clave":    str(_KEY_FILE),
+            "clave_existe":  _KEY_FILE.exists(),
+            "backups":       len(list(_BACKUP_DIR.glob("*.bak"))),
         }

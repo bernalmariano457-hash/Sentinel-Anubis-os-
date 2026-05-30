@@ -15,14 +15,12 @@ from rich.table import Table
 if TYPE_CHECKING:
     pass  # evitar imports circulares
 
-
 class EstadoTarea(Enum):
     PENDIENTE = "pendiente"
     CORRIENDO = "corriendo"
     COMPLETADA = "completada"
     ERROR = "error"
     CANCELADA = "cancelada"
-
 
 class Tarea:
 
@@ -68,7 +66,6 @@ class Tarea:
             "error":     str(self.error) if self.error else None,
         }
 
-
 class ColaTareas:
 
     MAX_HISTORIAL = 30
@@ -89,7 +86,7 @@ class ColaTareas:
         self._lock = threading.Lock()
         self._semaforo = threading.Semaphore(self.MAX_CONCURRENTES)
 
-    # ── Logging interno (usa el console inyectado) ────────────────────
+    # Logging interno (usa el console inyectado)
 
     def _log(self, msg: str, estilo: str = "dim") -> None:
         """Imprime usando el Console del sentinel, respetando cualquier Live activo."""
@@ -98,7 +95,7 @@ class ColaTareas:
         except Exception:
             pass  # si el console está en Live, el mensaje se pierde silenciosamente
 
-    # ── API pública ───────────────────────────────────────────────────
+    # API pública
 
     def agregar(
         self,
@@ -249,7 +246,7 @@ class ColaTareas:
             return [t for t in self._tareas.values()
                     if t.estado == EstadoTarea.CORRIENDO]
 
-    # ── Ejecución interna ─────────────────────────────────────────────
+    # Ejecución interna
 
     def _iniciar(self, tarea: Tarea) -> None:
         def _runner():
