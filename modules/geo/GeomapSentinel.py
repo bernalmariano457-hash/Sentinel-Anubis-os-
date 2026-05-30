@@ -41,10 +41,7 @@ _COLOR_CONOCIDO   = "#00FF00"
 _COLOR_DESCONOCIDO = "#FFFF00"
 _COLOR_OPERADOR    = "#FF3333"
 
-
-# ══════════════════════════════════════════════════════════════════════
 # CLASE PRINCIPAL
-# ══════════════════════════════════════════════════════════════════════
 
 class GeomapSentinel:
 
@@ -66,8 +63,7 @@ class GeomapSentinel:
 
         self._lat, self._lon = self._obtener_ubicacion_ip()
 
-    # ── API pública ───────────────────────────────────────────────────
-
+    # API pública
     def generar_mapa(self, targets: dict[str, dict[str, Any]]) -> Path | None:
         if not _FOLIUM_OK:
             self._mostrar_fallback_tabla(targets)
@@ -123,8 +119,7 @@ class GeomapSentinel:
                     f"[dim]Ruta: {self._mapa.resolve()}[/dim]"
                 )
 
-    # ── Construcción del mapa ─────────────────────────────────────────
-
+    # Construcción del mapa
     def _crear_mapa_base(self) -> folium.Map:
         tiles = _TILE_DARK if _FOLIUM_OK else _TILE_SIMPLE
         return folium.Map(
@@ -169,8 +164,7 @@ class GeomapSentinel:
                 tooltip=f"{vendor} | {rssi} dBm",
             ).add_to(mapa)
 
-    # ── Estimación de posición ────────────────────────────────────────
-
+    # Estimación de posición
     def _estimar_posicion(
         self,
         data:  dict[str, Any],
@@ -199,8 +193,7 @@ class GeomapSentinel:
 
         return (self._lat + offset_lat, self._lon + offset_lon)
 
-    # ── Geolocalización IP ────────────────────────────────────────────
-
+    # Geolocalización IP
     def _obtener_ubicacion_ip(self) -> tuple[float, float]:
         if not _REQUESTS_OK:
             log.warning("requests no disponible — ubicación por IP desactivada.")
@@ -217,8 +210,7 @@ class GeomapSentinel:
             log.warning(f"Geolocalización IP falló: {exc}")
         return 0.0, 0.0
 
-    # ── Fallback sin folium ───────────────────────────────────────────
-
+    # Fallback sin folium
     def _mostrar_fallback_tabla(self, targets: dict[str, dict[str, Any]]) -> None:
         from rich.table import Table
         from rich import box

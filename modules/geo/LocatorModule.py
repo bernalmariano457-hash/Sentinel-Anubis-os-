@@ -9,7 +9,7 @@ class LocatorModule:
         self.api_url = "http://ip-api.com/json/"
 
     def rastrear_ip(self, ip_objetivo):
-        print(f"[*] Rastreando coordenadas para: {ip_objetivo}...")
+        self.sentinel.console.print(f"[cyan][*] Rastreando coordenadas para: {ip_objetivo}...[/cyan]")
 
         try:
             # Consultamos la API (no requiere registro para nivel básico)
@@ -17,24 +17,22 @@ class LocatorModule:
             data = response.json()
 
             if data['status'] == 'success':
-                print(f"\n[+] LOCALIZACIÓN ENCONTRADA:")
-                print(
-                    f"    País:      {data['country']} ({data['countryCode']})")
-                print(f"    Región:    {data['regionName']}")
-                print(f"    Ciudad:    {data['city']}")
-                print(f"    Proveedor: {data['as']}")
-                print(f"    Lat/Lon:   {data['lat']}, {data['lon']}")
+                self.sentinel.console.print("\n[green][+] LOCALIZACIÓN ENCONTRADA:[/green]")
+                self.sentinel.console.print(f"    País:      {data['country']} ({data['countryCode']})")
+                self.sentinel.console.print(f"    Región:    {data['regionName']}")
+                self.sentinel.console.print(f"    Ciudad:    {data['city']}")
+                self.sentinel.console.print(f"    Proveedor: {data['as']}")
+                self.sentinel.console.print(f"    Lat/Lon:   {data['lat']}, {data['lon']}")
 
                 # Generamos un link directo a Google Maps
                 maps_url = f"https://www.google.com/maps?q={data['lat']},{data['lon']}"
-                print(f"    Mapa:      {maps_url}")
+                self.sentinel.console.print(f"    Mapa:      [link={maps_url}]{maps_url}[/link]")
 
                 # Guardar en el reporte del Sentinel
                 self.sentinel.reportes.registrar_evento(
                     "GEO-LOC", f"IP {ip_objetivo} ubicada en {data['city']}, {data['country']}")
             else:
-                print(
-                    f"[-] No se pudo localizar la IP: {data.get('message', 'Error desconocido')}")
+                self.sentinel.console.print(f"[yellow][-] No se pudo localizar la IP: {data.get('message', 'Error desconocido')}[/yellow]")
 
         except Exception as e:
-            print(f"[-] Error de conexión con el satélite de rastreo: {e}")
+            self.sentinel.console.print(f"[red][-] Error de conexión: {e}[/red]")

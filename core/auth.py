@@ -8,7 +8,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -30,12 +29,10 @@ _BCRYPT_ROUNDS = int(os.getenv("BCRYPT_ROUNDS", 12))
 _MAX_INTENTOS = int(os.getenv("MAX_LOGIN_ATTEMPTS", 5))
 _VENTANA_SEG = int(os.getenv("LOCKOUT_WINDOW_SECONDS", 300))
 
-
 # Hashing
 
 def _hash_bcrypt(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt(_BCRYPT_ROUNDS)).decode()
-
 
 def _hash_sha256_salted(password: str) -> str:
     # Fallback cuando bcrypt no está disponible. Usar solo en entornos donde
@@ -44,12 +41,10 @@ def _hash_sha256_salted(password: str) -> str:
     h = hashlib.sha256((salt + password).encode()).hexdigest()
     return f"sha256s:{salt}:{h}"
 
-
 def _hash(password: str) -> str:
     if len(password) < 8:
         raise ValueError("La contraseña debe tener al menos 8 caracteres.")
     return _hash_bcrypt(password) if _BCRYPT else _hash_sha256_salted(password)
-
 
 def _verificar(password: str, almacenado: str) -> bool:
     """Verifica password contra hash almacenado. Soporta bcrypt, sha256s y legacy."""
@@ -81,13 +76,11 @@ def _verificar(password: str, almacenado: str) -> bool:
 
     return False
 
-
 def _es_legacy(almacenado: str) -> bool:
     return (
         almacenado.startswith("sha256s:") or
         (len(almacenado) == 64 and ":" not in almacenado)
     )
-
 
 # Control de bloqueo persistente
 
@@ -136,7 +129,6 @@ class _LockoutManager:
         recientes = [t for t in data["intentos"] if now - t < _VENTANA_SEG]
         return max(0, _MAX_INTENTOS - len(recientes))
 
-
 # Almacén de credenciales
 
 class _CredentialStore:
@@ -144,7 +136,7 @@ class _CredentialStore:
         self._config = config
         _CREDS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    def leer(self) -> Optional[str]:
+    def leer(self) -> str | None:
 
         # Prioridad: variable de entorno > archivo > config.json (legacy)
         env_hash = os.getenv("SENTINEL_PASSWORD_HASH")
@@ -193,7 +185,6 @@ class _CredentialStore:
 
     def existe(self) -> bool:
         return bool(self.leer())
-
 
 # API pública
 

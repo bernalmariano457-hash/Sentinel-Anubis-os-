@@ -22,7 +22,7 @@ from core.vendor_resolver import VendorResolver
 
 logger = logging.getLogger(__name__)
 
-# ── Importación defensiva de bleak ────────────────────────────────────
+# Importación defensiva de bleak
 try:
     from bleak import BleakScanner, BleakClient
     from bleak.backends.device import BLEDevice
@@ -35,10 +35,7 @@ except ImportError:
 
 # OUI lookup centralizado en core.vendor_resolver.VendorResolver
 
-
-# ════════════════════════════════════════════════════════════════════
 # DATACLASS DE DISPOSITIVO BLE
-# ════════════════════════════════════════════════════════════════════
 
 @dataclass
 class DispositivoBLE:
@@ -80,10 +77,7 @@ class DispositivoBLE:
             return "[green]MEDIO[/green]"
         return "[dim]LEJOS[/dim]"
 
-
-# ════════════════════════════════════════════════════════════════════
 # MÓDULO PRINCIPAL
-# ════════════════════════════════════════════════════════════════════
 
 class BluetoothModule:
 
@@ -108,8 +102,7 @@ class BluetoothModule:
                 "Instala con: pip install bleak --break-system-packages"
             )
 
-    # ── Helpers ───────────────────────────────────────────────────────
-
+    # Helpers
     def _info(self, msg: str):
         if self.log:
             self.log.info(msg, "BluetoothModule")
@@ -153,8 +146,7 @@ class BluetoothModule:
         else:
             asyncio.run(coro)
 
-    # ── Renderizado ───────────────────────────────────────────────────
-
+    # Renderizado
     def _tabla_dispositivos(self, dispositivos: list[DispositivoBLE]) -> Panel:
         if not dispositivos:
             return Panel(
@@ -207,8 +199,7 @@ class BluetoothModule:
             box=box.HEAVY_HEAD,
         )
 
-    # ── Escaneo BLE ───────────────────────────────────────────────────
-
+    # Escaneo BLE
     def iniciar_jumper(self):
         if not BLEAK_OK:
             self.console.print(
@@ -352,8 +343,7 @@ class BluetoothModule:
             f"{len(todos)} dispositivos únicos"
         )
 
-    # ── Evidencia ─────────────────────────────────────────────────────
-
+    # Evidencia
     def _registrar_evidencia(self, dispositivos: list[DispositivoBLE],
                              tipo: str):
         if not self.gp or not dispositivos:
@@ -382,8 +372,7 @@ class BluetoothModule:
         except Exception as e:
             logger.warning("Error registrando evidencia BLE: %s", e)
 
-    # ── Puente TCP ────────────────────────────────────────────────────
-
+    # Puente TCP
     def puente(self, origen: socket.socket, destino: socket.socket,
                etiqueta: str = "BRIDGE") -> dict:
         metricas = {
@@ -479,8 +468,7 @@ class BluetoothModule:
 
         return metricas_ab, metricas_ba
 
-    # ── Estado y sesión ───────────────────────────────────────────────
-
+    # Estado y sesión
     def estado(self):
         with self._lock:
             total = len(self._dispositivos)

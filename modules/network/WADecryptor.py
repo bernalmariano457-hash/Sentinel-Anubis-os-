@@ -7,10 +7,11 @@ from Crypto.Cipher import AES
 
 class WhatsAppDecryptor:
     def __init__(self):
-        pass
+        from rich.console import Console
+        self.console = Console()
 
     def descifrar_crypt14(self, crypt_file, key_file, output_file):
-        print(f"\n[*] Iniciando secuencia de descifrado AES-GCM...")
+        self.console.print("\n[cyan][*] Iniciando secuencia de descifrado AES-GCM...[/cyan]")
 
         try:
             # 1. Leer el archivo de la llave (Debe ser exactamente de 158 bytes)
@@ -18,13 +19,12 @@ class WhatsAppDecryptor:
                 key_data = kf.read()
 
             if len(key_data) != 158:
-                print(
-                    "\033[1;31m[-] Error: El archivo key es inválido (no tiene 158 bytes).\033[0m")
+                self.console.print("[red][-] El archivo key es inválido (no tiene 158 bytes).[/red]")
                 return False
 
             # La llave AES-256 real está escondida entre el byte 30 y el 61
             aes_key = key_data[30:62]
-            print("[+] Llave AES-256 extraída del Enclave.")
+            self.console.print("[green][+] Llave AES-256 extraída del Enclave.[/green]")
 
             # 2. Leer la base de datos cifrada (msgstore.db.crypt14)
             with open(crypt_file, 'rb') as cf:
@@ -39,26 +39,24 @@ class WhatsAppDecryptor:
             auth_tag = ciphertext_with_tag[-16:]
 
             # 3. Aplicar la matemática de descifrado
-            print("[*] Inyectando Vector de Inicialización (IV) y descifrando...")
+            self.console.print("[cyan][*] Inyectando IV y descifrando...[/cyan]")
             cipher = AES.new(aes_key, AES.MODE_GCM, iv)
             decrypted_data = cipher.decrypt_and_verify(ciphertext, auth_tag)
 
             # 4. WhatsApp comprime los datos para ahorrar espacio. Hay que descomprimirlos.
-            print("[*] Descomprimiendo SQLite interno (zlib)...")
+            self.console.print("[cyan][*] Descomprimiendo SQLite interno (zlib)...[/cyan]")
             uncompressed_data = zlib.decompress(decrypted_data)
 
             # 5. Guardar la base de datos pura y legible
             with open(output_file, 'wb') as outf:
                 outf.write(uncompressed_data)
 
-            print(
-                f"\033[1;32m[+] ÉXITO: Base de datos limpia guardada en: {output_file}\033[0m")
+            self.console.print(f"[green][+] Base de datos limpia guardada en: {output_file}[/green]")
             return True
 
         except ValueError:
-            print(
-                "\033[1;31m[-] FALLO: El Auth Tag no coincide. ¿La llave no pertenece a esta base de datos?\033[0m")
+            self.console.print("[red][-] FALLO: Auth Tag no coincide. ¿Llave incorrecta?[/red]")
             return False
         except Exception as e:
-            print(f"\033[1;31m[-] Error crítico en descifrado: {e}\033[0m")
+            self.console.print(f"[red][-] Error crítico en descifrado: {e}[/red]")
             return False

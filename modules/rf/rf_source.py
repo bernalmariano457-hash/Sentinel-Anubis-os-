@@ -151,10 +151,13 @@ class SDRBackend:
         raise NotImplementedError
 
     def tune(self, freq_hz: float) -> None:
+        raise NotImplementedError
 
     def set_gain(self, gain: object) -> None:
+        raise NotImplementedError
 
     def close(self) -> None:
+        raise NotImplementedError
 
         # ------------------------------------------------------------------
         # Compatibilidad con la interfaz SourceFactory de NOAADecoder

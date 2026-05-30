@@ -10,7 +10,7 @@ class EjemploPlugin(PluginBase):
     AUTOR = "AnubisOS"
     COMANDOS = ["hola", "ejemplo"]
 
-    def ejecutar(self, comando: str, args: list = None):
+    def ejecutar(self, comando: str, args: list[str] | None = None):
         if comando == "hola":
             self.console.print(
                 "[green]¡Hola desde el plugin de ejemplo![/green]")

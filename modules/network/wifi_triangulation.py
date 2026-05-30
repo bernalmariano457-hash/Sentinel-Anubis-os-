@@ -11,7 +11,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 from rich.align import Align
 from rich.console import Console
@@ -41,7 +41,7 @@ SMOOTH_ALPHA = 0.35
 MAP_W = 58
 MAP_H = 22
 
-AP_STYLES: List[Tuple[str, str]] = [
+AP_STYLES: list[tuple[str, str]] = [
     ("bright_cyan",    "◆"),
     ("bright_yellow",  "★"),
     ("bright_magenta", "▲"),
@@ -67,7 +67,7 @@ class Config:
     tx_power:     float = TX_POWER_DBM
     path_loss_exp: float = PATH_LOSS_EXP
     scan_interval: float = 2.0
-    access_points: Dict[str, APConfig] = field(default_factory=dict)
+    access_points: dict[str, APConfig] = field(default_factory=dict)
 
     @staticmethod
     def load(path: Path = CONFIG_PATH) -> Config:
@@ -117,7 +117,7 @@ class AccessPoint:
     pos_y:     float = -1.0
     color:     str = "white"
     icon:      str = "◆"
-    history:   List[float] = field(default_factory=list)
+    history:   list[float] = field(default_factory=list)
 
     def quality(self) -> int:
         return int(max(0, min(100, 2 * (self.rssi_dbm + 100))))
@@ -156,7 +156,7 @@ def rssi_to_distance(rssi: float, tx: float, n: float) -> float:
     return min(10.0 ** ((tx - rssi) / (10.0 * n)), MAX_DIST_M)
 
 
-def _lstsq(rows_A: List[List[float]], rows_b: List[float]) -> Tuple[float, float]:
+def _lstsq(rows_A: list[list[float]], rows_b: list[float]) -> tuple[float, float]:
     if _HAS_NUMPY:
         A = np.array(rows_A, dtype=float)
         b = np.array(rows_b, dtype=float)
@@ -180,7 +180,7 @@ def _lstsq(rows_A: List[List[float]], rows_b: List[float]) -> Tuple[float, float
     return x, y
 
 
-def trilaterate(aps: List[AccessPoint]) -> TriangulationResult:
+def trilaterate(aps: list[AccessPoint]) -> TriangulationResult:
     known = [ap for ap in aps if ap.pos_x >= 0 and ap.distance_m > 0]
 
     if len(known) < 2:
@@ -199,8 +199,8 @@ def trilaterate(aps: List[AccessPoint]) -> TriangulationResult:
         )
 
     ref = known[0]
-    rows_A: List[List[float]] = []
-    rows_b: List[float] = []
+    rows_A: list[list[float]] = []
+    rows_b: list[float] = []
 
     for ap in known[1:]:
         w = 1.0 / max(ap.distance_m, 0.3)
@@ -240,16 +240,16 @@ def trilaterate(aps: List[AccessPoint]) -> TriangulationResult:
 class WiFiScanner:
     def __init__(self, cfg: Config) -> None:
         self._cfg = cfg
-        self._cache: Dict[str, AccessPoint] = {}
+        self._cache: dict[str, AccessPoint] = {}
         self._si = 0
         self._os = platform.system()
 
-    def _next_style(self) -> Tuple[str, str]:
+    def _next_style(self) -> tuple[str, str]:
         color, icon = AP_STYLES[self._si % len(AP_STYLES)]
         self._si += 1
         return color, icon
 
-    def scan(self) -> List[AccessPoint]:
+    def scan(self) -> list[AccessPoint]:
         raw = {
             "Linux":   self._linux,
             "Darwin":  self._macos,
@@ -257,8 +257,8 @@ class WiFiScanner:
         }.get(self._os, lambda: [])()
         return self._build(raw)
 
-    def _build(self, raw: List[Dict]) -> List[AccessPoint]:
-        result: List[AccessPoint] = []
+    def _build(self, raw: list[Dict]) -> list[AccessPoint]:
+        result: list[AccessPoint] = []
         for entry in raw:
             bssid = entry["bssid"].upper()
             rssi = float(entry["rssi"])
@@ -304,11 +304,11 @@ class WiFiScanner:
 
         return sorted(result, key=lambda a: a.rssi_dbm, reverse=True)
 
-    # ── Linux ───────────────────────────────────────────────────────────────────
-    def _linux(self) -> List[Dict]:
+    # Linux
+    def _linux(self) -> list[Dict]:
         return self._nmcli() or self._iwlist()
 
-    def _nmcli(self) -> List[Dict]:
+    def _nmcli(self) -> list[Dict]:
         try:
             raw = subprocess.check_output(
                 [
@@ -321,7 +321,7 @@ class WiFiScanner:
         except Exception:
             return []
 
-        entries: List[Dict] = []
+        entries: list[Dict] = []
         current: Dict = {}
         for line in raw.splitlines():
             m = re.match(r"^(\w+):\s*(.*)", line.strip())
@@ -361,7 +361,7 @@ class WiFiScanner:
         except Exception:
             return "wlan0"
 
-    def _iwlist(self) -> List[Dict]:
+    def _iwlist(self) -> list[Dict]:
         iface = self._wlan_iface()
         try:
             raw = subprocess.check_output(
@@ -396,8 +396,8 @@ class WiFiScanner:
             })
         return result
 
-    # ── macOS ───────────────────────────────────────────────────────────────────
-    def _macos(self) -> List[Dict]:
+    # macOS
+    def _macos(self) -> list[Dict]:
         airport = (
             "/System/Library/PrivateFrameworks/Apple80211.framework"
             "/Versions/Current/Resources/airport"
@@ -431,8 +431,8 @@ class WiFiScanner:
             })
         return result
 
-    # ── Windows ─────────────────────────────────────────────────────────────────
-    def _windows(self) -> List[Dict]:
+    # Windows
+    def _windows(self) -> list[Dict]:
         try:
             raw = subprocess.check_output(
                 ["netsh", "wlan", "show", "networks", "mode=bssid"],
@@ -461,14 +461,14 @@ class WiFiScanner:
 
 
 def _render_map(
-    aps: List[AccessPoint],
+    aps: list[AccessPoint],
     result: TriangulationResult,
     room_w: float,
     room_h: float,
 ) -> Text:
     W, H = MAP_W, MAP_H
 
-    def to_map(wx: float, wy: float) -> Tuple[int, int]:
+    def to_map(wx: float, wy: float) -> tuple[int, int]:
         mx = max(1, min(W - 2, int(wx / room_w * (W - 3)) + 1))
         my = max(1, min(H - 2, int(wy / room_h * (H - 3)) + 1))
         return mx, my
@@ -530,7 +530,7 @@ def _render_map(
     return t
 
 
-def _ap_table(aps: List[AccessPoint]) -> Table:
+def _ap_table(aps: list[AccessPoint]) -> Table:
     t = Table(
         box=box.SIMPLE_HEAD,
         header_style="bold bright_cyan",
@@ -602,7 +602,7 @@ def _tri_panel(result: TriangulationResult) -> Panel:
     return Panel(body, title="[bold]Trilateración[/]", border_style="bright_cyan", padding=(0, 1))
 
 
-def _legend(aps: List[AccessPoint]) -> Text:
+def _legend(aps: list[AccessPoint]) -> Text:
     t = Text()
     for ap in aps:
         if ap.pos_x >= 0:
@@ -616,7 +616,7 @@ def _legend(aps: List[AccessPoint]) -> Text:
 
 
 def _screen(
-    aps: List[AccessPoint],
+    aps: list[AccessPoint],
     result: TriangulationResult,
     cfg: Config,
     scan_n: int,
@@ -747,12 +747,9 @@ def _detect_iface() -> str:
         return "en0"
     return "Wi-Fi"
 
-
-# ═══════════════════════════════════════════════════════════════════════════
 #  MÓDULO SENTINEL — WiFiTriangulation
-#  Mismo patrón que GeoPrecise / OSINTEngine / AircraftMonitor / NOAADecoder.
 #  Uso:  WiFiTriangulation(sentinel).menu()
-# ═══════════════════════════════════════════════════════════════════════════
+
 
 class WiFiTriangulation:
     _MODULE = "WiFi-Tri"
@@ -766,8 +763,7 @@ class WiFiTriangulation:
         self._iface = _detect_iface()
         self._scanner = WiFiScanner(self._cfg)
 
-    # ── Helpers privados ──────────────────────────────────────────────
-
+    # Helpers privados
     def _info(self, msg: str) -> None:
         self._con.print(f"[cyan][{self._MODULE}][/cyan] {msg}")
         if self._log:
@@ -783,8 +779,7 @@ class WiFiTriangulation:
         if self._log:
             self._log.error(msg, self._MODULE)
 
-    # ── API pública ───────────────────────────────────────────────────
-
+    # API pública
     def menu(self) -> None:
         from rich.prompt import Prompt
 

@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from rich.panel import Panel
 from rich.console import Console
 
-console = Console()
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +31,7 @@ class AuditEngine:
 
     def __init__(self, main_app):
         self.main_app = main_app
+        self.console = main_app.console
         self._verificar_dependencias()
 
     # ------------------------------------------------------------------ #
@@ -44,7 +44,7 @@ class AuditEngine:
         faltantes = [h for h in self.HERRAMIENTAS_REQUERIDAS
                      if shutil.which(h) is None]
         if faltantes:
-            console.print(
+            self.console.print(
                 f"[bold red][!] Herramientas no encontradas en PATH: "
                 f"{', '.join(faltantes)}[/bold red]"
             )
@@ -135,7 +135,7 @@ class AuditEngine:
                             port: int = 55553,
                             user: str = "msf",
                             password: str = "msf") -> bool:
-        console.print(
+        self.console.print(
             "[bold yellow][*] Conectando con Metasploit RPC Daemon...[/bold yellow]")
 
         try:
@@ -144,7 +144,7 @@ class AuditEngine:
                 password, server=host, port=port, username=user, ssl=True
             )
             version = self.msf_client.core.version
-            console.print(
+            self.console.print(
                 Panel(
                     f"[green]Metasploit conectado[/green]\n"
                     f"Versión: {version['version']}  |  "
@@ -156,12 +156,12 @@ class AuditEngine:
             return True
 
         except ImportError:
-            console.print(
+            self.console.print(
                 "[red][!] pymetasploit3 no instalado. "
                 "Ejecuta: pip install pymetasploit3[/red]"
             )
         except Exception as e:
-            console.print(
+            self.console.print(
                 f"[bold red][!] Error al conectar con MSF RPC: {e}[/bold red]")
             logger.error("MSF RPC error: %s", e)
 
@@ -169,7 +169,7 @@ class AuditEngine:
 
     def ejecutar_modulo_msf(self, modulo: str, opciones: dict) -> dict | None:
         if not hasattr(self, "msf_client"):
-            console.print(
+            self.console.print(
                 "[red][!] Primero debes conectar con Metasploit (conectar_metasploit).[/red]")
             return None
 
@@ -182,5 +182,5 @@ class AuditEngine:
             return resultado
         except Exception as e:
             logger.error("Error ejecutando módulo MSF %s: %s", modulo, e)
-            console.print(f"[red][!] Error en módulo MSF: {e}[/red]")
+            self.console.print(f"[red][!] Error en módulo MSF: {e}[/red]")
             return None

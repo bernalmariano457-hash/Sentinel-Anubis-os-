@@ -21,14 +21,14 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("sentinel.osint")
 
-# ── Configuración ─────────────────────────────────────────────────────
+# Configuración
 _TIMEOUT    = int(os.getenv("OSINT_TIMEOUT", "8"))
 _MAX_WHOIS  = int(os.getenv("OSINT_WHOIS_FIELDS", "14"))
 
-# ── Rutas ─────────────────────────────────────────────────────────────
+# Rutas
 _EVIDENCE_DIR = Path("data/evidence/osint")
 
-# ── APIs ──────────────────────────────────────────────────────────────
+# APIs
 _URL_GEO     = (
     "https://ip-api.com/json/{ip}"
     "?fields=status,country,regionName,city,lat,lon,timezone,"
@@ -38,17 +38,14 @@ _URL_ASN     = "https://ipinfo.io/{ip}/json"
 _URL_WHOIS   = "https://api.whois.vu/?q={dominio}"
 _URL_ABUSE   = "https://api.abuseipdb.com/api/v2/check"
 
-# ── Headers HTTP de interés para fingerprinting ───────────────────────
+# Headers HTTP de interés para fingerprinting
 _HEADERS_RELEVANTES: tuple[str, ...] = (
     "Server", "X-Powered-By", "X-Frame-Options",
     "Content-Security-Policy", "Strict-Transport-Security",
     "X-Content-Type-Options", "X-Generator", "Set-Cookie",
 )
 
-
-# ══════════════════════════════════════════════════════════════════════
 # CLASE PRINCIPAL
-# ══════════════════════════════════════════════════════════════════════
 
 class OSINTEngine:
 
@@ -60,8 +57,7 @@ class OSINTEngine:
         self._abuse_key: str = os.getenv("ABUSEIPDB_KEY", "")
         _EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── API pública ───────────────────────────────────────────────────
-
+    # API pública
     def analizar_ip(self, ip: str) -> dict[str, Any]:
         self._con.print(
             f"\n[bold cyan]OSINT  →  IP:[/bold cyan] "
@@ -169,8 +165,7 @@ class OSINTEngine:
                 log.debug("Resolución DNS de %s falló: %s", objetivo, exc)
             self.analizar_dominio(objetivo)
 
-    # ── IP Intelligence ───────────────────────────────────────────────
-
+    # IP Intelligence
     def _geo_ip(self, ip: str) -> dict[str, Any] | None:
         try:
             r = self._sesion.get(_URL_GEO.format(ip=ip), timeout=_TIMEOUT)
@@ -220,8 +215,7 @@ class OSINTEngine:
             log.warning("AbuseIPDB: error — %s", exc)
         return None
 
-    # ── Domain Intelligence ───────────────────────────────────────────
-
+    # Domain Intelligence
     def _resolver_dns(self, dominio: str) -> dict[str, Any]:
         resultado: dict[str, Any] = {}
         try:
@@ -282,8 +276,7 @@ class OSINTEngine:
                 log.debug("Headers HTTP: %s — %s", url, exc)
         return None
 
-    # ── Display ───────────────────────────────────────────────────────
-
+    # Display
     def _mostrar_geo(self, geo: dict[str, Any]) -> None:
         tb = self._tabla_kv()
         campos: list[tuple[str, str]] = [
@@ -350,8 +343,7 @@ class OSINTEngine:
             self._con.print(Panel(tb, title="[dim cyan]HEADERS HTTP[/dim cyan]",
                                   border_style="dim cyan"))
 
-    # ── Utilidades internas ───────────────────────────────────────────
-
+    # Utilidades internas
     def _crear_sesion(self) -> requests.Session:
         s = requests.Session()
         s.headers.update({

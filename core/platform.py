@@ -6,7 +6,6 @@ import sys
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Optional
 
 # Paths de identificación de hardware
 _DT_MODEL       = Path("/proc/device-tree/model")
@@ -77,7 +76,7 @@ class PlatformInfo:
         return " | ".join(parts)
 
 # Cache de instancia única
-_cached: Optional[PlatformInfo] = None
+_cached: PlatformInfo | None = None
 
 def detect(force: bool = False) -> PlatformInfo:
     global _cached

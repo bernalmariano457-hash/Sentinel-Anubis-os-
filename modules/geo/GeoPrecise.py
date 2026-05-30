@@ -20,23 +20,20 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("sentinel.geoprecise")
 
-# ── Rutas ─────────────────────────────────────────────────────────────
+# Rutas
 _RESULTS_DIR = Path("data/evidence/geo")
 
-# ── Configuración por variables de entorno ────────────────────────────
+# Configuración por variables de entorno
 _TIMEOUT_SEG  = int(os.getenv("GEO_TIMEOUT",        "8"))
 _MIN_REDES    = int(os.getenv("GEO_MIN_NETWORKS",    "2"))
 _CACHE_SEG    = int(os.getenv("GEO_CACHE_SECONDS",   "30"))
 
-# ── Endpoints de proveedores ──────────────────────────────────────────
+# Endpoints de proveedores
 _URL_MOZILLA = "https://location.services.mozilla.com/v1/geolocate?key=test"
 _URL_GOOGLE  = "https://www.googleapis.com/geolocation/v1/geolocate?key={key}"
 _URL_IPAPI   = "http://ip-api.com/json/"
 
-
-# ══════════════════════════════════════════════════════════════════════
 # DATACLASSES
-# ══════════════════════════════════════════════════════════════════════
 
 @dataclass
 class PuntoAcceso:
@@ -64,7 +61,6 @@ class PuntoAcceso:
             d["signalToNoiseRatio"] = self.signalToNoiseRatio
         return d
 
-
 @dataclass
 class ResultadoGeo:
     latitud:      float
@@ -82,10 +78,7 @@ class ResultadoGeo:
     def coords(self) -> tuple[float, float]:
         return (self.latitud, self.longitud)
 
-
-# ══════════════════════════════════════════════════════════════════════
 # MÓDULO PRINCIPAL
-# ══════════════════════════════════════════════════════════════════════
 
 class GeoPrecise:
 
@@ -96,8 +89,7 @@ class GeoPrecise:
         self._cache:      tuple[float, ResultadoGeo] | None = None
         _RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── API pública ───────────────────────────────────────────────────
-
+    # API pública
     def triangular(
         self,
         redes:   list[PuntoAcceso | dict[str, Any]],
@@ -184,8 +176,7 @@ class GeoPrecise:
 
         return destino
 
-    # ── Proveedores ───────────────────────────────────────────────────
-
+    # Proveedores
     def _consultar_mozilla(
         self, puntos: list[PuntoAcceso]
     ) -> ResultadoGeo | None:
@@ -258,8 +249,7 @@ class GeoPrecise:
             log.error("ip-api fallback falló: %s", exc)
         return None
 
-    # ── Utilidades internas ───────────────────────────────────────────
-
+    # Utilidades internas
     def _normalizar(
         self, redes: list[Any]
     ) -> list[PuntoAcceso]:

@@ -8,8 +8,6 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from rich import box
 
-console = Console()
-
 SEVERIDAD_ORDEN = {"CRITICO": 0, "ALTO": 1, "MEDIO": 2, "BAJO": 3, "INFO": 4}
 SEVERIDAD_EMOJI = {
     "CRITICO": "🔴", "ALTO": "🟠",
@@ -21,7 +19,8 @@ class MotorReportes:
 
     def __init__(self, gestor_proyectos):
         self.gp = gestor_proyectos
-        self.console = console
+        from rich.console import Console
+        self.console = Console()
 
     # ------------------------------------------------------------------
     # API PÚBLICA

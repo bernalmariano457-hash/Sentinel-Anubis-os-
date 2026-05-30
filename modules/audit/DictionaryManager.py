@@ -5,11 +5,14 @@ import logging
 from pathlib import Path
 from rich.console import Console
 
-console = Console()
 logger = logging.getLogger(__name__)
 
 
 class DictionaryManager:
+    def __init__(self) -> None:
+        from rich.console import Console
+        self.console = Console()
+
     BASE_PATHS = [
         "/usr/share/wordlists",
         "/usr/share/seclists",          # SecLists si está instalado
@@ -72,7 +75,7 @@ class DictionaryManager:
         for base in self.BASE_PATHS:
             ruta = Path(base) / "rockyou.txt"
             if ruta.is_file():
-                console.print(
+                self.console.print(
                     f"[yellow][!] Diccionario específico para '{protocolo}' no encontrado. "
                     f"Usando rockyou.txt[/yellow]"
                 )
@@ -80,14 +83,14 @@ class DictionaryManager:
 
         # 3. Fallback local
         if self.LOCAL_FALLBACK.is_file():
-            console.print(
+            self.console.print(
                 "[bold red][!] Wordlists estándar no encontradas. "
                 "Usando local_pass.txt[/bold red]"
             )
             return self.LOCAL_FALLBACK
 
         # 4. Sin opciones
-        console.print(
+        self.console.print(
             "[bold red][!] No se encontró ningún diccionario. "
             "Instala wordlists: sudo apt install wordlists seclists[/bold red]"
         )

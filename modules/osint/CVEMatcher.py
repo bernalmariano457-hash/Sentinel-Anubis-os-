@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -14,13 +13,11 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich import box
 
-
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
 log = logging.getLogger(__name__)
-
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -58,7 +55,6 @@ SEVERITY_RANK: dict[str, int] = {
     "NONE":     0,
 }
 
-
 # ---------------------------------------------------------------------------
 # Modelo de datos
 # ---------------------------------------------------------------------------
@@ -67,7 +63,7 @@ SEVERITY_RANK: dict[str, int] = {
 class CVERecord:
     id:          str
     description: str
-    score:       Optional[float]
+    score:       float | None
     severity:    str
     vector:      str
     published:   str
@@ -84,7 +80,6 @@ class CVERecord:
     @property
     def is_high(self) -> bool:
         return self.severity == "HIGH"
-
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
@@ -105,12 +100,11 @@ def _build_session() -> requests.Session:
     session.headers["User-Agent"] = USER_AGENT
     return session
 
-
 # ---------------------------------------------------------------------------
 # Parser NVD
 # ---------------------------------------------------------------------------
 
-def _parse_metrics(metrics: dict) -> tuple[Optional[float], str, str]:
+def _parse_metrics(metrics: dict) -> tuple[float | None, str, str]:
     for key in CVSS_PRIORITY:
         entries = metrics.get(key, [])
         if not entries:
@@ -125,10 +119,8 @@ def _parse_metrics(metrics: dict) -> tuple[Optional[float], str, str]:
         return score, severity, vector
     return None, "NONE", "—"
 
-
 def _truncate(text: str, limit: int = 200) -> str:
     return text[:limit] + "..." if len(text) > limit else text
-
 
 def _parse_nvd_response(data: dict) -> list[CVERecord]:
     records: list[CVERecord] = []
@@ -162,7 +154,6 @@ def _parse_nvd_response(data: dict) -> list[CVERecord]:
         ))
 
     return records
-
 
 # ---------------------------------------------------------------------------
 # Clase principal
@@ -388,7 +379,6 @@ class CVEMatcher:
             title="CVE SUMMARY BY SERVICE",
             border_style="red",
         ))
-
 
 # ---------------------------------------------------------------------------
 # Utilidades de formato

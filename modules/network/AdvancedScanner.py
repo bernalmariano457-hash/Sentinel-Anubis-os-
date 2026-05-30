@@ -19,7 +19,7 @@ class AdvancedScanner:
 
     def escanear_wifi_perimetro(self):
         self.redes_detectadas = []
-        print("[*] Escaneando espacio radioeléctrico...")
+        self.sentinel.console.print("[cyan][*] Escaneando espacio radioeléctrico...[/cyan]")
 
         try:
             if os.name == 'nt':  # Windows
@@ -36,12 +36,11 @@ class AdvancedScanner:
                     self.redes_detectadas.append(
                         {'bssid': bssid, 'signal': dbm})
             else:  # Linux (requiere nmcli o iwlist)
-                print(
-                    "[!] Escaneo Wi-Fi en Linux requiere módulos adicionales (nmcli).")
+                self.sentinel.console.print("[yellow][!] Escaneo Wi-Fi en Linux requiere nmcli.[/yellow]")
 
             return self.redes_detectadas
         except Exception as e:
-            print(f"[!] Error escaneando Wi-Fi: {e}")
+            self.sentinel.console.print(f"[red][!] Error escaneando Wi-Fi: {e}[/red]")
             return []
 
     def obtener_redes_formateadas(self):
@@ -58,7 +57,7 @@ class AdvancedScanner:
         return lista_api
 
     def escanear_objetivo(self, ip):
-        print(f"\n[*] Analizando objetivo: {ip}")
+        self.sentinel.console.print(f"\n[cyan][*] Analizando objetivo: {ip}[/cyan]")
         self.sentinel.reportes.registrar_evento(
             "SCANNER", f"Escaneando puertos en {ip}")
 
@@ -74,7 +73,7 @@ class AdvancedScanner:
                 servicio = self.servicios.get(puerto, "Desconocido")
                 hallazgos.append(
                     {"puerto": puerto, "servicio": servicio, "estado": "ABIERTO"})
-                print(f"  [+] Puerto {puerto} ({servicio}): ABIERTO")
+                self.sentinel.console.print(f"  [green][+] Puerto {puerto} ({servicio}): ABIERTO[/green]")
             sock.close()
 
         if hallazgos:

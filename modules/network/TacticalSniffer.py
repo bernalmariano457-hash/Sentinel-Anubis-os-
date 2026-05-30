@@ -22,18 +22,16 @@ class TacticalSniffer:
                 keywords = ["user", "pass", "login", "v1/geolocate", "http"]
                 for key in keywords:
                     if key in payload.lower():
-                        print(
-                            f"\n\033[1;33m[!] DATA DETECTADA [{ip_src} -> {ip_dst}]:\033[0m")
+                        self.sentinel.console.print(f"\n[yellow][!] DATA DETECTADA [{ip_src} → {ip_dst}]:[/yellow]")
                         # Mostramos solo el inicio por seguridad
-                        print(f"    {payload[:100]}...")
+                        self.sentinel.console.print(f"    [dim]{payload[:100]}...[/dim]")
                         self.sentinel.reportes.registrar_evento(
                             "SNIFFER", f"Captura de datos de {ip_src}")
 
     def iniciar_captura(self, interface=None, filtro="", duracion=30):
         self.sniffing = True
-        print(
-            f"[*] Iniciando escucha en {interface if interface else 'Default'}...")
-        print(f"[*] Filtro aplicado: '{filtro}' | Duración: {duracion}s")
+        self.sentinel.console.print(f"[cyan][*] Escucha en {interface or 'Default'}...[/cyan]")
+        self.sentinel.console.print(f"[dim]Filtro: '{filtro}' | Duración: {duracion}s[/dim]")
 
         try:
             sniff(
@@ -44,7 +42,7 @@ class TacticalSniffer:
                 store=0  # No guardar en RAM para no saturar el Sentinel
             )
         except Exception as e:
-            print(f"[!] Error en Sniffer: {e}")
+            self.sentinel.console.print(f"[red][!] Error en Sniffer: {e}[/red]")
 
         self.sniffing = False
-        print("\n[*] Sesión de captura finalizada.")
+        self.sentinel.console.print("\n[cyan][*] Sesión de captura finalizada.[/cyan]")

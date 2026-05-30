@@ -5,13 +5,14 @@ import os
 
 
 class DatabaseExtractor:
-    def __init__(self, adb_path="adb"):
+    def __init__(self, adb_path: str = "adb") -> None:
         self.adb = adb_path
-
-    # --- TUS MÉTODOS DE EXTRACCIÓN ---
+        from rich.console import Console
+        self.console = Console()
 
     def extraer_whatsapp(self, save_path):
-        print("[*] Localizando base de datos de WhatsApp...")
+        self.console.print(
+            "[cyan][*] Localizando base de datos de WhatsApp...[/cyan]")
         remote_path = "/data/data/com.whatsapp/databases/msgstore.db"
         local_file = os.path.join(save_path, "whatsapp_messages.db")
 
@@ -21,14 +22,16 @@ class DatabaseExtractor:
             [self.adb, "pull", "/sdcard/msgstore.db", local_file])
 
         if result.returncode == 0:
-            print(f"[+] WhatsApp DB extraída con éxito en: {local_file}")
+            self.console.print(
+                f"[green][+] WhatsApp DB extraída: {local_file}[/green]")
             subprocess.run([self.adb, "shell", "rm /sdcard/msgstore.db"])
         else:
-            print("[-] Error: No se pudo acceder a la DB de WhatsApp (¿Falta Root?)")
+            self.console.print(
+                "[red][-] No se pudo acceder a WhatsApp DB (¿Falta Root?)[/red]")
 
-    # AQUÍ ES DONDE VA TU CÓDIGO NUEVO
     def extraer_whatsapp_key(self, save_path):
-        print("[*] Intentando acceso al 'Enclave' de llaves de WhatsApp...")
+        self.console.print(
+            "[cyan][*] Accediendo al Enclave de llaves WhatsApp...[/cyan]")
         remote_key_path = "/data/data/com.whatsapp/files/key"
         local_key_file = os.path.join(save_path, "whatsapp.key")
 
@@ -40,14 +43,14 @@ class DatabaseExtractor:
             [self.adb, "pull", "/sdcard/key_export", local_key_file])
 
         if result.returncode == 0:
-            print(f"\033[1;32m[+] LLAVE EXTRAÍDA: {local_key_file}\033[0m")
+            self.console.print(
+                f"[green][+] LLAVE EXTRAÍDA: {local_key_file}[/green]")
             subprocess.run([self.adb, "shell", "rm /sdcard/key_export"])
             return local_key_file
         else:
-            print(
-                "\033[1;31m[-] FALLO CRÍTICO: No se pudo obtener la llave. Se requiere Root.\033[0m")
+            self.console.print(
+                "[red][-] FALLO: No se pudo obtener la llave (se requiere Root).[/red]")
             return None
 
     def extraer_historial_chrome(self, save_path):
-        # ... (aquí iría el resto de tus métodos si los usas)
         pass

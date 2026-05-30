@@ -19,7 +19,6 @@ _flask_cli = sys.modules.get("flask.cli")
 if _flask_cli and hasattr(_flask_cli, "show_server_banner"):
     _flask_cli.show_server_banner = lambda *_: None
 
-
 class EvilTwinServer:
 
     DEFAULT_HOST = "0.0.0.0"
@@ -44,8 +43,7 @@ class EvilTwinServer:
         self._app       = self._crear_app()
         self._hilo: threading.Thread | None = None
 
-    # ── API pública ───────────────────────────────────────────────────
-
+    # API pública
     def iniciar(self) -> threading.Thread:
         self._hilo = threading.Thread(
             target=self._app.run,
@@ -69,8 +67,7 @@ class EvilTwinServer:
     def capturas(self) -> list[str]:
         return list(self._capturas)
 
-    # ── Construcción de la app Flask ──────────────────────────────────
-
+    # Construcción de la app Flask
     def _crear_app(self) -> Flask:
         app = Flask(__name__)
 
@@ -91,8 +88,7 @@ class EvilTwinServer:
 
         return app
 
-    # ── Manejo de capturas ────────────────────────────────────────────
-
+    # Manejo de capturas
     def _registrar_captura(self, password: str) -> None:
         self._capturas.append(password)
         self._registrar("audit", f"Credencial capturada — SSID: {self.ssid}")
@@ -118,8 +114,7 @@ class EvilTwinServer:
             except Exception:
                 pass
 
-    # ── Plantillas HTML de fallback ───────────────────────────────────
-
+    # Plantillas HTML de fallback
     @staticmethod
     def _fallback_portal() -> str:
         return (
@@ -146,15 +141,12 @@ class EvilTwinServer:
             "</body></html>"
         )
 
-    # ── Logging interno ───────────────────────────────────────────────
-
+    # Logging interno
     def _registrar(self, nivel: str, mensaje: str) -> None:
         if self._log:
             getattr(self._log, nivel, self._log.info)(mensaje, "EvilTwin")
 
-
-# ── Factory function — mantiene compatibilidad con ModuleRegistry ──────
-
+# Factory function — mantiene compatibilidad con ModuleRegistry
 def iniciar_servidor(
     ssid: str = "Red_Publica",
     log: LogSistema | None = None,

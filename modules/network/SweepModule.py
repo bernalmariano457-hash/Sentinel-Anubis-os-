@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -18,14 +17,14 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
-# ── Scapy ────────────────────────────────────────────────────────────
+# Scapy
 try:
     from scapy.all import ARP, Ether, srp
     _SCAPY_OK = True
 except ImportError:
     _SCAPY_OK = False
 
-# ── Requests (resolución de fabricante online) ───────────────────────
+# Requests (resolución de fabricante online)
 try:
     import requests as _requests
     _REQUESTS_OK = True
@@ -34,10 +33,7 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-
-# ════════════════════════════════════════════════════════════════════
 # CONSTANTES
-# ════════════════════════════════════════════════════════════════════
 
 _ARP_TIMEOUT_DEFAULT = 3       # segundos de espera ARP
 _VENDOR_API_TIMEOUT = 2       # timeout HTTP para macvendors
@@ -46,10 +42,8 @@ _EVIDENCE_DIR = Path("data/evidence/sweep")
 _CSV_FIELDS = ["ip", "mac", "fabricante",
                "nivel_riesgo", "descripcion", "timestamp"]
 
-
-# ════════════════════════════════════════════════════════════════════
 # BASE DE DATOS OUI — HARDWARE DE VIGILANCIA / RIESGO
-# ════════════════════════════════════════════════════════════════════
+
 #
 # Niveles de riesgo:
 #   CRÍTICO  — hardware diseñado específicamente para vigilancia
@@ -58,7 +52,7 @@ _CSV_FIELDS = ["ip", "mac", "fabricante",
 #   INFO     — fabricantes que merecen atención por contexto
 
 OUI_DATABASE: dict[str, dict] = {
-    # ── Módulos IoT / Espía conocidos ───────────────────────────────
+    # Módulos IoT / Espía conocidos
     "A4:C1:38": {
         "fabricante":  "Tuya Smart",
         "descripcion": "Módulos IoT — usado en cámaras ocultas comerciales",
@@ -89,7 +83,7 @@ OUI_DATABASE: dict[str, dict] = {
         "descripcion": "Cámaras IP de seguridad — línea SmartCam",
         "riesgo":      "ALTO",
     },
-    # ── Microcontroladores — uso dual ────────────────────────────────
+    # Microcontroladores — uso dual
     "24:0A:C4": {
         "fabricante":  "Espressif",
         "descripcion": "ESP32 — frecuente en hardware espía casero / IoT",
@@ -110,7 +104,7 @@ OUI_DATABASE: dict[str, dict] = {
         "descripcion": "Raspberry Pi — dispositivo legítimo con usos de pentesting",
         "riesgo":      "MEDIO",
     },
-    # ── Grabadores y transmisores ────────────────────────────────────
+    # Grabadores y transmisores
     "B0:4E:26": {
         "fabricante":  "Sony",
         "descripcion": "Posible cámara/grabador Sony — verificar contexto",
@@ -121,7 +115,7 @@ OUI_DATABASE: dict[str, dict] = {
         "descripcion": "Hardware legado — posible punto de transmisión encubierta",
         "riesgo":      "MEDIO",
     },
-    # ── Routers con backdoors documentados ──────────────────────────
+    # Routers con backdoors documentados
     "C8:3A:35": {
         "fabricante":  "Tenda",
         "descripcion": "Router Tenda — backdoors documentados en firmware",
@@ -143,10 +137,8 @@ _RIESGO_STYLE: dict[str, str] = {
     "LIMPIO":  "green",
 }
 
-
-# ════════════════════════════════════════════════════════════════════
 # TIPOS DE DATOS
-# ════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class Dispositivo:
@@ -164,7 +156,6 @@ class Dispositivo:
 
     @property
     def oui(self) -> str:
-        """Primeros 3 octetos de la MAC (OUI)."""
         return self.mac[:8].upper()
 
     @property
@@ -186,10 +177,8 @@ class ResultadoSweep:
     def perimetro_limpio(self) -> bool:
         return self.amenazas == 0
 
-
-# ════════════════════════════════════════════════════════════════════
 # MÓDULO SWEEP
-# ════════════════════════════════════════════════════════════════════
+
 
 class SweepModule:
     def __init__(self, sentinel):
@@ -198,8 +187,7 @@ class SweepModule:
         self._log_s = getattr(sentinel, "log", None)
         self._vendor_cache: dict[str, str] = {}
 
-    # ── API pública ──────────────────────────────────────────────────
-
+    # API pública
     def escanear_perimetro(
         self,
         ip_rango:  str = "192.168.1.0/24",
@@ -217,12 +205,12 @@ class SweepModule:
         self._cabecera(ip_rango)
         t_inicio = time.time()
 
-        # ── Envío ARP ────────────────────────────────────────────────
+        # Envío ARP
         hosts_raw = self._arp_scan(ip_rango, timeout)
         if hosts_raw is None:
             return None
 
-        # ── Clasificación ────────────────────────────────────────────
+        # Clasificación
         dispositivos = self._clasificar(hosts_raw, resolver)
 
         duracion = time.time() - t_inicio
@@ -236,10 +224,10 @@ class SweepModule:
             duracion_s=duracion,
         )
 
-        # ── Render ───────────────────────────────────────────────────
+        # Render
         self._renderizar(resultado)
 
-        # ── Exportar evidencia ───────────────────────────────────────
+        # Exportar evidencia
         if exportar:
             csv_path = self._exportar_csv(resultado)
             if csv_path:
@@ -247,7 +235,7 @@ class SweepModule:
                     f"[dim][+] Evidencia exportada → {csv_path}[/dim]"
                 )
 
-        # ── Registrar en Sentinel ────────────────────────────────────
+        # Registrar en Sentinel
         self._registrar(resultado)
 
         log.info(
@@ -256,8 +244,7 @@ class SweepModule:
         )
         return resultado
 
-    # ── ARP ──────────────────────────────────────────────────────────
-
+    # ARP
     def _arp_scan(
         self, ip_rango: str, timeout: int
     ) -> list[dict[str, Any]] | None:
@@ -289,8 +276,7 @@ class SweepModule:
             for _, r in answered
         ]
 
-    # ── Clasificación OUI ─────────────────────────────────────────────
-
+    # Clasificación OUI
     def _clasificar(
         self, hosts: list[dict], resolver: bool
     ) -> list[Dispositivo]:
@@ -326,8 +312,7 @@ class SweepModule:
 
         return dispositivos
 
-    # ── Resolución online de fabricante ──────────────────────────────
-
+    # Resolución online de fabricante
     def _resolver_fabricante(self, mac: str) -> str:
         oui = mac[:8]
         if oui in self._vendor_cache:
@@ -351,8 +336,7 @@ class SweepModule:
         self._vendor_cache[oui] = "Desconocido"
         return "Desconocido"
 
-    # ── Exportación CSV ───────────────────────────────────────────────
-
+    # Exportación CSV
     def _exportar_csv(self, resultado: ResultadoSweep) -> Path | None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         out = _EVIDENCE_DIR / f"sweep_{ts}.csv"
@@ -375,8 +359,7 @@ class SweepModule:
             log.error(f"Error exportando CSV: {e}")
             return None
 
-    # ── Registro en Sentinel ──────────────────────────────────────────
-
+    # Registro en Sentinel
     def _registrar(self, resultado: ResultadoSweep) -> None:
         reportes = getattr(self.sentinel, "reportes", None)
         if not reportes:
@@ -402,8 +385,7 @@ class SweepModule:
             except Exception as e:
                 log.warning(f"Error registrando evento OK: {e}")
 
-    # ── Rich UI ───────────────────────────────────────────────────────
-
+    # Rich UI
     def _cabecera(self, ip_rango: str) -> None:
         self.console.print(Panel(
             f"[cyan]Rango:[/cyan]    {ip_rango}\n"
@@ -415,7 +397,7 @@ class SweepModule:
         ))
 
     def _renderizar(self, r: ResultadoSweep) -> None:
-        # ── Tabla de dispositivos ────────────────────────────────────
+        # Tabla de dispositivos
         tb = Table(
             box=box.HEAVY_HEAD,
             header_style="bold cyan",
@@ -449,7 +431,7 @@ class SweepModule:
             box=box.HEAVY_HEAD,
         ))
 
-        # ── Resumen ──────────────────────────────────────────────────
+        # Resumen
         g = Table.grid(padding=(0, 3))
         g.add_column(style="dim cyan", justify="right", min_width=20)
         g.add_column(style="white")

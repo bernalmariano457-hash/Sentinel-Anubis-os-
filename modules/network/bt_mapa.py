@@ -33,10 +33,7 @@ except ImportError:
 
 from core.vendor_resolver import VendorResolver
 
-
-# ══════════════════════════════════════════════════════════════════════
 # CONFIGURACIÓN DEL CANVAS
-# ══════════════════════════════════════════════════════════════════════
 
 _W = 61    # ancho del canvas en caracteres
 _H = 29    # alto del canvas en líneas
@@ -108,10 +105,7 @@ _RSSI_HISTORY_LEN = 6
 # Umbral de tendencia (dBm de diferencia entre EMA actual y hace 3 ciclos)
 _TREND_THRESHOLD = 3.0
 
-
-# ══════════════════════════════════════════════════════════════════════
 # INFERENCIA DE TIPO DE DISPOSITIVO
-# ══════════════════════════════════════════════════════════════════════
 
 def _infer_device_type(servicios: list[str]) -> str:
     for svc in servicios:
@@ -120,10 +114,7 @@ def _infer_device_type(servicios: list[str]) -> str:
             return _SERVICE_MAP[short]
     return "Desconocido"
 
-
-# ══════════════════════════════════════════════════════════════════════
 # TRACKING DE DISPOSITIVO — EMA, TENDENCIA, HISTORIAL
-# ══════════════════════════════════════════════════════════════════════
 
 @dataclass
 class DeviceTrack:
@@ -178,20 +169,15 @@ class DeviceTrack:
         # -2 y -1 (no el actual)
         return [_rssi_a_radio(r) for r in vals[-3:-1]]
 
-
-# ══════════════════════════════════════════════════════════════════════
 # HELPERS GEOMÉTRICOS
-# ══════════════════════════════════════════════════════════════════════
 
 def _mac_angulo(address: str) -> float:
     digest = int(hashlib.md5(address.encode()).hexdigest()[:8], 16)
     return (digest % 360) * math.pi / 180
 
-
 def _rssi_a_radio(rssi: int) -> float:
     rssi = max(-100, min(-40, rssi))
     return 0.10 + (rssi - (-40)) / (-100.0 - (-40)) * 0.83
-
 
 def _proximidad(rssi: int) -> str:
     if rssi >= -50:
@@ -202,14 +188,10 @@ def _proximidad(rssi: int) -> str:
         return "MEDIO"
     return "LEJOS"
 
-
 def _dist_canvas(ax, ay, bx, by) -> float:
     return math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
 
-
-# ══════════════════════════════════════════════════════════════════════
 # SEPARACIÓN DE ÁNGULOS — REPULSIÓN ITERATIVA
-# ══════════════════════════════════════════════════════════════════════
 
 def _separar_angulos(
     posiciones: dict[str, tuple[float, float, float]]
@@ -236,22 +218,16 @@ def _separar_angulos(
         for a in addrs
     }
 
-
-# ══════════════════════════════════════════════════════════════════════
 # CANVAS — RENDER
-# ══════════════════════════════════════════════════════════════════════
 
 _Canvas = list[list[tuple[str, str]]]
-
 
 def _canvas_nuevo() -> _Canvas:
     return [[(" ", "") for _ in range(_W)] for _ in range(_H)]
 
-
 def _put(g: _Canvas, x: int, y: int, c: str, s: str) -> None:
     if 0 <= x < _W and 0 <= y < _H:
         g[y][x] = (c, s)
-
 
 def _draw_ring(g: _Canvas, frac: float, color: str) -> None:
     rx = frac * _RX
@@ -263,7 +239,6 @@ def _draw_ring(g: _Canvas, frac: float, color: str) -> None:
         y = round(_CY + ry * math.sin(a))
         _put(g, x, y, "·", color)
 
-
 def _draw_axes(g: _Canvas) -> None:
     for x in range(_W):
         if g[_CY][x][0] == " ":
@@ -272,7 +247,6 @@ def _draw_axes(g: _Canvas) -> None:
         if g[y][_CX][0] == " ":
             _put(g, _CX, y, "│", "dim")
     _put(g, _CX, _CY, "⊕", "bold cyan")
-
 
 def _ring_label(g: _Canvas) -> None:
     for _, label, color, frac in _RINGS:
@@ -283,7 +257,6 @@ def _ring_label(g: _Canvas) -> None:
             for i, ch in enumerate(label):
                 _put(g, x + i, y, ch, f"dim {color}")
 
-
 def _canvas_a_text(g: _Canvas) -> Text:
     t = Text(no_wrap=True)
     for row in g:
@@ -292,10 +265,7 @@ def _canvas_a_text(g: _Canvas) -> Text:
         t.append("\n")
     return t
 
-
-# ══════════════════════════════════════════════════════════════════════
 # RENDER PRINCIPAL DEL MAPA
-# ══════════════════════════════════════════════════════════════════════
 
 def render_mapa(
     dispositivos: list["DispositivoBLE"],
@@ -363,10 +333,7 @@ def render_mapa(
 
     return _canvas_a_text(g)
 
-
-# ══════════════════════════════════════════════════════════════════════
 # PANEL LATERAL
-# ══════════════════════════════════════════════════════════════════════
 
 def _panel_lateral(
     dispositivos: list["DispositivoBLE"],
@@ -380,7 +347,7 @@ def _panel_lateral(
     hh, mm = divmod(elapsed, 3600)
     mm, ss = divmod(mm, 60)
 
-    # ── Stats compactos ───────────────────────────────────────────────
+    # Stats compactos
     total = len(dispositivos)
     cercanos = sum(1 for d in dispositivos if d.rssi >= -65)
     fab_set = {d.fabricante for d in dispositivos
@@ -406,7 +373,7 @@ def _panel_lateral(
     stats.add_row(
         "Hora",          f"[dim]{datetime.now().strftime('%H:%M:%S')}[/dim]")
 
-    # ── Tabla de dispositivos ─────────────────────────────────────────
+    # Tabla de dispositivos
     tb = Table(
         box=box.SIMPLE,
         header_style="bold cyan",
@@ -448,14 +415,14 @@ def _panel_lateral(
             tipo,
         )
 
-    # ── Alertas ───────────────────────────────────────────────────────
+    # Alertas
     alert_text = Text()
     if alertas:
         alert_text.append("\n  ALERTAS\n", style="bold red")
         for a in alertas[-3:]:
             alert_text.append(f"  ⚠ {a}\n", style="yellow")
 
-    # ── Leyenda ───────────────────────────────────────────────────────
+    # Leyenda
     leyenda = Text("\n  LEYENDA\n", style="dim cyan")
     for prox_key, (glyph, style) in _GLYPHS.items():
         dist = {
@@ -484,10 +451,7 @@ def _panel_lateral(
         padding=(0, 1),
     )
 
-
-# ══════════════════════════════════════════════════════════════════════
 # VISTA COMPLETA
-# ══════════════════════════════════════════════════════════════════════
 
 def render_vista(
     dispositivos: list["DispositivoBLE"],
@@ -515,10 +479,7 @@ def render_vista(
     )
     return Columns([panel_mapa, panel_lat], expand=True, equal=False)
 
-
-# ══════════════════════════════════════════════════════════════════════
 # DETECCIÓN DE ALERTAS
-# ══════════════════════════════════════════════════════════════════════
 
 def _evaluar_alertas(
     dispositivos: list["DispositivoBLE"],
@@ -543,10 +504,7 @@ def _evaluar_alertas(
     # Mantener solo las últimas 6
     del alertas[:-6]
 
-
-# ══════════════════════════════════════════════════════════════════════
 # CLASE PRINCIPAL
-# ══════════════════════════════════════════════════════════════════════
 
 class BLEMapaRadar:
     SCAN_INTERVAL = 5.0
@@ -561,8 +519,7 @@ class BLEMapaRadar:
         self._tracks: dict[str, DeviceTrack] = {}
         self._alertas: list[str] = []
 
-    # ── Helpers ───────────────────────────────────────────────────────
-
+    # Helpers
     def _info(self, msg: str) -> None:
         if self.log:
             self.log.info(msg, "BLEMapaRadar")
@@ -590,8 +547,7 @@ class BLEMapaRadar:
         else:
             asyncio.run(coro)
 
-    # ── Punto de entrada ──────────────────────────────────────────────
-
+    # Punto de entrada
     def iniciar(self, duracion_seg: int = 120) -> None:
         if not BLEAK_OK:
             self.console.print(
@@ -613,8 +569,7 @@ class BLEMapaRadar:
             self._guardar_evidencia()
             self._resumen_final()
 
-    # ── Loop principal ────────────────────────────────────────────────
-
+    # Loop principal
     async def _loop(self, duracion_seg: int) -> None:
         t_inicio = time.time()
         conocidos: set[str] = set()
@@ -630,7 +585,7 @@ class BLEMapaRadar:
                 ciclo += 1
                 nuevos_ciclo: list = []
 
-                # ── Escaneo BLE ───────────────────────────────────────
+                # Escaneo BLE
                 def _cb(device: "BLEDevice", adv: "AdvertisementData"):
                     rssi = adv.rssi if adv.rssi else -99
                     servicios = [str(u) for u in (adv.service_uuids or [])]
@@ -666,7 +621,7 @@ class BLEMapaRadar:
                 await asyncio.sleep(self.SCAN_INTERVAL)
                 await scanner.stop()
 
-                # ── Snapshot + alertas + render ───────────────────────
+                # Snapshot + alertas + render
                 with self._lock:
                     snapshot = list(self._disp.values())
 
@@ -688,8 +643,7 @@ class BLEMapaRadar:
             snapshot, self._tracks, t_inicio, ciclo, 0, self._alertas
         ))
 
-    # ── Resumen final ─────────────────────────────────────────────────
-
+    # Resumen final
     def _resumen_final(self) -> None:
         with self._lock:
             total = len(self._disp)
@@ -704,8 +658,7 @@ class BLEMapaRadar:
         self.console.print(Rule(style="dim cyan"))
         self.console.print()
 
-    # ── Evidencia ─────────────────────────────────────────────────────
-
+    # Evidencia
     def _guardar_evidencia(self) -> None:
         gp = getattr(self.bt, "gp", None)
         if not gp:

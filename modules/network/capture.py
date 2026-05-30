@@ -14,10 +14,8 @@ log = logging.getLogger("rfscanner.capture")
 # Centinela para indicar fin de stream
 _STOP_SENTINEL = None
 
-
-# ══════════════════════════════════════════════════════════════════
 # THREAD DE CAPTURA (productor)
-# ══════════════════════════════════════════════════════════════════
+
 
 class CaptureThread(threading.Thread):
     def __init__(
@@ -128,10 +126,8 @@ class CaptureThread(threading.Thread):
         log.info(f"CaptureThread detenido — "
                  f"{self._reads_ok} lecturas OK, {self._reads_fail} errores")
 
-
-# ══════════════════════════════════════════════════════════════════
 # PIPELINE COMPLETO (orquestador)
-# ══════════════════════════════════════════════════════════════════
+
 
 class CapturePipeline:
     def __init__(self, sdr_manager, dsp_engine, queue_maxsize: int = 8):
@@ -274,10 +270,8 @@ class CapturePipeline:
         log.info(f"Señal {signum} recibida — iniciando shutdown limpio")
         self._running = False
 
-
-# ══════════════════════════════════════════════════════════════════
 # EXCEPCIONES
-# ══════════════════════════════════════════════════════════════════
+
 
 class HardwareDisconnectedError(Exception):
     """El dispositivo SDR fue desconectado del USB."""
