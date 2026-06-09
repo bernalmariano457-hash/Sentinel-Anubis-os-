@@ -1,39 +1,37 @@
 from __future__ import annotations
 
-import folium
-from flask import Flask, render_template_string
-import threading
+import logging
+import warnings
+from typing import Any
+
+log = logging.getLogger(__name__)
+
+_DEPRECATION_MSG = (
+    "MapSentinel está obsoleto y será eliminado en la próxima versión mayor. "
+    "Usa GeomapSentinel.generar_mapa() en su lugar."
+)
 
 
 class MapSentinel:
-    def __init__(self, lat_inicial=0, lon_inicial=0):
-        self.lat = lat_inicial
-        self.lon = lon_inicial
-        self.targets = {}  # MAC: {lat, lon, vendor, rssi}
+    # Adaptador de compatibilidad — delega en GeomapSentinel.
+    # La implementación original era un prototipo sin integración con el sistema
+    # de consola ni manejo de errores. GeomapSentinel es la versión completa y
+    # mantenida. Este stub existe únicamente para no romper código externo que
+    # instancie MapSentinel directamente.
 
-    def actualizar_mapa(self):
-        # Creamos el mapa centrado en tu posición
-        m = folium.Map(location=[self.lat, self.lon],
-                       zoom_start=19, tiles="CartoDB dark_matter")
+    def __init__(self, sentinel=None, lat_inicial: float = 0.0, lon_inicial: float = 0.0):
+        self._sentinel = sentinel
+        self._lat = lat_inicial
+        self._lon = lon_inicial
+        warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
+        log.warning(_DEPRECATION_MSG)
 
-        # Marcador de tu posición (El Sentinel)
-        folium.Marker([self.lat, self.lon], popup="SENTINEL", icon=folium.Icon(
-            color="red", icon="info-sign")).add_to(m)
-
-        # Añadimos los dispositivos detectados
-        for mac, data in self.targets.items():
-            # Estimamos la posición basada en el RSSI (esto es una aproximación táctica)
-            # Factor de conversión simple
-            distancia_aprox = abs(data['rssi']) / 100000
-            t_lat = self.lat + (distancia_aprox * data['offset_n'])
-            t_lon = self.lon + (distancia_aprox * data['offset_e'])
-
-            folium.CircleMarker(
-                location=[t_lat, t_lon],
-                radius=10,
-                popup=f"{data['vendor']} ({data['rssi']}dBm)",
-                color="cyan",
-                fill=True
-            ).add_to(m)
-
-        m.save("mapa_sentinel.html")
+    def actualizar_mapa(self, targets: dict[str, dict[str, Any]] | None = None) -> None:
+        geomap = getattr(self._sentinel, "geomap", None) if self._sentinel else None
+        if geomap is None:
+            log.error(
+                "GeomapSentinel no disponible; no se puede generar el mapa. "
+                "Verifica que el módulo 'geomap' esté cargado."
+            )
+            return
+        geomap.generar_mapa(targets or {})

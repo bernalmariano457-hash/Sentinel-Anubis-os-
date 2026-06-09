@@ -10,16 +10,13 @@ import pytest
 from core.ModuleRegistry import MODULOS, ModuleRegistry, ModuleSpec
 
 
-# ══════════════════════════════════════════════════════════════════════
 # FIXTURES
-# ══════════════════════════════════════════════════════════════════════
-
 @pytest.fixture()
 def sentinel() -> MagicMock:
     s = MagicMock()
-    s.log.info    = MagicMock()
+    s.log.info = MagicMock()
     s.log.warning = MagicMock()
-    s.console     = MagicMock()
+    s.console = MagicMock()
     return s
 
 
@@ -53,10 +50,7 @@ def _fake_module(cls_name: str, cls: type | None = None) -> types.ModuleType:
     return mod
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 1 — ModuleSpec
-# ══════════════════════════════════════════════════════════════════════
-
 class TestModuleSpec:
 
     def test_display_name_hereda_cls_name_si_vacio(self):
@@ -84,9 +78,9 @@ class TestModuleSpec:
             display_name="RFModuleIntegrado",
             critico=False,
         )
-        assert spec.attr         == "rf"
-        assert spec.cls_name     == "RFModule"
-        assert spec.module_path  == "modules.rf.rf_module"
+        assert spec.attr == "rf"
+        assert spec.cls_name == "RFModule"
+        assert spec.module_path == "modules.rf.rf_module"
         assert spec.display_name == "RFModuleIntegrado"
 
     def test_catalogo_modulos_no_esta_vacio(self):
@@ -94,7 +88,8 @@ class TestModuleSpec:
 
     def test_catalogo_no_tiene_attrs_duplicados(self):
         attrs = [s.attr for s in MODULOS]
-        assert len(attrs) == len(set(attrs)), "Hay atributos duplicados en MODULOS"
+        assert len(attrs) == len(
+            set(attrs)), "Hay atributos duplicados en MODULOS"
 
     def test_catalogo_seguridad_es_critico(self):
         security = next((s for s in MODULOS if s.attr == "security"), None)
@@ -107,10 +102,7 @@ class TestModuleSpec:
         assert "rf" in rf.module_path
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 2 — _importar (importación dinámica)
-# ══════════════════════════════════════════════════════════════════════
-
 class TestImportar:
 
     def test_retorna_clase_cuando_modulo_existe(self, registry: ModuleRegistry):
@@ -129,7 +121,8 @@ class TestImportar:
     def test_retorna_none_cuando_clase_no_existe_en_modulo(self, registry: ModuleRegistry):
         mod = _fake_module("OtraClase")
         with patch("importlib.import_module", return_value=mod):
-            resultado = registry._importar("paquete.modulo", "ClaseQueNoExiste")
+            resultado = registry._importar(
+                "paquete.modulo", "ClaseQueNoExiste")
         assert resultado is None
 
     def test_retorna_none_cuando_import_lanza_excepcion_generica(self, registry: ModuleRegistry):
@@ -143,10 +136,7 @@ class TestImportar:
         assert resultado is None
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 3 — _cargar_uno
-# ══════════════════════════════════════════════════════════════════════
-
 class TestCargarUno:
 
     def test_instancia_con_sentinel_cuando_needs_sentinel_true(
@@ -253,7 +243,8 @@ class TestCargarUno:
         self, registry: ModuleRegistry, sentinel: MagicMock
     ):
         mod = _fake_module("OtraClase")
-        spec = _spec(attr="modulo", cls_name="Inexistente", display_name="TestModule")
+        spec = _spec(attr="modulo", cls_name="Inexistente",
+                     display_name="TestModule")
         with patch("importlib.import_module", return_value=mod):
             registry._cargar_uno(spec)
         sentinel.log.warning.assert_called()
@@ -272,9 +263,7 @@ class TestCargarUno:
         sentinel.log.warning.assert_called()
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 4 — _cargar_recovery y _cargar_motor_rep (dependencias)
-# ══════════════════════════════════════════════════════════════════════
 
 class TestCargaDependencias:
 
@@ -345,10 +334,7 @@ class TestCargaDependencias:
         assert ok is False
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 5 — _cargar_extras (callables y primitivas)
-# ══════════════════════════════════════════════════════════════════════
-
 class TestCargarExtras:
 
     def test_evil_twin_se_asigna_si_flask_disponible(
@@ -378,9 +364,9 @@ class TestCargarExtras:
     ):
         with patch("importlib.import_module", side_effect=ImportError):
             registry._cargar_extras()
-        assert sentinel._ARP   is None
+        assert sentinel._ARP is None
         assert sentinel._Ether is None
-        assert sentinel._srp   is None
+        assert sentinel._srp is None
 
     def test_wa_decryptor_es_none_si_no_disponible(
         self, registry: ModuleRegistry, sentinel: MagicMock
@@ -390,10 +376,7 @@ class TestCargarExtras:
         assert sentinel._wa_decryptor_cls is None
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 6 — estados() y disponible()
-# ══════════════════════════════════════════════════════════════════════
-
 class TestEstadosYDisponible:
 
     def test_estados_vacio_antes_de_cargar(self, registry: ModuleRegistry):
@@ -407,7 +390,8 @@ class TestEstadosYDisponible:
                 pass
 
         mod = _fake_module("MiClase", MiClase)
-        spec = _spec(attr="test", cls_name="MiClase", display_name="TestDisplay")
+        spec = _spec(attr="test", cls_name="MiClase",
+                     display_name="TestDisplay")
 
         with patch("importlib.import_module", return_value=mod):
             registry._cargar_uno(spec)
@@ -448,18 +432,15 @@ class TestEstadosYDisponible:
         assert registry.disponible("modulo_cargado_con_error") is False
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 7 — cargar_todos (integración del flujo completo)
-# ══════════════════════════════════════════════════════════════════════
-
 class TestCargarTodos:
 
     def _mock_cargadores(self, registry: ModuleRegistry) -> None:
-        registry._cargar_checker  = MagicMock(return_value=True)
+        registry._cargar_checker = MagicMock(return_value=True)
         registry._cargar_recovery = MagicMock(return_value=True)
         registry._cargar_motor_rep = MagicMock(return_value=True)
-        registry._cargar_plugins  = MagicMock(return_value=True)
-        registry._cargar_extras   = MagicMock()
+        registry._cargar_plugins = MagicMock(return_value=True)
+        registry._cargar_extras = MagicMock()
 
     def test_retorna_dict_con_todos_los_modulos(
         self, registry: ModuleRegistry
@@ -491,11 +472,14 @@ class TestCargarTodos:
         self, registry: ModuleRegistry
     ):
         orden: list[str] = []
-        registry._cargar_checker   = MagicMock(side_effect=lambda: orden.append("checker") or True)
-        registry._cargar_recovery  = MagicMock(side_effect=lambda: orden.append("recovery") or True)
-        registry._cargar_motor_rep = MagicMock(side_effect=lambda: orden.append("motor_rep") or True)
-        registry._cargar_plugins   = MagicMock(return_value=True)
-        registry._cargar_extras    = MagicMock()
+        registry._cargar_checker = MagicMock(
+            side_effect=lambda: orden.append("checker") or True)
+        registry._cargar_recovery = MagicMock(
+            side_effect=lambda: orden.append("recovery") or True)
+        registry._cargar_motor_rep = MagicMock(
+            side_effect=lambda: orden.append("motor_rep") or True)
+        registry._cargar_plugins = MagicMock(return_value=True)
+        registry._cargar_extras = MagicMock()
 
         with patch.object(registry, "_cargar_uno", return_value=True):
             registry.cargar_todos()

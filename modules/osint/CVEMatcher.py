@@ -13,21 +13,16 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich import box
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 
+# Logging
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Constantes
-# ---------------------------------------------------------------------------
-
-NVD_BASE_URL    = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+NVD_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 REQUEST_TIMEOUT = 10
-MAX_RESULTS     = 10
+MAX_RESULTS = 10
 RATE_LIMIT_WAIT = 30        # segundos de espera al recibir HTTP 403
-USER_AGENT      = "AnubisOS-CVEMatcher/3.0"
+USER_AGENT = "AnubisOS-CVEMatcher/3.0"
 
 CVSS_PRIORITY = ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2")
 
@@ -55,9 +50,8 @@ SEVERITY_RANK: dict[str, int] = {
     "NONE":     0,
 }
 
-# ---------------------------------------------------------------------------
 # Modelo de datos
-# ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True, slots=True)
 class CVERecord:
@@ -81,9 +75,8 @@ class CVERecord:
     def is_high(self) -> bool:
         return self.severity == "HIGH"
 
-# ---------------------------------------------------------------------------
 # HTTP helpers
-# ---------------------------------------------------------------------------
+
 
 def _build_session() -> requests.Session:
     retry = Retry(
@@ -100,27 +93,28 @@ def _build_session() -> requests.Session:
     session.headers["User-Agent"] = USER_AGENT
     return session
 
-# ---------------------------------------------------------------------------
 # Parser NVD
-# ---------------------------------------------------------------------------
+
 
 def _parse_metrics(metrics: dict) -> tuple[float | None, str, str]:
     for key in CVSS_PRIORITY:
         entries = metrics.get(key, [])
         if not entries:
             continue
-        entry     = entries[0]
+        entry = entries[0]
         cvss_data = entry.get("cvssData", {})
-        score     = cvss_data.get("baseScore")
-        severity  = (
+        score = cvss_data.get("baseScore")
+        severity = (
             cvss_data.get("baseSeverity") or entry.get("baseSeverity", "NONE")
         ).upper()
-        vector    = cvss_data.get("vectorString", "—")
+        vector = cvss_data.get("vectorString", "—")
         return score, severity, vector
     return None, "NONE", "—"
 
+
 def _truncate(text: str, limit: int = 200) -> str:
     return text[:limit] + "..." if len(text) > limit else text
+
 
 def _parse_nvd_response(data: dict) -> list[CVERecord]:
     records: list[CVERecord] = []
@@ -131,7 +125,7 @@ def _parse_nvd_response(data: dict) -> list[CVERecord]:
         cve_id = cve_data.get("id", "—")
 
         descriptions = cve_data.get("descriptions", [])
-        description  = next(
+        description = next(
             (d["value"] for d in descriptions if d.get("lang") == "en"),
             "No description available.",
         )
@@ -144,33 +138,29 @@ def _parse_nvd_response(data: dict) -> list[CVERecord]:
         published = cve_data.get("published", "")[:10]
 
         records.append(CVERecord(
-            id          = cve_id,
-            description = _truncate(description),
-            score       = score,
-            severity    = severity,
-            vector      = vector,
-            published   = published,
-            references  = references,
+            id=cve_id,
+            description=_truncate(description),
+            score=score,
+            severity=severity,
+            vector=vector,
+            published=published,
+            references=references,
         ))
 
     return records
 
-# ---------------------------------------------------------------------------
 # Clase principal
-# ---------------------------------------------------------------------------
+
 
 class CVEMatcher:
 
     def __init__(self, sentinel):
         self.sentinel = sentinel
         self.console: Console = sentinel.console
-        self.gp               = getattr(sentinel, "gp", None)
-        self._session         = _build_session()
+        self.gp = getattr(sentinel, "gp", None)
+        self._session = _build_session()
 
-    # -----------------------------------------------------------------------
     # API pública
-    # -----------------------------------------------------------------------
-
     def analyze_service(self, service: str, version: str = "") -> list[CVERecord]:
         query = f"{service} {version}".strip()
 
@@ -200,11 +190,11 @@ class CVEMatcher:
         results: dict[str, list[CVERecord]] = {}
 
         for srv in services:
-            name    = srv.get("nombre") or srv.get("service", "")
+            name = srv.get("nombre") or srv.get("service", "")
             version = srv.get("version", "")
             if not name:
                 continue
-            key     = f"{name} {version}".strip()
+            key = f"{name} {version}".strip()
             records = self._fetch_nvd(key)
             if records:
                 results[key] = records
@@ -220,10 +210,7 @@ class CVEMatcher:
         if query:
             self.analyze_service(query)
 
-    # -----------------------------------------------------------------------
     # Llamada a la API NVD
-    # -----------------------------------------------------------------------
-
     def _fetch_nvd(self, query: str) -> list[CVERecord]:
         params = {
             "keywordSearch":  query,
@@ -259,14 +246,13 @@ class CVEMatcher:
             self.console.print(f"[red][!] Connection error: {exc}[/red]")
             log.debug("NVD connection error", exc_info=exc)
         except Exception as exc:
-            self.console.print(f"[red][!] Unexpected error querying NVD: {exc}[/red]")
+            self.console.print(
+                f"[red][!] Unexpected error querying NVD: {exc}[/red]")
             log.exception("Unexpected NVD error")
 
         return []
 
-    # -----------------------------------------------------------------------
     # Registro en el proyecto (GestorProyecto)
-    # -----------------------------------------------------------------------
 
     def _register_findings(self, records: list[CVERecord], query: str) -> None:
         if not self.gp:
@@ -292,13 +278,10 @@ class CVEMatcher:
             },
         )
 
-    # -----------------------------------------------------------------------
     # Renderizado
-    # -----------------------------------------------------------------------
-
     def _render_cve_table(self, records: list[CVERecord], query: str) -> None:
         critical_count = sum(1 for r in records if r.is_critical)
-        high_count     = sum(1 for r in records if r.is_high)
+        high_count = sum(1 for r in records if r.is_high)
 
         title = (
             f"CVEs for '{query}' — "
@@ -316,12 +299,13 @@ class CVEMatcher:
         table.add_column("CVE ID",      style="cyan",  width=18, no_wrap=True)
         table.add_column("Score",        width=7,       justify="center")
         table.add_column("Severity",     width=12,      justify="center")
-        table.add_column("Published",    style="dim",   width=12, justify="center")
+        table.add_column("Published",    style="dim",
+                         width=12, justify="center")
         table.add_column("Description",  style="white")
 
         for rec in sorted(records, key=lambda r: r.sort_key, reverse=True):
-            style   = SEVERITY_STYLE.get(rec.severity, "white")
-            badge   = SEVERITY_BADGE.get(rec.severity, "⚪")
+            style = SEVERITY_STYLE.get(rec.severity, "white")
+            badge = SEVERITY_BADGE.get(rec.severity, "⚪")
             score_f = (
                 f"[{style}]{rec.score}[/{style}]"
                 if rec.score is not None
@@ -329,7 +313,8 @@ class CVEMatcher:
             )
             sev_f = f"[{style}]{badge} {rec.severity}[/{style}]"
 
-            table.add_row(rec.id, score_f, sev_f, rec.published, rec.description)
+            table.add_row(rec.id, score_f, sev_f,
+                          rec.published, rec.description)
 
         self.console.print(Panel(table, title=title, border_style="red"))
         self._render_top_references(records)
@@ -363,14 +348,14 @@ class CVEMatcher:
 
         for service, records in results.items():
             critical_count = sum(1 for r in records if r.is_critical)
-            high_count     = sum(1 for r in records if r.is_high)
-            max_score      = max((r.score or 0.0 for r in records), default=0.0)
+            high_count = sum(1 for r in records if r.is_high)
+            max_score = max((r.score or 0.0 for r in records), default=0.0)
 
             table.add_row(
                 service,
                 str(len(records)),
-                f"[red]{critical_count}[/red]"    if critical_count else "[dim]0[/dim]",
-                f"[orange1]{high_count}[/orange1]" if high_count     else "[dim]0[/dim]",
+                f"[red]{critical_count}[/red]" if critical_count else "[dim]0[/dim]",
+                f"[orange1]{high_count}[/orange1]" if high_count else "[dim]0[/dim]",
                 _score_cell(max_score),
             )
 
@@ -380,9 +365,8 @@ class CVEMatcher:
             border_style="red",
         ))
 
-# ---------------------------------------------------------------------------
 # Utilidades de formato
-# ---------------------------------------------------------------------------
+
 
 def _score_cell(score: float) -> str:
     if score >= 7.0:

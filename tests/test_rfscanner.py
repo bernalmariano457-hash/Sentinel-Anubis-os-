@@ -15,9 +15,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-# ════════════════════════════════════════════════════════════════════
 # FIXTURES PYTEST
-# ════════════════════════════════════════════════════════════════════
 
 @pytest.fixture
 def sample_rate():
@@ -72,9 +70,7 @@ def signal_db(storage_cfg):
     return SignalDB(storage_cfg)
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — CONFIGURACIÓN
-# ════════════════════════════════════════════════════════════════════
 
 class TestConfig:
     def test_default_loads(self):
@@ -125,9 +121,7 @@ class TestConfig:
         assert cfg2.hardware.gain_db == cfg.hardware.gain_db
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — BANDS
-# ════════════════════════════════════════════════════════════════════
 
 class TestBands:
     def test_fm_radio_identified(self):
@@ -175,14 +169,11 @@ class TestBands:
                     for b in [{"peligro": peligro}]])
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — DSP
-# ════════════════════════════════════════════════════════════════════
 
 class TestDSP:
 
     def test_psd_shape(self, dsp_engine, sample_rate, fft_size):
-        """PSD debe retornar arrays del tamaño correcto."""
         n_samples = fft_size * 4
         iq = np.random.randn(n_samples) + 1j * np.random.randn(n_samples)
         iq = iq.astype(np.complex64)
@@ -198,10 +189,6 @@ class TestDSP:
         assert np.all(np.isfinite(psd))
 
     def test_dc_spike_removed(self, dsp_engine, fft_size, sample_rate):
-        """
-        El bin DC (central) no debe ser significativamente mayor
-        que sus vecinos tras la corrección.
-        """
         n = fft_size * 4
         # Señal con DC fuerte
         dc = np.ones(n, dtype=np.complex64) * 10.0
@@ -215,7 +202,6 @@ class TestDSP:
         assert diff < 3.0, f"Spike DC no eliminado: {diff:.1f} dB"
 
     def test_tone_detected(self, dsp_engine, sample_rate, fft_size):
-        """Un tono puro debe producir un pico detectable."""
         n = fft_size * 8
         t = np.arange(n) / sample_rate
         f_tone = 200_000  # 200 kHz offset
@@ -236,7 +222,6 @@ class TestDSP:
         assert offset < 0.1, f"Offset de detección demasiado grande: {offset:.3f} MHz"
 
     def test_noise_floor_estimate(self, dsp_engine, fft_size):
-        """La estimación de piso de ruido debe ser razonable."""
         n = fft_size * 4
         iq = (0.001 * np.random.randn(n) + 1j * 0.001 *
               np.random.randn(n)).astype(np.complex64)
@@ -246,18 +231,15 @@ class TestDSP:
         assert -140.0 < floor < 0.0
 
     def test_psd_with_short_samples(self, dsp_engine):
-        """No debe fallar con muestras insuficientes (padding)."""
         iq = np.random.randn(100).astype(np.complex64)
         freqs, psd = dsp_engine.compute_psd(iq)
         assert np.all(np.isfinite(psd))
 
     def test_freq_resolution(self, dsp_engine, sample_rate, fft_size):
-        """Resolución frecuencial debe ser SR/FFT_SIZE."""
         expected = sample_rate / fft_size
         assert abs(dsp_engine.freq_resolution_hz - expected) < 1.0
 
     def test_bw_measurement(self, dsp_engine, sample_rate, fft_size):
-        """BW -3dB de una señal conocida debe ser cercano al teórico."""
         n = fft_size * 4
         t = np.arange(n) / sample_rate
         # Señal con BW controlado por filtro rectangular
@@ -271,9 +253,7 @@ class TestDSP:
         assert len(picos) >= 0  # No fallar
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — MOCK SDR
-# ════════════════════════════════════════════════════════════════════
 
 class TestMockSDR:
     def test_capture_returns_array(self, mock_sdr):
@@ -323,9 +303,8 @@ class TestMockSDR:
             assert np.all(np.isfinite(s)), f"Modo {mode} generó NaN/inf"
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — DEMODULADOR
-# ════════════════════════════════════════════════════════════════════
+
 
 class TestDemodulator:
     @pytest.fixture
@@ -375,9 +354,7 @@ class TestDemodulator:
         assert wav.stat().st_size > 0
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — ALMACENAMIENTO
-# ════════════════════════════════════════════════════════════════════
 
 class TestSignalDB:
     def test_create_and_open_session(self, signal_db):
@@ -478,9 +455,8 @@ class TestSigMF:
         assert meta["captures"][0]["core:frequency"] == pytest.approx(433.92e6)
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — CAPTURA PIPELINE
-# ════════════════════════════════════════════════════════════════════
+
 
 class TestCapturePipeline:
     def test_pipeline_produces_samples(self, mock_sdr, dsp_cfg):
@@ -515,9 +491,8 @@ class TestCapturePipeline:
         assert not pipeline.is_running
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — HARDWARE (solo con --hardware flag)
-# ════════════════════════════════════════════════════════════════════
+
 
 def pytest_addoption(parser):
     parser.addoption("--hardware", action="store_true",

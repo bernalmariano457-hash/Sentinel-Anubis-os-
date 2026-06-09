@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import logging
 import threading
-import time
 import uuid
 from datetime import datetime
 from enum import Enum
@@ -13,7 +13,10 @@ from rich.panel import Panel
 from rich.table import Table
 
 if TYPE_CHECKING:
-    pass  # evitar imports circulares
+    pass
+
+log = logging.getLogger(__name__)
+
 
 class EstadoTarea(Enum):
     PENDIENTE = "pendiente"
@@ -21,6 +24,7 @@ class EstadoTarea(Enum):
     COMPLETADA = "completada"
     ERROR = "error"
     CANCELADA = "cancelada"
+
 
 class Tarea:
 
@@ -37,14 +41,14 @@ class Tarea:
         self.funcion = funcion
         self.args = args
         self.kwargs = kwargs or {}
-        self.prioridad = prioridad          # 1=alta … 5=baja
+        self.prioridad = prioridad
         self.estado = EstadoTarea.PENDIENTE
         self.creada = datetime.now()
-        self.iniciada: datetime | None = None
+        self.iniciada:   datetime | None = None
         self.finalizada: datetime | None = None
-        self.resultado: Any = None
-        self.error: Exception | None = None
-        self._hilo: threading.Thread | None = None
+        self.resultado:  Any = None
+        self.error:      Exception | None = None
+        self._hilo:      threading.Thread | None = None
         self._cancelar = threading.Event()
 
     def duracion(self) -> str:
@@ -66,34 +70,40 @@ class Tarea:
             "error":     str(self.error) if self.error else None,
         }
 
+
 class ColaTareas:
 
-    MAX_HISTORIAL = 30
-    MAX_CONCURRENTES = 3  # no saturar CM4 (4 cores; 1 reservado para UI)
+    MAX_HISTORIAL:   int = 30
+    MAX_CONCURRENTES: int = 3
 
     def __init__(self, sentinel=None):
         self.sentinel = sentinel
 
-        # FIX: usar el Console del sentinel si está disponible;
-        # si no (uso standalone), crear uno nuevo.
-        # NUNCA crear un Console() global a nivel de módulo.
         if sentinel is not None and hasattr(sentinel, "console"):
             self._console: Console = sentinel.console
         else:
             self._console = Console()
 
-        self._tareas: dict[str, Tarea] = {}
+        self._tareas:   dict[str, Tarea] = {}
         self._lock = threading.Lock()
         self._semaforo = threading.Semaphore(self.MAX_CONCURRENTES)
 
-    # Logging interno (usa el console inyectado)
+    # Logging interno
+    # Usa logging estándar desde hilos de fondo para no corromper
+    # un Rich Live activo en el hilo principal.  El mensaje también se
+    # imprime por console.print sólo cuando se llama desde el hilo
+    # principal (ident coincide).
 
     def _log(self, msg: str, estilo: str = "dim") -> None:
-        """Imprime usando el Console del sentinel, respetando cualquier Live activo."""
-        try:
-            self._console.print(msg, style=estilo)
-        except Exception:
-            pass  # si el console está en Live, el mensaje se pierde silenciosamente
+        log.debug("%s", msg)
+        if threading.current_thread() is threading.main_thread():
+            try:
+                self._console.print(msg, style=estilo)
+            except Exception:
+                pass
+
+    def _log_bg(self, msg: str) -> None:
+        log.info("%s", msg)
 
     # API pública
 
@@ -109,7 +119,6 @@ class ColaTareas:
         tarea = Tarea(nombre, funcion, args, kwargs or {}, prioridad)
 
         with self._lock:
-            # Limpiar historial si excede el máximo
             completadas = [
                 t for t in self._tareas.values()
                 if t.estado in (
@@ -124,9 +133,13 @@ class ColaTareas:
 
             self._tareas[tarea.id] = tarea
 
-        prio_tag = {1: "[red]ALTA[/red]", 2: "[yellow]MEDIA-ALTA[/yellow]",
-                    3: "[cyan]MEDIA[/cyan]",  4: "[dim]MEDIA-BAJA[/dim]",
-                    5: "[dim]BAJA[/dim]"}.get(prioridad, "[cyan]MEDIA[/cyan]")
+        prio_tag = {
+            1: "[red]ALTA[/red]",
+            2: "[yellow]MEDIA-ALTA[/yellow]",
+            3: "[cyan]MEDIA[/cyan]",
+            4: "[dim]MEDIA-BAJA[/dim]",
+            5: "[dim]BAJA[/dim]",
+        }.get(prioridad, "[cyan]MEDIA[/cyan]")
 
         self._log(
             f"[dim][[/dim][bold cyan]job #{tarea.id}[/bold cyan][dim]][/dim] "
@@ -140,7 +153,6 @@ class ColaTareas:
         return tarea
 
     def cancelar(self, job_id: str) -> bool:
-        """Cancela una tarea por su ID. Devuelve True si encontró la tarea."""
         with self._lock:
             tarea = self._tareas.get(job_id.upper())
         if not tarea:
@@ -171,8 +183,7 @@ class ColaTareas:
                 f"[red][✖] Job #{job_id} terminó con error: {tarea.error}[/red]")
             return None
         self._log(
-            f"[dim][~] Job #{job_id} está en estado: "
-            f"{tarea.estado.value}[/dim]"
+            f"[dim][~] Job #{job_id} está en estado: {tarea.estado.value}[/dim]"
         )
         return None
 
@@ -194,12 +205,12 @@ class ColaTareas:
             show_edge=False,
             expand=True,
         )
-        tabla.add_column("ID",      style="dim cyan",
+        tabla.add_column("ID",       style="dim cyan",
                          min_width=8,  no_wrap=True)
-        tabla.add_column("Nombre",  style="white",     min_width=24)
-        tabla.add_column("Estado",  justify="center",  min_width=12)
+        tabla.add_column("Nombre",   style="white",     min_width=24)
+        tabla.add_column("Estado",   justify="center",  min_width=12)
         tabla.add_column("Duración", justify="right",   min_width=8)
-        tabla.add_column("P",       justify="center",  min_width=3)
+        tabla.add_column("P",        justify="center",  min_width=3)
 
         _COLORES_ESTADO = {
             EstadoTarea.PENDIENTE:  "[yellow]⏳ pendiente[/yellow]",
@@ -218,15 +229,13 @@ class ColaTareas:
                 str(t.prioridad),
             )
 
-        self._console.print(
-            Panel(
-                tabla,
-                title="[bold cyan]◈ COLA DE TAREAS[/bold cyan]",
-                subtitle=f"[dim]{len(tareas)} tareas[/dim]",
-                border_style="cyan",
-                box=box.HEAVY_HEAD,
-            )
-        )
+        self._console.print(Panel(
+            tabla,
+            title="[bold cyan]◈ COLA DE TAREAS[/bold cyan]",
+            subtitle=f"[dim]{len(tareas)} tareas[/dim]",
+            border_style="cyan",
+            box=box.HEAVY_HEAD,
+        ))
 
     def limpiar_completadas(self) -> int:
         with self._lock:
@@ -249,35 +258,32 @@ class ColaTareas:
     # Ejecución interna
 
     def _iniciar(self, tarea: Tarea) -> None:
-        def _runner():
-            # Esperar slot de concurrencia (no bloquea el prompt principal)
+        def _runner() -> None:
             self._semaforo.acquire()
             try:
                 if tarea._cancelar.is_set():
-                    return  # cancelada mientras esperaba slot
+                    return
 
                 tarea.estado = EstadoTarea.CORRIENDO
                 tarea.iniciada = datetime.now()
 
-                tarea.resultado = tarea.funcion(
-                    *tarea.args,
-                    **tarea.kwargs,
-                )
+                tarea.resultado = tarea.funcion(*tarea.args, **tarea.kwargs)
                 tarea.estado = EstadoTarea.COMPLETADA
 
-                self._log(
-                    f"[dim][[/dim][green]✔ job #{tarea.id}[/green][dim]][/dim] "
-                    f"[green]{tarea.nombre}[/green] → completada "
-                    f"[dim]({tarea.duracion()})[/dim]"
+                self._log_bg(
+                    f"[✔ job #{tarea.id}] {tarea.nombre} → completada "
+                    f"({tarea.duracion()})"
                 )
 
             except Exception as exc:
                 tarea.estado = EstadoTarea.ERROR
                 tarea.error = exc
-                self._log(
-                    f"[dim][[/dim][red]✖ job #{tarea.id}[/red][dim]][/dim] "
-                    f"[red]{tarea.nombre}[/red] → error: {exc}"
+                self._log_bg(
+                    f"[✖ job #{tarea.id}] {tarea.nombre} → error: {exc}"
                 )
+                log.exception(
+                    "Excepción no manejada en job #%s (%s)", tarea.id, tarea.nombre)
+
             finally:
                 tarea.finalizada = datetime.now()
                 self._semaforo.release()

@@ -18,13 +18,8 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-# PluginBase se importa aquí, después de configurar sys.path
-from PluginSystem import PluginBase  # noqa: E402
 
-
-# ════════════════════════════════════════════════════════════════════
 # FIXTURES COMPARTIDOS
-# ════════════════════════════════════════════════════════════════════
 
 @pytest.fixture
 def console():
@@ -34,6 +29,7 @@ def console():
 
 @pytest.fixture
 def mock_log():
+    """Log falso que no escribe nada en disco."""
     log = MagicMock()
     log.info = MagicMock()
     log.warning = MagicMock()
@@ -48,14 +44,12 @@ def tmp_dir(tmp_path):
     return tmp_path
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — VALIDADOR
-# ════════════════════════════════════════════════════════════════════
 
 class TestValidador:
 
     def setup_method(self):
-        from validators import Validador
+        from core.validators import Validador
         self.V = Validador
 
     # IPs
@@ -143,15 +137,12 @@ class TestValidador:
         assert not self.V.es_frecuencia("")
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — AUTENTICACIÓN
-# ════════════════════════════════════════════════════════════════════
 
 class TestGestorAuth:
-
     @pytest.fixture
     def auth(self, console, mock_log):
-        from auth import GestorAuth
+        from core.auth import GestorAuth
         config = {"sistema": {"nombre": "Test", "version": "1.0",
                               "primer_arranque": False}}
         return GestorAuth(config, console, mock_log)
@@ -181,14 +172,16 @@ class TestGestorAuth:
 
     # Verificación SHA-256 con salt (formato nuevo sin bcrypt)
     def test_verificar_sha256_con_salt(self, auth):
+        import os as _os
         pwd = "clave_test"
-        salt = os.urandom(16).hex()
+        salt = _os.urandom(16).hex()
         h = hashlib.sha256((salt + pwd).encode()).hexdigest()
         almacenado = f"{salt}:{h}"
         assert auth._verificar(pwd, almacenado)
 
     def test_verificar_sha256_con_salt_incorrecto(self, auth):
-        salt = os.urandom(16).hex()
+        import os as _os
+        salt = _os.urandom(16).hex()
         h = hashlib.sha256((salt + "correcto").encode()).hexdigest()
         almacenado = f"{salt}:{h}"
         assert not auth._verificar("incorrecto", almacenado)
@@ -205,7 +198,8 @@ class TestGestorAuth:
 
     # solicitar_acceso con hash en config
     def test_solicitar_acceso_correcto(self, console, mock_log):
-        from auth import GestorAuth
+        from core.auth import GestorAuth
+        import hashlib
         pwd = "acceso123"
         salt = "deadbeef"
         h_str = hashlib.sha256((salt + pwd).encode()).hexdigest()
@@ -219,7 +213,7 @@ class TestGestorAuth:
         assert resultado is True
 
     def test_solicitar_acceso_agota_intentos(self, console, mock_log):
-        from auth import GestorAuth
+        from core.auth import GestorAuth
         import hashlib
         salt = "cafebabe"
         h_str = hashlib.sha256((salt + "correcta").encode()).hexdigest()
@@ -233,16 +227,14 @@ class TestGestorAuth:
         assert resultado is False
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — LOG SISTEMA
-# ════════════════════════════════════════════════════════════════════
 
 class TestLogSistema:
 
     @pytest.fixture
     def log(self, console, tmp_dir, monkeypatch):
         monkeypatch.chdir(tmp_dir)
-        from log_sistema import LogSistema
+        from core.log_sistema import LogSistema
         return LogSistema(console)
 
     def test_info_no_lanza(self, log):
@@ -298,15 +290,13 @@ class TestLogSistema:
         log.mostrar_historial()   # No debe lanzar excepción
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — COLA DE TAREAS
-# ════════════════════════════════════════════════════════════════════
 
 class TestColaTareas:
 
     @pytest.fixture
     def cola(self):
-        from ColaTareas import ColaTareas
+        from core.ColaTareas import ColaTareas
         return ColaTareas()
 
     def test_agregar_tarea_retorna_id(self, cola):
@@ -325,7 +315,7 @@ class TestColaTareas:
             raise ValueError("error intencional")
         tid = cola.agregar("tarea_error", lanza)
         time.sleep(0.3)
-        from ColaTareas import EstadoTarea
+        from core.ColaTareas import EstadoTarea
         tarea = cola._tareas.get(tid)
         assert tarea is not None
         assert tarea.estado == EstadoTarea.ERROR
@@ -335,7 +325,7 @@ class TestColaTareas:
         cola.agregar("t2", lambda: None)
         time.sleep(0.3)
         cola.limpiar_completadas()
-        from ColaTareas import EstadoTarea
+        from core.ColaTareas import EstadoTarea
         for t in cola._tareas.values():
             assert t.estado != EstadoTarea.COMPLETADA
 
@@ -365,9 +355,7 @@ class TestColaTareas:
         assert len(resultados) == 5
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — GESTOR DE PROYECTOS
-# ════════════════════════════════════════════════════════════════════
 
 class TestGestorProyectos:
 
@@ -377,12 +365,12 @@ class TestGestorProyectos:
         import GestorProyectos as gp_mod
         monkeypatch.setattr(gp_mod, "PROYECTOS_PATH",
                             str(tmp_dir / "data" / "proyectos"))
-        from GestorProyectos import GestorProyectos
+        from core.GestorProyectos import GestorProyectos
         return GestorProyectos()
 
     @pytest.fixture
     def proyecto_activo(self, gp):
-        from GestorProyectos import Proyecto
+        from core.GestorProyectos import Proyecto
         p = Proyecto("TestOp", "Objetivo de prueba",
                      "192.168.1.0/24", "red-interna")
         gp.proyecto_activo = p
@@ -391,7 +379,7 @@ class TestGestorProyectos:
         return p
 
     def test_crear_proyecto_objeto(self, tmp_dir):
-        from GestorProyectos import Proyecto
+        from core.GestorProyectos import Proyecto
         p = Proyecto("Op1", "Objetivo", "10.0.0.0/8", "web")
         assert p.nombre == "Op1"
         assert p.objetivo == "Objetivo"
@@ -401,7 +389,7 @@ class TestGestorProyectos:
         assert isinstance(p.hallazgos, list)
 
     def test_proyecto_to_dict(self, tmp_dir):
-        from GestorProyectos import Proyecto
+        from core.GestorProyectos import Proyecto
         p = Proyecto("TestDict", "Obj", "10.0.0.0/8")
         d = p.to_dict()
         for campo in ["id", "nombre", "objetivo", "scope", "estado",
@@ -409,7 +397,7 @@ class TestGestorProyectos:
             assert campo in d
 
     def test_proyecto_from_dict_roundtrip(self):
-        from GestorProyectos import Proyecto
+        from core.GestorProyectos import Proyecto
         p = Proyecto("RoundTrip", "Objetivo", "192.168.0.0/16", "forense")
         d = p.to_dict()
         p2 = Proyecto.from_dict(d)
@@ -440,7 +428,7 @@ class TestGestorProyectos:
         gp.registrar_evidencia("test", "evidencia", {})
         gp._guardar_proyecto()
 
-        from GestorProyectos import GestorProyectos
+        from core.GestorProyectos import GestorProyectos
         gp2 = GestorProyectos()
         proyectos = gp2.listar_proyectos(mostrar=False)
         nombres = [p["nombre"] for p in proyectos]
@@ -457,9 +445,7 @@ class TestGestorProyectos:
         assert len(proyecto_activo.evidencias) == 5
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — PLUGIN SYSTEM
-# ════════════════════════════════════════════════════════════════════
 
 class TestPluginSystem:
 
@@ -474,7 +460,7 @@ class TestPluginSystem:
         monkeypatch.chdir(tmp_dir)
         import PluginSystem as ps_mod
         monkeypatch.setattr(ps_mod, "PLUGINS_PATH", str(tmp_dir / "plugins"))
-        from PluginSystem import GestorPlugins
+        from core.PluginSystem import GestorPlugins
         return GestorPlugins(sentinel_mock)
 
     @pytest.fixture
@@ -484,8 +470,8 @@ class TestPluginSystem:
         plugins_dir.mkdir(exist_ok=True)
         monkeypatch.setattr(ps_mod, "PLUGINS_PATH", str(plugins_dir))
 
-        contenido = """\
-from PluginSystem import PluginBase
+        contenido = '''
+from core.PluginSystem import PluginBase
 
 class PluginTest(PluginBase):
     NOMBRE = "plugin_test"
@@ -496,7 +482,7 @@ class PluginTest(PluginBase):
 
     def ejecutar(self, comando, args=None):
         return f"ejecutado:{comando}"
-"""
+'''
         archivo = plugins_dir / "plugin_test.py"
         archivo.write_text(contenido)
         return archivo
@@ -505,11 +491,11 @@ class PluginTest(PluginBase):
         assert (tmp_dir / "plugins").exists()
 
     def test_plugin_base_ayuda(self, sentinel_mock):
-        from PluginSystem import PluginBase
+        from core.PluginSystem import PluginBase
 
         class MiPlugin(PluginBase):
             NOMBRE = "mi_plugin"
-            VERSION = "2.3"
+            VERSION = "2.0"
             DESCRIPCION = "Plugin de prueba"
             AUTOR = "AutorTest"
             COMANDOS = ["cmd1"]
@@ -525,13 +511,10 @@ class PluginTest(PluginBase):
         assert "cmd1" in ayuda
 
     def test_plugin_base_sin_ejecutar_lanza(self, sentinel_mock):
-        from PluginSystem import PluginBase
+        from core.PluginSystem import PluginBase
 
         class PluginIncompleto(PluginBase):
             NOMBRE = "incompleto"
-            VERSION = "0.0"
-            DESCRIPCION = ""
-            AUTOR = ""
             COMANDOS = []
 
         p = PluginIncompleto(sentinel_mock)
@@ -565,16 +548,15 @@ class PluginTest(PluginBase):
         gestor.listar()
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — SECURITY MODULE
-# ════════════════════════════════════════════════════════════════════
 
 class TestSecurityModule:
+
     @pytest.fixture
     def security(self, tmp_dir, monkeypatch):
         monkeypatch.chdir(tmp_dir)
         sentinel = MagicMock()
-        from Security import SecurityModule
+        from core.Security import SecurityModule
         return SecurityModule(sentinel)
 
     def test_llave_se_crea(self, security, tmp_dir):
@@ -621,31 +603,28 @@ class TestSecurityModule:
         assert archivo.read_bytes() == datos
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — CVE MATCHER
-# ════════════════════════════════════════════════════════════════════
 
 class TestCVEMatcher:
-
     @pytest.fixture
     def cve(self, console):
         sentinel = MagicMock()
         sentinel.console = console
         sentinel.gp = None
-        from CVEMatcher import CVEMatcher
+        from modules.osint.CVEMatcher import CVEMatcher
         return CVEMatcher(sentinel)
 
     def test_instancia_correcta(self, cve):
-        from CVEMatcher import CVEMatcher
+        from modules.osint.CVEMatcher import CVEMatcher
         assert isinstance(cve, CVEMatcher)
 
     def test_severidad_colores_definidos(self):
-        from CVEMatcher import SEVERIDAD_COLOR
+        from modules.osint.CVEMatcher import SEVERIDAD_COLOR
         for nivel in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"]:
             assert nivel in SEVERIDAD_COLOR
 
     def test_severidad_emojis_definidos(self):
-        from CVEMatcher import SEVERIDAD_EMOJI
+        from modules.osint.CVEMatcher import SEVERIDAD_EMOJI
         for nivel in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"]:
             assert nivel in SEVERIDAD_EMOJI
 
@@ -686,12 +665,9 @@ class TestCVEMatcher:
                 [{"nombre": "OpenSSH", "version": "7.4"}])
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — RF MODULE (sin hardware)
-# ════════════════════════════════════════════════════════════════════
 
 class TestRFModuleIntegrado:
-
     @pytest.fixture
     def sentinel_mock(self, console, mock_log):
         s = MagicMock()
@@ -768,15 +744,13 @@ class TestRFModuleIntegrado:
         rf.db_estadisticas()
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — RFSCANNER (MotorDSP)
-# ════════════════════════════════════════════════════════════════════
 
 class TestMotorDSP:
 
     @pytest.fixture
     def dsp(self):
-        from RFScanner import MotorDSP
+        from modules.rf.RFScanner import MotorDSP
         return MotorDSP(fft_size=2048, ventana="blackman")
 
     @pytest.fixture
@@ -844,7 +818,7 @@ class TestMotorDSP:
         assert np.all(np.isfinite(promedio))
 
     def test_ventanas_disponibles(self):
-        from RFScanner import MotorDSP
+        from modules.rf.RFScanner import MotorDSP
         for ventana in ["blackman", "hann", "hamming"]:
             dsp = MotorDSP(fft_size=512, ventana=ventana)
             assert dsp is not None
@@ -856,9 +830,7 @@ class TestMotorDSP:
         assert len(psd) == 2048
 
 
-# ════════════════════════════════════════════════════════════════════
 # TESTS — HARDWARE (solo con flag --hardware)
-# ════════════════════════════════════════════════════════════════════
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -876,7 +848,7 @@ def hardware_required(request):
 class TestRealHardware:
 
     def test_conectar_rtlsdr(self, hardware_required):
-        from RFScanner import RFScanner
+        from modules.rf.RFScanner import RFScanner
         sentinel = MagicMock()
         rf = RFScanner(sentinel)
         assert rf.sdr is not None, "No se pudo conectar al RTL-SDR"
@@ -884,7 +856,7 @@ class TestRealHardware:
 
     def test_captura_muestras_reales(self, hardware_required):
         import numpy as np
-        from RFScanner import RFScanner
+        from modules.rf.RFScanner import RFScanner
         sentinel = MagicMock()
         rf = RFScanner(sentinel)
         muestras = rf._capturar(100e6)
@@ -894,7 +866,7 @@ class TestRealHardware:
         rf.cerrar()
 
     def test_scan_fm_real(self, hardware_required):
-        from RFScanner import RFScanner
+        from modules.rf.RFScanner import RFScanner
         sentinel = MagicMock()
         rf = RFScanner(sentinel)
         # Escaneo de 2 segundos en FM
@@ -902,9 +874,7 @@ class TestRealHardware:
         rf.cerrar()
 
 
-# ════════════════════════════════════════════════════════════════════
 # PUNTO DE ENTRADA DIRECTO
-# ════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short", "-q"])

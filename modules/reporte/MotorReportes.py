@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-import os
 import json
 from datetime import datetime
+from pathlib import Path
+
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-from rich import box
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
-SEVERIDAD_ORDEN = {"CRITICO": 0, "ALTO": 1, "MEDIO": 2, "BAJO": 3, "INFO": 4}
-SEVERIDAD_EMOJI = {
+SEVERIDAD_ORDEN: dict[str, int] = {
+    "CRITICO": 0, "ALTO": 1, "MEDIO": 2, "BAJO": 3, "INFO": 4
+}
+SEVERIDAD_EMOJI: dict[str, str] = {
     "CRITICO": "🔴", "ALTO": "🟠",
-    "MEDIO":   "🟡", "BAJO": "🔵", "INFO": "⚪"
+    "MEDIO":   "🟡", "BAJO": "🔵", "INFO": "⚪",
 }
 
 
@@ -19,18 +22,16 @@ class MotorReportes:
 
     def __init__(self, gestor_proyectos):
         self.gp = gestor_proyectos
-        from rich.console import Console
-        self.console = Console()
+        self.console: Console = gestor_proyectos.console if hasattr(
+            gestor_proyectos, "console") else Console()
 
-    # ------------------------------------------------------------------
-    # API PÚBLICA
-    # ------------------------------------------------------------------
+    # API pública
 
-    def generar_reporte_completo(self):
+    def generar_reporte_completo(self) -> str | None:
         p = self.gp.proyecto_activo
         if not p:
             self.console.print("[yellow][!] No hay proyecto activo.[/yellow]")
-            return
+            return None
 
         with Progress(
             SpinnerColumn(style="green"),
@@ -61,31 +62,29 @@ class MotorReportes:
             contenido += self._seccion_conclusiones(p)
             progress.advance(tarea)
 
-        # Guardar en el workspace del proyecto
         nombre_archivo = f"reporte_{p.id}_{datetime.now().strftime('%H%M%S')}.md"
-        ruta_reporte = os.path.join(p.ruta, "reports", nombre_archivo)
+        ruta_reporte = Path(p.ruta) / "reports" / nombre_archivo
 
         try:
-            with open(ruta_reporte, "w", encoding="utf-8") as f:
-                f.write(contenido)
-
-            self.console.print(Panel(
-                f"[green]Reporte generado exitosamente[/green]\n\n"
-                f"[cyan]Archivo:[/cyan]    {nombre_archivo}\n"
-                f"[cyan]Ruta:[/cyan]       {ruta_reporte}\n"
-                f"[cyan]Hallazgos:[/cyan]  {len(p.hallazgos)}\n"
-                f"[cyan]Evidencias:[/cyan] {len(p.evidencias)}\n"
-                f"[cyan]Tamaño:[/cyan]     {len(contenido):,} caracteres",
-                title="[bold green]REPORTE GENERADO[/bold green]",
-                border_style="green"
-            ))
-            return ruta_reporte
-
+            ruta_reporte.parent.mkdir(parents=True, exist_ok=True)
+            ruta_reporte.write_text(contenido, encoding="utf-8")
         except OSError as e:
             self.console.print(f"[red][!] Error al guardar reporte: {e}[/red]")
             return None
 
-    def generar_resumen_ejecutivo(self):
+        self.console.print(Panel(
+            f"[green]Reporte generado exitosamente[/green]\n\n"
+            f"[cyan]Archivo:[/cyan]    {nombre_archivo}\n"
+            f"[cyan]Ruta:[/cyan]       {ruta_reporte}\n"
+            f"[cyan]Hallazgos:[/cyan]  {len(p.hallazgos)}\n"
+            f"[cyan]Evidencias:[/cyan] {len(p.evidencias)}\n"
+            f"[cyan]Tamaño:[/cyan]     {len(contenido):,} caracteres",
+            title="[bold green]REPORTE GENERADO[/bold green]",
+            border_style="green",
+        ))
+        return str(ruta_reporte)
+
+    def generar_resumen_ejecutivo(self) -> None:
         p = self.gp.proyecto_activo
         if not p:
             self.console.print("[yellow][!] No hay proyecto activo.[/yellow]")
@@ -97,13 +96,13 @@ class MotorReportes:
 
         resumen = (
             f"RESUMEN EJECUTIVO — {p.nombre}\n"
-            f"{'='*50}\n"
+            f"{'=' * 50}\n"
             f"Fecha:      {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
             f"Objetivo:   {p.objetivo}\n"
             f"Scope:      {p.scope}\n"
             f"Tipo:       {p.tipo}\n\n"
             f"HALLAZGOS\n"
-            f"{'-'*30}\n"
+            f"{'-' * 30}\n"
             f"Críticos:   {criticos}\n"
             f"Altos:      {altos}\n"
             f"Medios:     {medios}\n"
@@ -113,39 +112,37 @@ class MotorReportes:
         )
 
         nombre = f"resumen_ejecutivo_{p.id}.txt"
-        ruta = os.path.join(p.ruta, "reports", nombre)
-        with open(ruta, "w", encoding="utf-8") as f:
-            f.write(resumen)
+        ruta = Path(p.ruta) / "reports" / nombre
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+        ruta.write_text(resumen, encoding="utf-8")
 
         self.console.print(resumen)
         self.console.print(f"[dim]Guardado en: {ruta}[/dim]")
 
-    def generar_timeline(self):
+    def generar_timeline(self) -> None:
         p = self.gp.proyecto_activo
         if not p:
             self.console.print("[yellow][!] No hay proyecto activo.[/yellow]")
             return
 
-        lineas = [
+        lineas: list[str] = [
             f"# TIMELINE DE OPERACIÓN — {p.nombre}\n",
             f"Objetivo: {p.objetivo} | Scope: {p.scope}\n",
-            f"{'─'*60}\n\n",
+            f"{'─' * 60}\n\n",
         ]
 
-        todos = []
+        todos: list[tuple[str, str, dict]] = []
         for e in p.evidencias:
             todos.append(("evidencia", e["timestamp"], e))
         for h in p.hallazgos:
             todos.append(("hallazgo", h["timestamp"], h))
-
         todos.sort(key=lambda x: x[1])
 
         for tipo, ts, item in todos:
             hora = ts[11:19] if len(ts) > 10 else ts
             if tipo == "evidencia":
                 lineas.append(
-                    f"[{hora}] 📋 EVIDENCIA — {item['tipo']}: {item['descripcion']}\n"
-                )
+                    f"[{hora}] 📋 EVIDENCIA — {item['tipo']}: {item['descripcion']}\n")
             else:
                 emoji = SEVERIDAD_EMOJI.get(item["severidad"], "⚪")
                 lineas.append(
@@ -154,19 +151,15 @@ class MotorReportes:
 
         contenido = "".join(lineas)
         nombre = f"timeline_{p.id}.txt"
-        ruta = os.path.join(p.ruta, "reports", nombre)
-
-        with open(ruta, "w", encoding="utf-8") as f:
-            f.write(contenido)
+        ruta = Path(p.ruta) / "reports" / nombre
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+        ruta.write_text(contenido, encoding="utf-8")
 
         self.console.print(
-            Panel(contenido, title="TIMELINE", border_style="cyan")
-        )
+            Panel(contenido, title="TIMELINE", border_style="cyan"))
         self.console.print(f"[dim]Guardado en: {ruta}[/dim]")
 
-    # ------------------------------------------------------------------
-    # SECCIONES DEL REPORTE MARKDOWN
-    # ------------------------------------------------------------------
+    # Secciones del reporte Markdown
 
     def _seccion_encabezado(self, p) -> str:
         return (
@@ -213,7 +206,7 @@ class MotorReportes:
 
         ordenados = sorted(
             p.hallazgos,
-            key=lambda h: SEVERIDAD_ORDEN.get(h["severidad"], 99)
+            key=lambda h: SEVERIDAD_ORDEN.get(h["severidad"], 99),
         )
 
         seccion = "## Hallazgos de Seguridad\n\n"
@@ -246,7 +239,6 @@ class MotorReportes:
 
         seccion += "\n---\n\n"
 
-        # Detalle de datos por evidencia
         for i, e in enumerate(p.evidencias, 1):
             if e.get("datos"):
                 seccion += f"### Evidencia {i} — {e['tipo']}\n\n"
@@ -281,27 +273,3 @@ class MotorReportes:
         if medios > 0:
             return "🟡 MEDIO"
         return "🔵 BAJO"
-
-
-# --- Prueba directa ---
-if __name__ == "__main__":
-    from core.GestorProyectos import GestorProyectos
-
-    gp = GestorProyectos()
-    gp.crear_proyecto()
-
-    gp.registrar_evidencia("portscan", "Puerto 22 abierto",
-                           {"puerto": 22, "servicio": "SSH", "version": "OpenSSH 8.2"})
-    gp.registrar_evidencia("portscan", "Puerto 80 abierto",
-                           {"puerto": 80, "servicio": "HTTP", "server": "Apache 2.4.41"})
-    gp.registrar_hallazgo("ALTO", "SSH expuesto sin restricción",
-                          "El servicio SSH acepta conexiones desde cualquier IP.",
-                          "Restringir acceso por IP en firewall.")
-    gp.registrar_hallazgo("MEDIO", "Apache versión desactualizada",
-                          "Apache 2.4.41 tiene CVEs conocidos.",
-                          "Actualizar a la última versión estable.")
-
-    motor = MotorReportes(gp)
-    motor.generar_reporte_completo()
-    motor.generar_resumen_ejecutivo()
-    motor.generar_timeline()

@@ -9,10 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-# ══════════════════════════════════════════════════════════════════════
 # FIXTURES COMPARTIDOS
-# ══════════════════════════════════════════════════════════════════════
-
 @pytest.fixture()
 def security_dir(tmp_path: Path) -> Path:
     d = tmp_path / "data" / "security"
@@ -40,10 +37,7 @@ def mock_log() -> MagicMock:
     return log
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 1 — FUNCIONES DE HASHING (core.auth)
-# ══════════════════════════════════════════════════════════════════════
-
 class TestHashFunctions:
 
     def test_hash_bcrypt_devuelve_prefijo_correcto(self):
@@ -139,10 +133,7 @@ class TestEsLegacy:
         assert _es_legacy(h) is False
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 2 — LOCKOUT MANAGER
-# ══════════════════════════════════════════════════════════════════════
-
 class TestLockoutManager:
 
     @pytest.fixture(autouse=True)
@@ -227,10 +218,7 @@ def _LockoutManager_new(auth_mod):
     return auth_mod._LockoutManager()
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 3 — CREDENTIAL STORE
-# ══════════════════════════════════════════════════════════════════════
-
 class TestCredentialStore:
 
     @pytest.fixture(autouse=True)
@@ -277,10 +265,7 @@ class TestCredentialStore:
         assert auth_mod._CREDS_FILE.exists()
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 4 — GESTOR AUTH (integración)
-# ══════════════════════════════════════════════════════════════════════
-
 class TestGestorAuthCambiarPassword:
 
     @pytest.fixture(autouse=True)
@@ -355,10 +340,7 @@ class TestMigracionBcrypt:
         assert mtime_antes == mtime_despues, "El archivo no debe haberse modificado"
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 5 — SECURITY MODULE (Fernet)
-# ══════════════════════════════════════════════════════════════════════
-
 class TestSecurityModuleInit:
 
     @pytest.fixture(autouse=True)
@@ -548,10 +530,7 @@ class TestRotacionClave:
         assert estado["backups"] == 2
 
 
-# ══════════════════════════════════════════════════════════════════════
 # BLOQUE 6 — VENDOR RESOLVER (core.vendor_resolver)
-# ══════════════════════════════════════════════════════════════════════
-
 class TestVendorResolver:
 
     @pytest.fixture(autouse=True)
