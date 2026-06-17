@@ -14,8 +14,6 @@ class Session:
     def __init__(self, sentinel: "ApexSentinel") -> None:
         self._s = sentinel
 
-    # Helpers internos
-
     def _console(self):
         return self._s.console
 
@@ -46,14 +44,11 @@ class Session:
             f"[bold white]~#[/bold white]"
         )
 
-    # Tabla de despacho
-
     def _construir_tabla(self) -> dict[str, Any]:
 
         s = self._s
         c = s._cmd
 
-        # importaciones de bootscreen diferidas para no romper fallback
         try:
             from core.bootscreen import COMANDOS_HELP, mostrar_ayuda
         except ImportError:
@@ -63,7 +58,6 @@ class Session:
                 con.print("[dim]Sin ayuda.[/dim]")
 
         return {
-            # Sistema
             "help": lambda: mostrar_ayuda(s.console, s.version, COMANDOS_HELP),
             "?": lambda: mostrar_ayuda(s.console, s.version, COMANDOS_HELP),
             "status":    c.status,
@@ -89,7 +83,6 @@ class Session:
             "eviltwin":  c.eviltwin,
             "btjumper": lambda: (
                 s.bt.iniciar_jumper() if s._modulo_ok("bt") else None),
-            # RF
             "rfscan":    c.rfscan,
             "rfmenu":    c.rfmenu,
             "rfbarrido": c.rfbarrido,
@@ -101,22 +94,17 @@ class Session:
             "rfgrabar":  c.rfgrabar,
             "rfplay":    c.rfplay,
             "adsb":      c.adsb,
-            # Mobile / Forense
             "mobile":      c.mobile,
             "mobile-deep": c.mobile_deep,
             "view":        c.view,
-            # OSINT / Geo
             "geofoto":   c.geofoto,
             "osint":     c.osint,
             "cve":       c.cve,
-            # Ofensivo
             "phishing":  c.phishing,
             "ducky":     c.ducky,
             "stealth":   c.stealth,
             "panic":     c.panic,
         }
-
-    # Despacho
 
     def despachar(self, entrada: str) -> bool:
         partes = entrada.strip().lower().split()
@@ -126,7 +114,6 @@ class Session:
         s = self._s
         c = s._cmd
 
-        # Comandos con subargumentos — no encajan en la tabla simple
         if cmd == "proyecto":
             c.proyecto(args)
             return True
@@ -152,14 +139,11 @@ class Session:
                 s.log.error(str(exc), f"cmd:{cmd}")
             return True
 
-        # Plugins registrados dinámicamente
         if getattr(s, "plugins", None) and s.plugins.tiene_comando(cmd):
             s.plugins.ejecutar_comando(cmd, args)
             return True
 
         return False
-
-    # Bucle principal
 
     def ejecutar(self) -> None:
         s = self._s

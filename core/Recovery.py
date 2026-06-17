@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("sentinel.recovery")
 
-# Archivos sensibles por defecto (rutas relativas al CWD del proyecto)
 _ARCHIVOS_DEFAULT: list[Path] = [
     Path("config.json"),
     Path("data/logs/sentinel.log"),

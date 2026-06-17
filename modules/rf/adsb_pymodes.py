@@ -5,8 +5,8 @@ import sys
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from math import atan2, cos, degrees, radians, sin, sqrt
-from typing import TYPE_CHECKING, Callable, Deque
+from math import acos, atan2, cos, degrees, floor, pi, radians, sin, sqrt
+from typing import TYPE_CHECKING, Final, Literal, Optional, Sequence
 
 import numpy as np
 from rich import box
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 from modules.rf.rf_source import Source, rtlsdr_source, open_backend
 
-log = logging.getLogger("sentinel.rf.adsb")
+log: logging.Logger = logging.getLogger("sentinel.rf.adsb")
 
 try:
     from pyModeS.message import Message as _PMMessage
@@ -29,410 +29,570 @@ try:
         airborne_position_pair as _pm_pair,
         airborne_position_with_ref as _pm_ref,
     )
-    _PYMODES_OK = True
+    _PYMODES_OK: bool = True
 except ImportError:
     _PYMODES_OK = False
     _PMMessage = None
     _pm_pair = None
     _pm_ref = None
 
+
 IcaoHex = str
+CprFormat = Literal[0, 1]
 
-CPR_MAX_AGE = 10.0
-STALE_TIMEOUT = 60.0
-HISTORY = 30
-RATE_WINDOW = 90
-CRC24_POLY = 0xFFF409
+CPR_MAX_AGE_S: Final[float] = 10.0
+STALE_TIMEOUT_S: Final[float] = 60.0
+TRAIL_HISTORY_LEN: Final[int] = 30
+RATE_WINDOW_S: Final[int] = 90
+NZ: Final[int] = 15
 
-SQUAWK_MAP: dict[str, tuple[str, str]] = {
+SQUAWK_EMERGENCY_MAP: Final[dict[str, tuple[str, str]]] = {
     "7500": ("HIJACK", "bold white on red"),
     "7600": ("RADIO",  "bold yellow on dark_red"),
     "7700": ("MAYDAY", "bold white on dark_red"),
 }
 
-_BANDS: list[tuple[int, int, str]] = [
-    (0x0C0000, 0x0FFFFF, "🇫🇷"), (0x380000, 0x38FFFF, "🇩🇰"),
-    (0x3C0000, 0x3FFFFF, "🇩🇪"), (0x400000, 0x43FFFF, "🇪🇸"),
-    (0x480000, 0x48FFFF, "🇳🇱"), (0x4CA000, 0x4CAFFF, "🇮🇪"),
-    (0x500000, 0x5003FF, "🇧🇪"), (0x700000, 0x71FFFF, "🇲🇽"),
-    (0x7C0000, 0x7FFFFF, "🇦🇺"), (0x800000, 0x83FFFF, "🇮🇳"),
-    (0xA00000, 0xAFFFFF, "🇺🇸"), (0xC00000, 0xC3FFFF, "🇨🇦"),
-    (0xE00000, 0xE3FFFF, "🇦🇷"),
+ICAO_COUNTRY_BANDS: Final[list[tuple[int, int, str]]] = [
+    (0x0C0000, 0x0FFFFF, "FR"), (0x380000, 0x38FFFF, "DK"),
+    (0x3C0000, 0x3FFFFF, "DE"), (0x400000, 0x43FFFF, "ES"),
+    (0x480000, 0x48FFFF, "NL"), (0x4CA000, 0x4CAFFF, "IE"),
+    (0x500000, 0x5003FF, "BE"), (0x700000, 0x71FFFF, "MX"),
+    (0x7C0000, 0x7FFFFF, "AU"), (0x800000, 0x83FFFF, "IN"),
+    (0xA00000, 0xAFFFFF, "US"), (0xC00000, 0xC3FFFF, "CA"),
+    (0xE00000, 0xE3FFFF, "AR"),
 ]
 
-
-def _flag(icao: IcaoHex) -> str:
-    n = int(icao, 16)
-    for lo, hi, f in _BANDS:
-        if lo <= n <= hi:
-            return f
-    return "  "
+_CRC24_POLY: Final[int] = 0xFFF409
+_CRC24_LUT: Final[list[int]] = [0] * 256
 
 
-def _crc24(data: bytes) -> int:
-    crc = 0
-    for b in data:
-        crc ^= b << 16
+def _build_crc24_lut() -> None:
+    for byte_val in range(256):
+        remainder = byte_val << 16
         for _ in range(8):
-            crc <<= 1
-            if crc & 0x1000000:
-                crc ^= CRC24_POLY
+            remainder <<= 1
+            if remainder & 0x1000000:
+                remainder ^= _CRC24_POLY
+        _CRC24_LUT[byte_val] = remainder & 0xFFFFFF
+
+
+_build_crc24_lut()
+
+
+def crc24_lut(payload: bytes) -> int:
+    crc = 0
+    for b in payload:
+        crc = _CRC24_LUT[(crc >> 16) ^ b] ^ ((crc & 0xFFFF) << 8)
     return crc & 0xFFFFFF
 
 
-def _crc_ok(raw: bytes) -> bool:
-    return _crc24(raw[:-3]) == int.from_bytes(raw[-3:], "big")
+def is_crc_valid(raw_frame: bytes) -> bool:
+    return crc24_lut(raw_frame[:-3]) == int.from_bytes(raw_frame[-3:], "big")
 
 
-_R = 6_371.0
+def extract_icao_from_df17(raw_frame: bytes) -> str:
+    return ((raw_frame[1] << 16) | (raw_frame[2] << 8) | raw_frame[3]).to_bytes(3, "big").hex().upper()
 
 
-def _haversine(la1: float, lo1: float, la2: float, lo2: float) -> float:
-    φ1, φ2 = radians(la1), radians(la2)
-    Δφ, Δλ = radians(la2 - la1), radians(lo2 - lo1)
-    a = sin(Δφ / 2) ** 2 + cos(φ1) * cos(φ2) * sin(Δλ / 2) ** 2
-    return _R * 2 * atan2(sqrt(a), sqrt(1 - a))
+def extract_downlink_format(raw_frame: bytes) -> int:
+    return (raw_frame[0] & 0xF8) >> 3
 
 
-def _bearing(la1: float, lo1: float, la2: float, lo2: float) -> float:
-    Δλ = radians(lo2 - lo1)
-    y = sin(Δλ) * cos(radians(la2))
-    x = cos(radians(la1)) * sin(radians(la2)) - \
-        sin(radians(la1)) * cos(radians(la2)) * cos(Δλ)
-    return (degrees(atan2(y, x)) + 360) % 360
+def extract_type_code(raw_frame: bytes) -> int:
+    return (raw_frame[4] & 0xF8) >> 3
 
 
-_ARROW = "↑↗→↘↓↙←↖"
+def extract_cpr_lat_raw(raw_frame: bytes) -> int:
+    return ((raw_frame[6] & 0x03) << 15) | (raw_frame[7] << 7) | (raw_frame[8] >> 1)
 
 
-def _compass(deg: float) -> str:
-    return _ARROW[round(deg / 45) % 8]
+def extract_cpr_lon_raw(raw_frame: bytes) -> int:
+    return ((raw_frame[8] & 0x01) << 16) | (raw_frame[9] << 8) | raw_frame[10]
+
+
+def extract_cpr_format_bit(raw_frame: bytes) -> CprFormat:
+    return 1 if (raw_frame[6] & 0x04) else 0
+
+
+def extract_gillham_altitude_ft(raw_frame: bytes) -> Optional[float]:
+    raw13 = ((raw_frame[5] << 4) | (raw_frame[6] >> 4)) & 0x1FFF
+    q_bit = (raw13 >> 4) & 1
+    if q_bit:
+        n = ((raw13 & 0x1F80) >> 2) | (raw13 & 0x3F)
+        return float(n * 25 - 1000)
+    return None
+
+
+_EARTH_RADIUS_KM: Final[float] = 6_371.0
+
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    phi1, phi2 = radians(lat1), radians(lat2)
+    dphi = radians(lat2 - lat1)
+    dlambda = radians(lon2 - lon1)
+    a = sin(dphi * 0.5) ** 2 + cos(phi1) * cos(phi2) * sin(dlambda * 0.5) ** 2
+    return _EARTH_RADIUS_KM * 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
+
+
+def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    dlambda = radians(lon2 - lon1)
+    y = sin(dlambda) * cos(radians(lat2))
+    x = cos(radians(lat1)) * sin(radians(lat2)) - sin(radians(lat1)) * cos(radians(lat2)) * cos(dlambda)
+    return (degrees(atan2(y, x)) + 360.0) % 360.0
+
+
+def icao_country_code(icao_hex: IcaoHex) -> str:
+    icao_int = int(icao_hex, 16)
+    for lo, hi, cc in ICAO_COUNTRY_BANDS:
+        if lo <= icao_int <= hi:
+            return cc
+    return "--"
+
+
+_COMPASS_ARROW: Final[str] = "^ ne> se v sw< nw"[::2]
+
+
+def compass_arrow(heading_deg: float) -> str:
+    return _COMPASS_ARROW[round(heading_deg / 45.0) % 8]
+
+
+def _cpr_nl(lat: float) -> int:
+    lat_abs = abs(lat)
+    if lat_abs == 0.0:
+        return 59
+    if lat_abs >= 87.0:
+        return 1
+    a = 1.0 - cos(pi / (2.0 * NZ))
+    b = cos(radians(lat_abs)) ** 2
+    if b == 0.0:
+        return 1
+    c = a / b
+    if c > 1.0:
+        return 1
+    return max(1, int(floor(2.0 * pi / acos(1.0 - c))))
+
+
+def decode_cpr_global_position(
+    even_lat_raw: int,
+    even_lon_raw: int,
+    odd_lat_raw: int,
+    odd_lon_raw: int,
+    even_is_newer: bool,
+) -> Optional[tuple[float, float]]:
+    dlat_even = 360.0 / (4 * NZ)
+    dlat_odd  = 360.0 / (4 * NZ - 1)
+
+    lat_cpr_even = even_lat_raw / 131072.0
+    lat_cpr_odd  = odd_lat_raw  / 131072.0
+    lon_cpr_even = even_lon_raw / 131072.0
+    lon_cpr_odd  = odd_lon_raw  / 131072.0
+
+    j = floor(59.0 * lat_cpr_even - 60.0 * lat_cpr_odd + 0.5)
+
+    lat_even = dlat_even * ((j % 60) + lat_cpr_even)
+    lat_odd  = dlat_odd  * ((j % 59) + lat_cpr_odd)
+
+    if lat_even >= 270.0:
+        lat_even -= 360.0
+    if lat_odd >= 270.0:
+        lat_odd  -= 360.0
+
+    nl_even = _cpr_nl(lat_even)
+    nl_odd  = _cpr_nl(lat_odd)
+    if nl_even != nl_odd:
+        return None
+
+    lat = lat_even if even_is_newer else lat_odd
+    nl  = nl_even
+
+    if even_is_newer:
+        ni   = max(nl, 1)
+        dlon = 360.0 / ni
+        m    = floor(lon_cpr_even * (nl - 1) - lon_cpr_odd * nl + 0.5)
+        lon  = dlon * ((m % ni) + lon_cpr_even)
+    else:
+        ni   = max(nl - 1, 1)
+        dlon = 360.0 / ni
+        m    = floor(lon_cpr_even * (nl - 1) - lon_cpr_odd * nl + 0.5)
+        lon  = dlon * ((m % ni) + lon_cpr_odd)
+
+    if lon >= 180.0:
+        lon -= 360.0
+
+    return (lat, lon)
+
+
+def decode_cpr_local_position(
+    cpr_fmt: CprFormat,
+    cpr_lat_raw: int,
+    cpr_lon_raw: int,
+    ref_lat: float,
+    ref_lon: float,
+) -> Optional[tuple[float, float]]:
+    dlat = 360.0 / (4 * NZ) if cpr_fmt == 0 else 360.0 / (4 * NZ - 1)
+    lat_cpr = cpr_lat_raw / 131072.0
+    lon_cpr = cpr_lon_raw / 131072.0
+
+    j   = floor(ref_lat / dlat) + floor(0.5 + ((ref_lat % dlat) / dlat) - lat_cpr)
+    lat = dlat * (j + lat_cpr)
+
+    nl    = _cpr_nl(lat)
+    ni    = max(nl - cpr_fmt, 1)
+    dlon  = 360.0 / ni
+    m     = floor(ref_lon / dlon) + floor(0.5 + ((ref_lon % dlon) / dlon) - lon_cpr)
+    lon   = dlon * (m + lon_cpr)
+
+    return (lat, lon)
+
+
+@dataclass(slots=True)
+class CprFrame:
+    lat_raw:    int
+    lon_raw:    int
+    fmt:        CprFormat
+    altitude_ft: Optional[float]
+    timestamp_s: float
 
 
 @dataclass
-class _CprFrame:
-    lat: int
-    lon: int
-    fmt: int
-    alt: float | None
-    ts:  float
+class AircraftState:
+    icao:           IcaoHex
+    callsign:       Optional[str] = None
+    latitude:       Optional[float] = None
+    longitude:      Optional[float] = None
+    altitude_ft:    Optional[float] = None
+    groundspeed_kt: Optional[float] = None
+    track_deg:      Optional[float] = None
+    vertical_rate:  Optional[float] = None
+    squawk:         Optional[str] = None
+    tcas_ra_active: bool = False
+    msg_count:      int = 0
+    pos_msg_count:  int = 0
+    last_seen_s:    float = field(default_factory=time.monotonic)
+    position_trail: deque[tuple[float, float]] = field(
+        default_factory=lambda: deque(maxlen=TRAIL_HISTORY_LEN), repr=False
+    )
+    _cpr_even:      Optional[CprFrame] = field(default=None, repr=False)
+    _cpr_odd:       Optional[CprFrame] = field(default=None, repr=False)
+    _gs_ema:        Optional[float] = field(default=None, repr=False)
+    _track_ema:     Optional[float] = field(default=None, repr=False)
+    _vr_ema:        Optional[float] = field(default=None, repr=False)
 
+    _EMA_ALPHA: float = field(default=0.25, init=False, repr=False)
 
-@dataclass
-class Aircraft:
-    icao:     IcaoHex
-    cs:       str | None = None
-    lat:      float | None = None
-    lon:      float | None = None
-    alt:      float | None = None
-    gs:       float | None = None
-    hdg:      float | None = None
-    vr:       float | None = None
-    squawk:   str | None = None
-    ra:       bool = False
-    msgs:     int = 0
-    pos_msgs: int = 0
-    last:     float = field(default_factory=time.monotonic)
-    trail:    Deque[tuple[float, float]] = field(
-        default_factory=lambda: deque(maxlen=HISTORY), repr=False)
-    _even:    _CprFrame | None = field(default=None, repr=False)
-    _odd:     _CprFrame | None = field(default=None, repr=False)
-    _gs_e:    float | None = field(default=None, repr=False)
-    _hdg_e:   float | None = field(default=None, repr=False)
-    _vr_e:    float | None = field(default=None, repr=False)
+    def _apply_ema(self, prev: Optional[float], sample: float) -> float:
+        return sample if prev is None else self._EMA_ALPHA * sample + (1.0 - self._EMA_ALPHA) * prev
 
-    _α = 0.25
+    def update_velocity_ema(
+        self,
+        groundspeed_kt: Optional[float],
+        track_deg: Optional[float],
+        vertical_rate: Optional[float],
+    ) -> None:
+        if groundspeed_kt is not None:
+            self._gs_ema = self._apply_ema(self._gs_ema, groundspeed_kt)
+            self.groundspeed_kt = self._gs_ema
+        if track_deg is not None:
+            self._track_ema = self._apply_ema(self._track_ema, track_deg)
+            self.track_deg = self._track_ema
+        if vertical_rate is not None:
+            self._vr_ema = self._apply_ema(self._vr_ema, vertical_rate)
+            self.vertical_rate = self._vr_ema
 
-    def _ema(self, prev: float | None, x: float) -> float:
-        return x if prev is None else self._α * x + (1 - self._α) * prev
-
-    def smooth_vel(self, gs: float | None, hdg: float | None,
-                   vr: float | None) -> None:
-        if gs is not None:
-            self._gs_e = self._ema(self._gs_e,  gs)
-            self.gs = self._gs_e
-        if hdg is not None:
-            self._hdg_e = self._ema(self._hdg_e, hdg)
-            self.hdg = self._hdg_e
-        if vr is not None:
-            self._vr_e = self._ema(self._vr_e,  vr)
-            self.vr = self._vr_e
-
-    def absorb_cpr(self, frame: _CprFrame) -> bool:
-        if not _PYMODES_OK:
-            return False
-
+    def absorb_cpr_frame(self, frame: CprFrame) -> bool:
         if frame.fmt == 0:
-            self._even, other, newer = frame, self._odd,  True
+            self._cpr_even, peer_frame, even_is_newer = frame, self._cpr_odd, True
         else:
-            self._odd,  other, newer = frame, self._even, False
+            self._cpr_odd, peer_frame, even_is_newer = frame, self._cpr_even, False
 
-        if other is None or abs(frame.ts - other.ts) > CPR_MAX_AGE:
+        if peer_frame is None or abs(frame.timestamp_s - peer_frame.timestamp_s) > CPR_MAX_AGE_S:
             return False
 
-        if self.lat is not None:
-            try:
-                la, lo = _pm_ref(
-                    frame.fmt, frame.lat, frame.lon, self.lat, self.lon)
-                self._commit(la, lo, frame.alt or (
-                    other.alt if other else None))
-                return True
-            except Exception:
-                pass
+        resolved_alt = frame.altitude_ft or (peer_frame.altitude_ft if peer_frame else None)
 
-        try:
-            r = _pm_pair(
-                self._even.lat, self._even.lon,
-                self._odd.lat,  self._odd.lon,
-                even_is_newer=newer,
+        if self.latitude is not None and self.longitude is not None:
+            result = decode_cpr_local_position(
+                frame.fmt, frame.lat_raw, frame.lon_raw,
+                self.latitude, self.longitude,
             )
-        except Exception:
+            if result is not None:
+                self._commit_position(result[0], result[1], resolved_alt)
+                return True
+
+        if self._cpr_even is None or self._cpr_odd is None:
             return False
 
-        if r is None:
+        result = decode_cpr_global_position(
+            self._cpr_even.lat_raw, self._cpr_even.lon_raw,
+            self._cpr_odd.lat_raw,  self._cpr_odd.lon_raw,
+            even_is_newer=even_is_newer,
+        )
+        if result is None:
             return False
 
-        self._commit(r[0], r[1], frame.alt or (other.alt if other else None))
+        self._commit_position(result[0], result[1], resolved_alt)
         return True
 
-    def _commit(self, lat: float, lon: float, alt: float | None) -> None:
-        self.lat = lat
-        self.lon = lon
+    def _commit_position(self, lat: float, lon: float, alt: Optional[float]) -> None:
+        self.latitude  = lat
+        self.longitude = lon
         if alt is not None:
-            self.alt = alt
-        self.trail.append((lat, lon))
-        self.pos_msgs += 1
+            self.altitude_ft = alt
+        self.position_trail.append((lat, lon))
+        self.pos_msg_count += 1
 
     @property
-    def age(self) -> float:
-        return time.monotonic() - self.last
+    def age_s(self) -> float:
+        return time.monotonic() - self.last_seen_s
 
     @property
-    def stale(self) -> bool:
-        return self.age > STALE_TIMEOUT
+    def is_stale(self) -> bool:
+        return self.age_s > STALE_TIMEOUT_S
 
 
-class FlightTracker:
+class FlightStateRegistry:
     def __init__(self, rx_lat: float = 0.0, rx_lon: float = 0.0) -> None:
-        self._db:    dict[IcaoHex, Aircraft] = {}
-        self._rx = (rx_lat, rx_lon)
-        self._total = 0
-        self._pos = 0
-        self._err = 0
-        self._t0 = time.monotonic()
-        self._rbuf:  Deque[float] = deque(maxlen=RATE_WINDOW)
-        self._rlast = time.monotonic()
+        self._aircraft_db: dict[IcaoHex, AircraftState] = {}
+        self._rx_position: tuple[float, float] = (rx_lat, rx_lon)
+        self._total_msg_count: int = 0
+        self._position_fix_count: int = 0
+        self._crc_error_count: int = 0
+        self._session_start_s: float = time.monotonic()
+        self._rate_sample_buf: deque[float] = deque(maxlen=RATE_WINDOW_S)
+        self._rate_last_sample_s: float = time.monotonic()
 
-    def feed(self, d: dict, ts: float | None = None) -> None:
-        if not d.get("crc_valid", True):
-            self._err += 1
+    def ingest_decoded(self, decoded: dict, timestamp_s: Optional[float] = None) -> None:
+        if not decoded.get("crc_valid", True):
+            self._crc_error_count += 1
             return
 
-        icao = d.get("icao", "").upper()
+        icao = decoded.get("icao", "").upper()
         if not icao:
             return
 
-        self._total += 1
-        self._tick()
+        self._total_msg_count += 1
+        self._advance_rate_sample()
 
-        t = ts or time.monotonic()
-        ac = self._db.setdefault(icao, Aircraft(icao=icao, last=t))
-        ac.last = t
-        ac.msgs += 1
+        t = timestamp_s or time.monotonic()
+        ac = self._aircraft_db.setdefault(icao, AircraftState(icao=icao, last_seen_s=t))
+        ac.last_seen_s = t
+        ac.msg_count += 1
 
-        bds = d.get("bds", "")
-        df = d.get("df", 0)
+        bds = decoded.get("bds", "")
+        df  = decoded.get("df", 0)
 
         if bds == "0,8":
-            cs = d.get("callsign", "").strip()
+            cs = decoded.get("callsign", "").strip()
             if cs:
-                ac.cs = cs
+                ac.callsign = cs
 
-        elif bds == "0,5" and "cpr_lat" in d:
-            frame = _CprFrame(
-                d["cpr_lat"], d["cpr_lon"],
-                d["cpr_format"], d.get("altitude"), t,
+        elif bds == "0,5" and "cpr_lat" in decoded:
+            frame = CprFrame(
+                lat_raw    = decoded["cpr_lat"],
+                lon_raw    = decoded["cpr_lon"],
+                fmt        = decoded["cpr_format"],
+                altitude_ft= decoded.get("altitude"),
+                timestamp_s= t,
             )
-            if ac.absorb_cpr(frame):
-                self._pos += 1
+            if ac.absorb_cpr_frame(frame):
+                self._position_fix_count += 1
 
         elif bds == "0,9":
-            ac.smooth_vel(
-                d.get("groundspeed"),
-                d.get("track"),
-                d.get("vertical_rate"),
+            ac.update_velocity_ema(
+                groundspeed_kt = decoded.get("groundspeed"),
+                track_deg      = decoded.get("track"),
+                vertical_rate  = decoded.get("vertical_rate"),
             )
 
-        if d.get("altitude") is not None:
-            ac.alt = d["altitude"]
-        if d.get("squawk"):
-            ac.squawk = str(d["squawk"])
+        if decoded.get("altitude") is not None:
+            ac.altitude_ft = decoded["altitude"]
+        if decoded.get("squawk"):
+            ac.squawk = str(decoded["squawk"])
         if df in (16, 17):
-            ac.ra = bool(d.get("ra_active", False))
+            ac.tcas_ra_active = bool(decoded.get("ra_active", False))
 
-    def feed_hex(self, h: str, ts: float | None = None) -> None:
+    def ingest_hex_frame(self, hex_str: str, timestamp_s: Optional[float] = None) -> None:
         if not _PYMODES_OK:
             return
         try:
-            self.feed(_PMMessage(h.upper()).decode(), ts)
+            self.ingest_decoded(_PMMessage(hex_str.upper()).decode(), timestamp_s)
         except Exception:
             pass
 
-    def _tick(self) -> None:
+    def _advance_rate_sample(self) -> None:
         now = time.monotonic()
-        if now - self._rlast >= 1.0:
-            self._rbuf.append(self._total)
-            self._rlast = now
+        if now - self._rate_last_sample_s >= 1.0:
+            self._rate_sample_buf.append(self._total_msg_count)
+            self._rate_last_sample_s = now
 
-    def live(self) -> list[Aircraft]:
+    def active_aircraft(self) -> list[AircraftState]:
         return sorted(
-            (ac for ac in self._db.values() if not ac.stale),
-            key=lambda a: a.last, reverse=True,
+            (ac for ac in self._aircraft_db.values() if not ac.is_stale),
+            key=lambda a: a.last_seen_s,
+            reverse=True,
         )
 
-    def dist(self, ac: Aircraft) -> float | None:
-        if ac.lat is None or self._rx == (0.0, 0.0):
+    def distance_to_aircraft_km(self, ac: AircraftState) -> Optional[float]:
+        if ac.latitude is None or self._rx_position == (0.0, 0.0):
             return None
-        return _haversine(*self._rx, ac.lat, ac.lon)
+        return haversine_km(*self._rx_position, ac.latitude, ac.longitude)
 
-    def brg(self, ac: Aircraft) -> float | None:
-        if ac.lat is None:
+    def bearing_to_aircraft_deg(self, ac: AircraftState) -> Optional[float]:
+        if ac.latitude is None:
             return None
-        return _bearing(*self._rx, ac.lat, ac.lon)
+        return bearing_deg(*self._rx_position, ac.latitude, ac.longitude)
 
-    def rate(self) -> float:
-        buf = list(self._rbuf)
-        return (buf[-1] - buf[-2]) if len(buf) >= 2 else self._total / max(1.0, self.up())
+    def messages_per_second(self) -> float:
+        buf = list(self._rate_sample_buf)
+        if len(buf) >= 2:
+            return float(buf[-1] - buf[-2])
+        return self._total_msg_count / max(1.0, self.session_uptime_s())
 
-    def spark(self, w: int = 20) -> str:
-        _B = " ▁▂▃▄▅▆▇█"
-        buf = list(self._rbuf)
+    def session_uptime_s(self) -> float:
+        return max(1.0, time.monotonic() - self._session_start_s)
+
+    def sparkline(self, width: int = 20) -> str:
+        _SPARK_CHARS = " \u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"
+        buf = list(self._rate_sample_buf)
         if len(buf) < 2:
-            return " " * w
-        rs = [max(0, buf[i] - buf[i - 1]) for i in range(1, len(buf))]
-        mx = max(rs) or 1
-        return "".join(_B[min(8, int(v / mx * 8))] for v in rs[-w:])
+            return " " * width
+        rates = [max(0, buf[i] - buf[i - 1]) for i in range(1, len(buf))]
+        peak = max(rates) or 1
+        return "".join(_SPARK_CHARS[min(8, int(v / peak * 8))] for v in rates[-width:])
 
-    def up(self) -> float:
-        return max(1.0, time.monotonic() - self._t0)
+    @property
+    def total_messages(self) -> int:
+        return self._total_msg_count
+
+    @property
+    def total_position_fixes(self) -> int:
+        return self._position_fix_count
+
+    @property
+    def total_crc_errors(self) -> int:
+        return self._crc_error_count
 
 
-def demodulate(raw_iq: np.ndarray, sr: int = 2_000_000) -> list[bytes]:
-    sps = sr // 1_000_000
-    pre = 8 * sps
+def demodulate_iq_to_mode_s_frames(raw_iq: np.ndarray, sample_rate_hz: int = 2_000_000) -> list[bytes]:
+    samples_per_us = sample_rate_hz // 1_000_000
+    preamble_samples = 8 * samples_per_us
 
-    I = raw_iq[0::2].astype(np.float32) - 127.5
-    Q = raw_iq[1::2].astype(np.float32) - 127.5
-    amp = np.hypot(I, Q)
+    i_samples = raw_iq[0::2].astype(np.float32) - 127.5
+    q_samples = raw_iq[1::2].astype(np.float32) - 127.5
+    amplitude = np.hypot(i_samples, q_samples)
 
-    mad = np.median(np.abs(amp - np.median(amp)))
-    noise = mad * 1.4826
-    thr = max(noise * 3.5, 20.0)
+    median_amp = np.median(amplitude)
+    mad = np.median(np.abs(amplitude - median_amp))
+    noise_floor = mad * 1.4826
+    detection_threshold = max(noise_floor * 3.5, 20.0)
 
-    n = len(amp)
-    L = n - pre - 112 * sps - 4
-    if L <= 0:
+    n_samples = len(amplitude)
+    correlation_len = n_samples - preamble_samples - 112 * samples_per_us - 4
+    if correlation_len <= 0:
         return []
 
-    score = np.zeros(L, np.float32)
-    for off in (0, 1, 3, 4):
-        score += amp[off * sps: off * sps + L]
-    for off in (2, 5, 6, 8):
-        end = off * sps + L
-        if end <= n:
-            score -= amp[off * sps: end] * 0.5
+    preamble_score = np.zeros(correlation_len, np.float32)
+    for hi_us_offset in (0, 1, 3, 4):
+        start = hi_us_offset * samples_per_us
+        preamble_score += amplitude[start: start + correlation_len]
+    for lo_us_offset in (2, 5, 6, 8):
+        end = lo_us_offset * samples_per_us + correlation_len
+        if end <= n_samples:
+            start = lo_us_offset * samples_per_us
+            preamble_score -= amplitude[start:end] * 0.5
 
-    out: list[bytes] = []
-    i = 0
-    while i < L - 1:
-        if score[i] < thr * 3:
-            i += 1
+    decoded_frames: list[bytes] = []
+    cursor = 0
+    while cursor < correlation_len - 1:
+        if preamble_score[cursor] < detection_threshold * 3:
+            cursor += 1
             continue
 
-        lo = max(0, i - 1)
-        hi = min(L, i + 2)
-        i = lo + int(np.argmax(score[lo:hi]))
+        search_lo = max(0, cursor - 1)
+        search_hi = min(correlation_len, cursor + 2)
+        cursor = search_lo + int(np.argmax(preamble_score[search_lo:search_hi]))
 
-        bs = i + pre
-        seg = amp[bs: bs + 112 * sps]
-        if len(seg) < 112 * sps:
+        payload_start = cursor + preamble_samples
+        payload_segment = amplitude[payload_start: payload_start + 112 * samples_per_us]
+        if len(payload_segment) < 112 * samples_per_us:
             break
 
-        pwr = seg.reshape(112, sps).mean(axis=1)
-        msg_thr = (pwr.max() + pwr.min()) * 0.5
-        bits = (pwr > msg_thr).astype(np.uint8)
+        symbol_power = payload_segment.reshape(112, samples_per_us).mean(axis=1)
+        mid_threshold = (symbol_power.max() + symbol_power.min()) * 0.5
+        bit_sequence = (symbol_power > mid_threshold).astype(np.uint8)
 
-        df_val = int.from_bytes(np.packbits(
-            bits[:8]).tobytes()[:1], "big") >> 3
-        n_bits = 112 if df_val >= 16 else 56
-        raw_msg = np.packbits(bits[:n_bits]).tobytes()[: n_bits // 8]
+        df_val = int.from_bytes(np.packbits(bit_sequence[:8]).tobytes()[:1], "big") >> 3
+        frame_bit_len = 112 if df_val >= 16 else 56
+        raw_frame = np.packbits(bit_sequence[:frame_bit_len]).tobytes()[: frame_bit_len // 8]
 
-        if _crc_ok(raw_msg):
-            out.append(raw_msg)
+        if is_crc_valid(raw_frame):
+            decoded_frames.append(raw_frame)
 
-        i += pre + n_bits * sps
+        cursor += preamble_samples + frame_bit_len * samples_per_us
 
-    return out
+    return decoded_frames
 
 
-_ALT_BANDS = (
-    (10_000, "bright_green"), (18_000, "green"),
-    (28_000, "yellow"),       (36_000, "bright_yellow"),
+_ALT_COLOR_BANDS: Final[tuple[tuple[int, str], ...]] = (
+    (10_000, "bright_green"),
+    (18_000, "green"),
+    (28_000, "yellow"),
+    (36_000, "bright_yellow"),
     (99_999, "bright_cyan"),
 )
 
 
-def _alt_color(alt: float | None) -> str:
-    if alt is None:
+def _altitude_color(altitude_ft: Optional[float]) -> str:
+    if altitude_ft is None:
         return "dim white"
-    for limit, c in _ALT_BANDS:
-        if alt < limit:
-            return c
+    for limit, color in _ALT_COLOR_BANDS:
+        if altitude_ft < limit:
+            return color
     return "bright_cyan"
 
 
-def _v(x, fmt: str = ".0f") -> str:
-    return f"{x:{fmt}}" if x is not None else "[dim]·[/dim]"
+def _format_optional(value: Optional[float], fmt: str = ".0f") -> str:
+    return f"{value:{fmt}}" if value is not None else "[dim]\u00b7[/dim]"
 
 
-def _vr_str(vr: float | None) -> str:
+def _format_vertical_rate(vr: Optional[float]) -> str:
     if vr is None:
-        return "[dim]·[/dim]"
-    sym = "↑" if vr > 64 else "↓" if vr < -64 else "→"
+        return "[dim]\u00b7[/dim]"
+    sym   = "\u2191" if vr > 64 else "\u2193" if vr < -64 else "\u2192"
     color = "green" if vr > 64 else "red" if vr < -64 else "dim"
     return f"[{color}]{sym}{abs(vr):.0f}[/{color}]"
 
 
-def _sq_str(sq: str | None) -> str:
-    if sq is None:
-        return "[dim]·[/dim]"
-    if sq in SQUAWK_MAP:
-        label, style = SQUAWK_MAP[sq]
-        return f"[{style}] {sq} {label} [/{style}]"
-    return f"[yellow]{sq}[/yellow]"
+def _format_squawk(squawk: Optional[str]) -> str:
+    if squawk is None:
+        return "[dim]\u00b7[/dim]"
+    if squawk in SQUAWK_EMERGENCY_MAP:
+        label, style = SQUAWK_EMERGENCY_MAP[squawk]
+        return f"[{style}] {squawk} {label} [/{style}]"
+    return f"[yellow]{squawk}[/yellow]"
 
 
-def _age_bar(age: float, width: int = 6) -> str:
-    ratio = min(1.0, age / STALE_TIMEOUT)
+def _format_age_bar(age_s: float, width: int = 6) -> str:
+    ratio  = min(1.0, age_s / STALE_TIMEOUT_S)
     filled = round(ratio * width)
-    bar = "█" * filled + "░" * (width - filled)
-    color = "green" if ratio < 0.33 else "yellow" if ratio < 0.66 else "red"
+    bar    = "\u2588" * filled + "\u2591" * (width - filled)
+    color  = "green" if ratio < 0.33 else "yellow" if ratio < 0.66 else "red"
     return f"[{color}]{bar}[/{color}]"
 
 
-def _table(tracker: FlightTracker) -> Table:
+def _build_aircraft_table(registry: FlightStateRegistry) -> Table:
     t = Table(
-        show_header=True,
-        header_style="bold grey82",
-        border_style="grey27",
-        box=box.SIMPLE_HEAD,
-        row_styles=["", "on grey7"],
-        expand=True,
-        show_edge=False,
-        padding=(0, 1),
+        show_header  = True,
+        header_style = "bold grey82",
+        border_style = "grey27",
+        box          = box.SIMPLE_HEAD,
+        row_styles   = ["", "on grey7"],
+        expand       = True,
+        show_edge    = False,
+        padding      = (0, 1),
     )
-    cols = [
-        ("",       dict(width=2,  no_wrap=True)),
+    column_defs = [
+        ("",       dict(width=4,  no_wrap=True)),
         ("ICAO",   dict(width=7,  style="bold white",  no_wrap=True)),
         ("CS",     dict(width=8,  style="bright_cyan", no_wrap=True)),
         ("Lat",    dict(width=10, justify="right")),
@@ -447,121 +607,130 @@ def _table(tracker: FlightTracker) -> Table:
         ("Msgs",   dict(width=5,  justify="right", style="dim")),
         ("Vida",   dict(width=6,  justify="center")),
     ]
-    for col, kw in cols:
-        t.add_column(col, **kw)
+    for col_name, col_kw in column_defs:
+        t.add_column(col_name, **col_kw)
 
-    for ac in tracker.live():
-        ac_ = _alt_color(ac.alt)
-        row_ = "on dark_red" if ac.ra else ("dim" if ac.age > 30 else "")
-        dist = tracker.dist(ac)
-        brg = tracker.brg(ac)
-        hdg = f"{_v(ac.hdg, '.0f')} {_compass(ac.hdg) if ac.hdg is not None else ''}"
+    for ac in registry.active_aircraft():
+        alt_color  = _altitude_color(ac.altitude_ft)
+        row_style  = "on dark_red" if ac.tcas_ra_active else ("dim" if ac.age_s > 30 else "")
+        dist_km    = registry.distance_to_aircraft_km(ac)
+        brg_deg    = registry.bearing_to_aircraft_deg(ac)
+        country_cc = icao_country_code(ac.icao)
+
+        hdg_str = (
+            f"{_format_optional(ac.track_deg, '.0f')} "
+            f"{compass_arrow(ac.track_deg) if ac.track_deg is not None else ''}"
+        )
         t.add_row(
-            _flag(ac.icao),
+            country_cc,
             ac.icao,
-            ac.cs or "[dim]·[/dim]",
-            _v(ac.lat, "+.4f") if ac.lat is not None else "[dim]·[/dim]",
-            _v(ac.lon, "+.4f") if ac.lon is not None else "[dim]·[/dim]",
-            f"[{ac_}]{_v(ac.alt)}[/{ac_}]",
-            _v(ac.gs),
-            hdg,
-            _vr_str(ac.vr),
-            _sq_str(ac.squawk),
-            f"{dist:.0f}" if dist else "[dim]·[/dim]",
-            f"{_compass(brg)} {brg:.0f}°" if brg else "[dim]·[/dim]",
-            str(ac.msgs),
-            _age_bar(ac.age),
-            style=row_,
+            ac.callsign or "[dim]\u00b7[/dim]",
+            _format_optional(ac.latitude,  "+.4f") if ac.latitude  is not None else "[dim]\u00b7[/dim]",
+            _format_optional(ac.longitude, "+.4f") if ac.longitude is not None else "[dim]\u00b7[/dim]",
+            f"[{alt_color}]{_format_optional(ac.altitude_ft)}[/{alt_color}]",
+            _format_optional(ac.groundspeed_kt),
+            hdg_str,
+            _format_vertical_rate(ac.vertical_rate),
+            _format_squawk(ac.squawk),
+            f"{dist_km:.0f}" if dist_km is not None else "[dim]\u00b7[/dim]",
+            f"{compass_arrow(brg_deg)} {brg_deg:.0f}\u00b0" if brg_deg is not None else "[dim]\u00b7[/dim]",
+            str(ac.msg_count),
+            _format_age_bar(ac.age_s),
+            style=row_style,
         )
     return t
 
 
-def _stats(tracker: FlightTracker) -> Panel:
-    n = len(tracker.live())
-    spark = tracker.spark(18)
+def _build_stats_panel(registry: FlightStateRegistry) -> Panel:
+    n_active = len(registry.active_aircraft())
+    spark    = registry.sparkline(18)
     body = Text.assemble(
-        ("Aviones  ", "dim"), (f"{n:>4}\n",              "bold bright_white"),
-        ("Msgs     ", "dim"), (f"{tracker._total:>4}\n", "white"),
-        ("Pos.     ", "dim"), (f"{tracker._pos:>4}\n",   "bright_green"),
-        ("CRC err  ", "dim"), (f"{tracker._err:>4}\n",   "bright_red"),
-        ("msg/s    ", "dim"), (f"{tracker.rate():>4.1f}\n", "bright_yellow"),
-        ("Uptime   ", "dim"), (f"{tracker.up():>4.0f}s\n\n", "dim"),
+        ("Aviones  ", "dim"), (f"{n_active:>4}\n",                       "bold bright_white"),
+        ("Msgs     ", "dim"), (f"{registry.total_messages:>4}\n",        "white"),
+        ("Pos.     ", "dim"), (f"{registry.total_position_fixes:>4}\n",  "bright_green"),
+        ("CRC err  ", "dim"), (f"{registry.total_crc_errors:>4}\n",      "bright_red"),
+        ("msg/s    ", "dim"), (f"{registry.messages_per_second():>4.1f}\n", "bright_yellow"),
+        ("Uptime   ", "dim"), (f"{registry.session_uptime_s():>4.0f}s\n\n", "dim"),
         (spark,               "bright_blue"),
     )
     return Panel(body, title="[dim]Stats[/dim]", border_style="grey27", padding=(0, 1))
 
 
-def _layout(tracker: FlightTracker) -> Layout:
-    n = len(tracker.live())
-    hdr = Text(
-        f"  ✈  ADS-B · 1090 MHz · {n} aviones · pyModeS  ",
-        style="bold white on grey15", justify="center",
+def _build_tui_layout(registry: FlightStateRegistry) -> Layout:
+    n_active = len(registry.active_aircraft())
+    header   = Text(
+        f"  ADS-B  1090 MHz  {n_active} aviones  Mode S",
+        style="bold white on grey15",
+        justify="center",
     )
     root = Layout()
-    root.split_column(Layout(name="h", size=1), Layout(name="b"))
-    root["b"].split_row(Layout(name="tbl", ratio=5),
-                        Layout(name="st", minimum_size=22))
-    root["h"].update(hdr)
-    root["tbl"].update(_table(tracker))
-    root["st"].update(_stats(tracker))
+    root.split_column(Layout(name="header", size=1), Layout(name="body"))
+    root["body"].split_row(
+        Layout(name="table", ratio=5),
+        Layout(name="stats", minimum_size=22),
+    )
+    root["header"].update(header)
+    root["table"].update(_build_aircraft_table(registry))
+    root["stats"].update(_build_stats_panel(registry))
     return root
 
 
 class ADSBPipeline:
     def __init__(
         self,
-        source:     Source,
-        sr:         int = 2_000_000,
-        hz:         int = 4,
-        rx_lat:     float = 0.0,
-        rx_lon:     float = 0.0,
-        console:    "Console" | None = None,
+        sdr_source:  Source,
+        sample_rate: int = 2_000_000,
+        refresh_hz:  int = 4,
+        rx_lat:      float = 0.0,
+        rx_lon:      float = 0.0,
+        console:     Optional["Console"] = None,
     ) -> None:
         from rich.console import Console as _Console
-        self._src = source
-        self._sr = sr
-        self._hz = hz
-        self.tracker = FlightTracker(rx_lat, rx_lon)
-        self._con = console or _Console()
+        self._sdr_source   = sdr_source
+        self._sample_rate  = sample_rate
+        self._refresh_hz   = refresh_hz
+        self.registry      = FlightStateRegistry(rx_lat, rx_lon)
+        self._console      = console or _Console()
 
-    def feed_hex(self, h: str, ts: float | None = None) -> None:
-        self.tracker.feed_hex(h, ts)
+    def ingest_hex_frame(self, hex_str: str, timestamp_s: Optional[float] = None) -> None:
+        self.registry.ingest_hex_frame(hex_str, timestamp_s)
 
-    def _consume(self, iq: bytes) -> None:
-        arr = np.frombuffer(iq, dtype=np.uint8)
-        ts = time.monotonic()
+    def _consume_iq_chunk(self, iq_bytes: bytes) -> None:
+        raw_samples = np.frombuffer(iq_bytes, dtype=np.uint8)
+        timestamp_s = time.monotonic()
         if not _PYMODES_OK:
             return
-        for raw in demodulate(arr, self._sr):
+        for raw_frame in demodulate_iq_to_mode_s_frames(raw_samples, self._sample_rate):
             try:
-                self.tracker.feed(_PMMessage(raw.hex().upper()).decode(), ts)
+                self.registry.ingest_decoded(
+                    _PMMessage(raw_frame.hex().upper()).decode(),
+                    timestamp_s,
+                )
             except Exception:
                 pass
 
     def run(self) -> None:
         if not _PYMODES_OK:
-            self._con.print(
-                "[bold red]pyModeS no instalado — pip install pyModeS[/bold red]")
+            self._console.print("[bold red]pyModeS no instalado. pip install pyModeS[/bold red]")
             return
         with Live(
-            _layout(self.tracker),
-            console=self._con,
-            refresh_per_second=self._hz,
+            _build_tui_layout(self.registry),
+            console=self._console,
+            refresh_per_second=self._refresh_hz,
             screen=True,
         ) as live:
             try:
                 while True:
-                    chunk = self._src()
+                    chunk = self._sdr_source()
                     if chunk:
-                        self._consume(chunk)
-                    live.update(_layout(self.tracker))
-                    time.sleep(1.0 / self._hz)
+                        self._consume_iq_chunk(chunk)
+                    live.update(_build_tui_layout(self.registry))
+                    time.sleep(1.0 / self._refresh_hz)
             except KeyboardInterrupt:
                 pass
-        self._con.print("[bold green]✈  Sesión finalizada[/bold green]")
 
 
-_HEX_DEMO = [
+_DEMO_HEX_FRAMES: Final[list[str]] = [
     "8D40621D58C382D690C8AC2863A7",
     "8D40621D58C386435CC412692AD6",
     "8D485020994409940838175B284F",
@@ -580,151 +749,141 @@ _HEX_DEMO = [
 def run_demo(
     rx_lat:  float = 0.0,
     rx_lon:  float = 0.0,
-    console: "Console" | None = None,
+    console: Optional["Console"] = None,
 ) -> None:
     from rich.console import Console as _Console
     con = console or _Console()
     if not _PYMODES_OK:
-        con.print(
-            "[bold red]pyModeS no instalado — pip install pyModeS[/bold red]")
+        con.print("[bold red]pyModeS no instalado. pip install pyModeS[/bold red]")
         return
-    tracker = FlightTracker(rx_lat, rx_lon)
-    idx = 0
+    registry = FlightStateRegistry(rx_lat, rx_lon)
+    idx      = 0
     with Live(
-        _layout(tracker),
+        _build_tui_layout(registry),
         console=con,
         refresh_per_second=4,
         screen=True,
     ) as live:
         try:
             while True:
-                tracker.feed_hex(_HEX_DEMO[idx % len(_HEX_DEMO)])
+                registry.ingest_hex_frame(_DEMO_HEX_FRAMES[idx % len(_DEMO_HEX_FRAMES)])
                 idx += 1
-                live.update(_layout(tracker))
+                live.update(_build_tui_layout(registry))
                 time.sleep(0.3)
         except KeyboardInterrupt:
             pass
 
-#  MÓDULO SENTINEL — AircraftMonitor
-#  Mismo patrón que GeoPrecise / OSINTEngine / NOAADecoder.
-#  Uso:  AircraftMonitor(sentinel).menu()
-
 
 class AircraftMonitor:
-    _MODULE = "ADS-B"
+    _MODULE_LABEL: Final[str] = "ADS-B"
 
     def __init__(self, sentinel: object) -> None:
-        self._s = sentinel
-        self._con: "Console" = getattr(sentinel, "console", None)
-        if self._con is None:
+        self._sentinel = sentinel
+        self._console: "Console" = getattr(sentinel, "console", None)
+        if self._console is None:
             from rich.console import Console as _Console
-            self._con = _Console()
-        self._log = getattr(sentinel, "log", None)
+            self._console = _Console()
+        self._sentinel_log = getattr(sentinel, "log", None)
 
-        # Parámetros de hardware desde sentinel.rf cuando esté presente
-        rf_cfg = getattr(getattr(sentinel, "rf", None), "cfg", None)
-        hw = getattr(rf_cfg, "hardware", None)
-        self._gain = float(getattr(hw, "gain_db",        49.6))
-        self._rate = int(getattr(hw, "sample_rate",    2_000_000))
-        self._ppm = int(getattr(hw, "ppm_correction", 0))
-        self._idx = int(getattr(hw, "device_index",   0))
+        rf_cfg  = getattr(getattr(sentinel, "rf", None), "cfg", None)
+        hw_cfg  = getattr(rf_cfg, "hardware", None)
+        self._gain_db:      float = float(getattr(hw_cfg, "gain_db",        49.6))
+        self._sample_rate:  int   = int(getattr(hw_cfg,   "sample_rate",    2_000_000))
+        self._ppm_corr:     int   = int(getattr(hw_cfg,   "ppm_correction", 0))
+        self._device_index: int   = int(getattr(hw_cfg,   "device_index",   0))
 
-        # Coordenadas del receptor (tomadas de sentinel.geo si existe)
-        geo = getattr(sentinel, "geo", None)
-        pos = getattr(geo,     "position", None)
-        self._rx_lat = float(getattr(pos, "lat", 0.0))
-        self._rx_lon = float(getattr(pos, "lon", 0.0))
+        geo_ref  = getattr(sentinel, "geo", None)
+        pos_ref  = getattr(geo_ref,  "position", None)
+        self._rx_lat: float = float(getattr(pos_ref, "lat", 0.0))
+        self._rx_lon: float = float(getattr(pos_ref, "lon", 0.0))
 
-    # Helpers privados
-    def _info(self, msg: str) -> None:
-        self._con.print(f"[cyan][{self._MODULE}][/cyan] {msg}")
-        if self._log:
-            self._log.info(msg, self._MODULE)
+    def _log_info(self, msg: str) -> None:
+        self._console.print(f"[cyan][{self._MODULE_LABEL}][/cyan] {msg}")
+        if self._sentinel_log:
+            self._sentinel_log.info(msg, self._MODULE_LABEL)
 
-    def _warn(self, msg: str) -> None:
-        self._con.print(f"[yellow][!][{self._MODULE}] {msg}[/yellow]")
-        if self._log:
-            self._log.warning(msg, self._MODULE)
+    def _log_warn(self, msg: str) -> None:
+        self._console.print(f"[yellow][!][{self._MODULE_LABEL}] {msg}[/yellow]")
+        if self._sentinel_log:
+            self._sentinel_log.warning(msg, self._MODULE_LABEL)
 
-    def _err(self, msg: str) -> None:
-        self._con.print(f"[bold red][✗][{self._MODULE}] {msg}[/bold red]")
-        if self._log:
-            self._log.error(msg, self._MODULE)
+    def _log_error(self, msg: str) -> None:
+        self._console.print(f"[bold red][x][{self._MODULE_LABEL}] {msg}[/bold red]")
+        if self._sentinel_log:
+            self._sentinel_log.error(msg, self._MODULE_LABEL)
 
-    # API pública
     def menu(self) -> None:
         from rich.prompt import Prompt
-        from rich.panel import Panel
 
         while True:
-            self._con.print(Panel(
+            self._console.print(Panel(
                 "[1] Monitor en vivo (RTL-SDR)\n"
                 "[2] Demo sin hardware\n"
                 "[3] Configurar receptor (lat/lon/gain)\n"
                 "[0] Volver",
-                title=f"[bold cyan]✈  {self._MODULE}[/bold cyan]",
+                title=f"[bold cyan]{self._MODULE_LABEL}[/bold cyan]",
                 border_style="cyan",
             ))
-            opcion = Prompt.ask(
-                "[bold cyan]ADS-B[/bold cyan]",
+            choice = Prompt.ask(
+                f"[bold cyan]{self._MODULE_LABEL}[/bold cyan]",
                 choices=["0", "1", "2", "3"],
                 default="2",
-                console=self._con,
+                console=self._console,
             )
-            if opcion == "0":
+            if choice == "0":
                 break
-            elif opcion == "1":
-                self._iniciar_rtlsdr()
-            elif opcion == "2":
-                self._iniciar_demo()
-            elif opcion == "3":
-                self._configurar()
+            elif choice == "1":
+                self._start_rtlsdr()
+            elif choice == "2":
+                self._start_demo()
+            elif choice == "3":
+                self._configure_receiver()
 
-    def _iniciar_rtlsdr(self) -> None:
+    def _start_rtlsdr(self) -> None:
         if not _PYMODES_OK:
-            self._err("pyModeS no instalado. Ejecuta: pip install pyModeS")
+            self._log_error("pyModeS no instalado. Ejecuta: pip install pyModeS")
             return
-        self._info(
-            f"Iniciando captura RTL-SDR — "
-            f"1090 MHz  gain={self._gain} dB  sr={self._rate/1e6:.1f} MSPS"
+        self._log_info(
+            f"Iniciando captura RTL-SDR  "
+            f"1090 MHz  gain={self._gain_db} dB  sr={self._sample_rate / 1e6:.1f} MSPS"
         )
         try:
-            source = rtlsdr_source(
-                1_090_000_000, self._rate, self._gain, self._ppm, self._idx
+            sdr_source = rtlsdr_source(
+                1_090_000_000, self._sample_rate, self._gain_db,
+                self._ppm_corr, self._device_index,
             )
         except Exception as exc:
-            self._err(f"RTL-SDR no disponible: {exc}")
-            self._warn("Iniciando modo demo como alternativa…")
-            self._iniciar_demo()
+            self._log_error(f"RTL-SDR no disponible: {exc}")
+            self._log_warn("Iniciando modo demo como alternativa.")
+            self._start_demo()
             return
         ADSBPipeline(
-            source,
-            sr=self._rate,
-            rx_lat=self._rx_lat,
-            rx_lon=self._rx_lon,
-            console=self._con,
+            sdr_source,
+            sample_rate = self._sample_rate,
+            rx_lat      = self._rx_lat,
+            rx_lon      = self._rx_lon,
+            console     = self._console,
         ).run()
 
-    def _iniciar_demo(self) -> None:
-        self._info("Modo demo ADS-B (sin hardware SDR)")
-        run_demo(self._rx_lat, self._rx_lon, self._con)
+    def _start_demo(self) -> None:
+        self._log_info("Modo demo ADS-B (sin hardware SDR)")
+        run_demo(self._rx_lat, self._rx_lon, self._console)
 
-    def _configurar(self) -> None:
+    def _configure_receiver(self) -> None:
         from rich.prompt import Prompt
         try:
             self._rx_lat = float(Prompt.ask(
-                "Latitud del receptor", default=str(self._rx_lat), console=self._con
+                "Latitud del receptor", default=str(self._rx_lat), console=self._console
             ))
             self._rx_lon = float(Prompt.ask(
-                "Longitud del receptor", default=str(self._rx_lon), console=self._con
+                "Longitud del receptor", default=str(self._rx_lon), console=self._console
             ))
-            self._gain = float(Prompt.ask(
-                "Ganancia RTL-SDR (dB)", default=str(self._gain), console=self._con
+            self._gain_db = float(Prompt.ask(
+                "Ganancia RTL-SDR (dB)", default=str(self._gain_db), console=self._console
             ))
-            self._info(
-                f"Receptor configurado — "
-                f"lat={self._rx_lat:.4f}° lon={self._rx_lon:.4f}° "
-                f"gain={self._gain} dB"
+            self._log_info(
+                f"Receptor configurado  "
+                f"lat={self._rx_lat:.4f}  lon={self._rx_lon:.4f}  gain={self._gain_db} dB"
             )
         except ValueError as exc:
-            self._err(f"Valor inválido: {exc}")
+            self._log_error(f"Valor invalido: {exc}")

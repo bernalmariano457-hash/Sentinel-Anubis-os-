@@ -17,7 +17,6 @@ log = logging.getLogger("sentinel.plugins")
 
 _PLUGINS_PATH = Path("plugins")
 
-# Plantilla para nuevos plugins — se escribe una vez en disco como ejemplo.
 _PLUGIN_EJEMPLO = '''\
 from core.PluginSystem import PluginBase
 
@@ -80,8 +79,6 @@ class GestorPlugins:
         _PLUGINS_PATH.mkdir(parents=True, exist_ok=True)
         self._crear_readme_plugins()
 
-    # Carga
-
     def cargar_todos(self) -> int:
         cargados = con_error = 0
         for archivo in sorted(_PLUGINS_PATH.glob("*.py")):
@@ -96,7 +93,6 @@ class GestorPlugins:
         return cargados
 
     def recargar(self) -> None:
-        """Limpia el registro y recarga todos los plugins sin reiniciar."""
         self._plugins.clear()
         self._comandos.clear()
         n = self.cargar_todos()
@@ -148,8 +144,6 @@ class GestorPlugins:
             log.warning(f"Error cargando plugin {ruta.name}: {e}")
             return False
 
-    # Despacho
-
     def tiene_comando(self, comando: str) -> bool:
         return comando in self._comandos
 
@@ -165,8 +159,6 @@ class GestorPlugins:
                 f"[red][!] Error en plugin '{comando}': {e}[/red]")
             log.error(f"Plugin '{comando}' error: {e}")
         return True
-
-    # Visualización
 
     def listar(self) -> None:
         if not self._plugins:
@@ -192,8 +184,6 @@ class GestorPlugins:
 
         self._console.print(Panel(tabla, title="[bold]PLUGINS CARGADOS[/bold]",
                                   border_style="green"))
-
-    # Bootstrap
 
     def _crear_readme_plugins(self) -> None:
         readme = _PLUGINS_PATH / "README.md"

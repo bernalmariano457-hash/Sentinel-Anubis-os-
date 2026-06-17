@@ -1,190 +1,124 @@
 from __future__ import annotations
 
-import atexit
+import logging
 import socket
 import struct
 import threading
+import weakref
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Final
 
 import numpy as np
 
-Source = Callable[[], bytes | None]
-SourceFactory = Callable[[float, int], "Source"]
+log = logging.getLogger(__name__)
 
-_IQ_SCALE = 1.0 / 127.5
+Source = Callable[[], bytes | None]
+SourceFactory = Callable[[float, int], Source]
+
+_IQ_SCALE: Final[float] = 1.0 / 127.5
+_U8_OFFSET: Final[float] = 127.5
+_TCP_MAGIC_HEADER_BYTES: Final[int] = 12
+_TCP_CMD_PACK_FORMAT: Final[str] = ">BI"
+_TCP_CMD_FREQ: Final[int] = 0x01
+_TCP_CMD_SAMPLE_RATE: Final[int] = 0x02
+_TCP_CMD_GAIN_MODE: Final[int] = 0x03
+_TCP_CMD_GAIN: Final[int] = 0x04
+_TCP_CMD_MANUAL_GAIN_MODE: Final[int] = 1
+_TCP_RECV_CHUNK_BYTES: Final[int] = 65_536
+_TCP_MAX_BUFFER_BYTES: Final[int] = 4 * 1024 * 1024
+_TCP_GAIN_AUTO_TAG: Final[str] = "auto"
+_TCP_GAIN_SCALE: Final[float] = 10.0
+_FILE_READ_ALIGNMENT: Final[int] = 2
+
+
+_registry_lock: threading.Lock = threading.Lock()
+_active_backends: weakref.WeakSet[SDRBackend] = weakref.WeakSet()
+
+
+def _register_backend(backend: SDRBackend) -> None:
+    with _registry_lock:
+        _active_backends.add(backend)
+
+
+def close_all_backends() -> None:
+    with _registry_lock:
+        targets = list(_active_backends)
+    for backend in targets:
+        try:
+            backend.close()
+        except Exception as exc:
+            log.warning("Backend close error during global cleanup: %s", exc)
 
 
 def _u8_to_cf32(raw: bytes) -> np.ndarray:
     arr = np.frombuffer(raw, dtype=np.uint8).astype(np.float32)
-    arr = arr * _IQ_SCALE - 1.0
-    return arr[0::2] + 1j * arr[1::2]
+    scaled = arr * _IQ_SCALE - 1.0
+    return scaled[0::2] + 1j * scaled[1::2]
 
 
 def _cf32_to_u8(iq: np.ndarray) -> bytes:
-    i = (np.real(iq) * 127.5 + 127.5).clip(0, 255).astype(np.uint8)
-    q = (np.imag(iq) * 127.5 + 127.5).clip(0, 255).astype(np.uint8)
-    out = np.empty(len(i) * 2, dtype=np.uint8)
-    out[0::2] = i
-    out[1::2] = q
-    return out.tobytes()
+    real_u8 = (np.real(iq) * _U8_OFFSET + _U8_OFFSET).clip(0, 255).astype(np.uint8)
+    imag_u8 = (np.imag(iq) * _U8_OFFSET + _U8_OFFSET).clip(0, 255).astype(np.uint8)
+    return np.stack((real_u8, imag_u8), axis=1).ravel().tobytes()
 
 
-def rtlsdr_source(
-    freq_hz:      float,
-    sample_rate:  int = 2_048_000,
-    gain:         float = 49.6,
-    ppm:          int = 0,
-    device_index: int = 0,
-) -> Source:
-    try:
-        from rtlsdr import RtlSdr
-    except ImportError:
-        raise ImportError(
-            "pyrtlsdr no instalado:\n"
-            "  pip install pyrtlsdr --break-system-packages"
-        )
-
-    sdr = RtlSdr(device_index=device_index)
-    sdr.sample_rate = sample_rate
-    sdr.center_freq = int(freq_hz)
-    sdr.gain = gain
-    sdr.freq_correction = ppm
-    chunk = sample_rate // 10
-
-    def _close() -> None:
-        try:
-            sdr.close()
-        except Exception:
-            pass
-
-    atexit.register(_close)
-
-    def _read() -> bytes:
-        samples = sdr.read_samples(chunk)
-        return _cf32_to_u8(samples)
-
-    return _read
+GainValue = float | str
 
 
-def tcp_source(
-    host:        str = "127.0.0.1",
-    port:        int = 1234,
-    freq_hz:     float = 100_000_000.0,
-    sample_rate: int = 2_048_000,
-    gain:        int = 400,
-    chunk_bytes: int = 131_072,
-) -> Source:
-    # rtl_tcp wire protocol — big-endian command: 1-byte cmd + 4-byte param
-    def _cmd(sock: socket.socket, cmd: int, param: int) -> None:
-        sock.sendall(struct.pack(">BI", cmd, param))
+class SDRBackend(ABC):
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    sock.connect((host, port))
-    sock.settimeout(5.0)
-
-    # Read 12-byte magic header from rtl_tcp
-    sock.recv(12)
-
-    _cmd(sock, 0x01, int(freq_hz))     # set frequency
-    _cmd(sock, 0x02, sample_rate)      # set sample rate
-    _cmd(sock, 0x04, gain)             # set gain (tenths of dB)
-    _cmd(sock, 0x03, 1)                # manual gain mode
-
-    def _close() -> None:
-        try:
-            sock.close()
-        except Exception:
-            pass
-
-    atexit.register(_close)
-
-    def _read() -> bytes | None:
-        buf = bytearray()
-        while len(buf) < chunk_bytes:
-            try:
-                chunk = sock.recv(chunk_bytes - len(buf))
-                if not chunk:
-                    return None
-                buf.extend(chunk)
-            except socket.timeout:
-                return bytes(buf) if buf else None
-        return bytes(buf)
-
-    return _read
-
-
-def file_source(
-    path:        str,
-    chunk_bytes: int = 131_072,
-    loop:        bool = True,
-) -> Source:
-    fh = open(path, "rb")
-    atexit.register(fh.close)
-
-    def _read() -> bytes | None:
-        data = fh.read(chunk_bytes)
-        if not data:
-            if loop:
-                fh.seek(0)
-                data = fh.read(chunk_bytes)
-            else:
-                return None
-        return data or None
-
-    return _read
-
-
-def null_source() -> Source:
-    return lambda: None
-
-# TUNABLE BACKEND — backend resintonizable compartido por RFScanner
-#                   y SpectrumAnalyzer. Reemplaza todos los _SDRAdapter
-#                   locales y entrega TCP + replay de archivo IQ gratis.
-
-
-class SDRBackend:
     hw_name: str = "Unknown"
 
-    def read_raw(self, n_samples: int) -> np.ndarray | None:
-        raise NotImplementedError
+    @abstractmethod
+    def read_raw(self, n_samples: int) -> np.ndarray | None: ...
 
-    def tune(self, freq_hz: float) -> None:
-        raise NotImplementedError
+    @abstractmethod
+    def tune(self, freq_hz: float) -> None: ...
 
-    def set_gain(self, gain: object) -> None:
-        raise NotImplementedError
+    @abstractmethod
+    def set_gain(self, gain: GainValue) -> None: ...
 
-    def close(self) -> None:
-        raise NotImplementedError
+    @abstractmethod
+    def close(self) -> None: ...
 
-        # ------------------------------------------------------------------
-        # Compatibilidad con la interfaz SourceFactory de NOAADecoder
-        # ------------------------------------------------------------------
-    def as_source(self, sample_rate: int) -> "Source":
-
-        chunk = sample_rate // 10
+    def as_source(self, sample_rate: int) -> Source:
+        chunk_size = sample_rate // 10
 
         def _read() -> bytes | None:
-            iq = self.read_raw(chunk)
+            iq = self.read_raw(chunk_size)
             return None if iq is None else _cf32_to_u8(iq)
 
         return _read
 
-# RTL-SDR (pyrtlsdr)
+    def __enter__(self) -> SDRBackend:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        self.close()
 
 
 class _RTLSDRBackend(SDRBackend):
+
     def __init__(
         self,
-        freq_hz:      float,
-        sample_rate:  int,
-        gain:         float,
-        ppm:          int,
+        freq_hz: float,
+        sample_rate: int,
+        gain: float,
+        ppm: int,
         device_index: int,
     ) -> None:
-        from rtlsdr import RtlSdr  # fallo explícito si no está instalado
+        try:
+            from rtlsdr import RtlSdr
+        except ImportError as exc:
+            raise ImportError(
+                "pyrtlsdr not installed: pip install pyrtlsdr --break-system-packages"
+            ) from exc
 
         sdr = RtlSdr(device_index=device_index)
         sdr.sample_rate = sample_rate
@@ -192,231 +126,283 @@ class _RTLSDRBackend(SDRBackend):
         sdr.gain = gain
         sdr.freq_correction = ppm
         self._sdr = sdr
-        self._sr = sample_rate
+        self._sample_rate = sample_rate
         self.hw_name = (
             f"RTL-SDR idx={device_index} "
-            f"sr={sample_rate / 1e6:.3f} MHz  gain={gain} dB"
+            f"sr={sample_rate / 1e6:.3f} MHz gain={gain} dB"
         )
-        atexit.register(self.close)
+        _register_backend(self)
+        log.info("RTL-SDR opened: %s", self.hw_name)
 
     def read_raw(self, n_samples: int) -> np.ndarray | None:
         try:
-            return np.array(
-                self._sdr.read_samples(n_samples), dtype=np.complex64
-            )
-        except Exception:
+            return np.array(self._sdr.read_samples(n_samples), dtype=np.complex64)
+        except Exception as exc:
+            log.warning("RTL-SDR read_raw failed: %s", exc)
             return None
 
     def tune(self, freq_hz: float) -> None:
         self._sdr.center_freq = int(freq_hz)
 
-    def set_gain(self, gain: object) -> None:
-        self._sdr.gain = gain  # acepta float o "auto"
+    def set_gain(self, gain: GainValue) -> None:
+        self._sdr.gain = gain
 
     def close(self) -> None:
         try:
             self._sdr.close()
-        except Exception:
-            pass
-
-# rtl_tcp
+        except Exception as exc:
+            log.debug("RTL-SDR close error (ignored): %s", exc)
 
 
 class _TCPBackend(SDRBackend):
+
     def __init__(
         self,
-        host:        str,
-        port:        int,
-        freq_hz:     float,
+        host: str,
+        port: int,
+        freq_hz: float,
         sample_rate: int,
-        gain:        int,
+        gain: int,
     ) -> None:
         self._host = host
         self._port = port
-        self._sr = sample_rate
+        self._sample_rate = sample_rate
         self._gain = gain
         self._sock: socket.socket | None = None
-        self._buf = bytearray()
-        self.hw_name = f"rtl_tcp://{host}:{port}  sr={sample_rate / 1e6:.3f} MHz"
+        self._buf: bytearray = bytearray()
+        self._lock: threading.Lock = threading.Lock()
+        self.hw_name = f"rtl_tcp://{host}:{port} sr={sample_rate / 1e6:.3f} MHz"
         self._connect(freq_hz)
-        atexit.register(self.close)
+        _register_backend(self)
+        log.info("TCP backend connected: %s", self.hw_name)
 
-    # protocolo rtl_tcp: comando 1 byte + parámetro 4 bytes big-endian
     @staticmethod
-    def _cmd(sock: socket.socket, cmd: int, param: int) -> None:
-        sock.sendall(struct.pack(">BI", cmd, param))
+    def _send_cmd(sock: socket.socket, cmd: int, param: int) -> None:
+        sock.sendall(struct.pack(_TCP_CMD_PACK_FORMAT, cmd, param))
 
     def _connect(self, freq_hz: float) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        sock.connect((self._host, self._port))
-        sock.settimeout(5.0)
-        sock.recv(12)                                 # cabecera mágica rtl_tcp
-        self._cmd(sock, 0x01, int(freq_hz))           # set frequency
-        self._cmd(sock, 0x02, self._sr)               # set sample rate
-        self._cmd(sock, 0x04, self._gain)             # set gain (décimas dB)
-        self._cmd(sock, 0x03, 1)                      # manual gain mode
+        try:
+            sock.connect((self._host, self._port))
+            sock.settimeout(5.0)
+            sock.recv(_TCP_MAGIC_HEADER_BYTES)
+            self._send_cmd(sock, _TCP_CMD_FREQ, int(freq_hz))
+            self._send_cmd(sock, _TCP_CMD_SAMPLE_RATE, self._sample_rate)
+            self._send_cmd(sock, _TCP_CMD_GAIN, self._gain)
+            self._send_cmd(sock, _TCP_CMD_GAIN_MODE, _TCP_CMD_MANUAL_GAIN_MODE)
+        except Exception:
+            sock.close()
+            raise
         self._sock = sock
-        self._freq_hz = freq_hz
+        self._current_freq_hz = freq_hz
 
     def read_raw(self, n_samples: int) -> np.ndarray | None:
-        if self._sock is None:
-            return None
-        needed = n_samples * 2
-        while len(self._buf) < needed:
-            try:
-                chunk = self._sock.recv(65_536)
-                if not chunk:
+        needed_bytes = n_samples * _FILE_READ_ALIGNMENT
+        with self._lock:
+            if self._sock is None:
+                return None
+            while len(self._buf) < needed_bytes:
+                if len(self._buf) > _TCP_MAX_BUFFER_BYTES:
+                    log.error(
+                        "TCP buffer overflow (%d bytes); connection reset",
+                        len(self._buf),
+                    )
+                    self._buf.clear()
                     return None
-                self._buf.extend(chunk)
-            except socket.timeout:
-                break
-        if len(self._buf) < needed:
-            return None
-        raw = bytes(self._buf[:needed])
-        del self._buf[:needed]
+                try:
+                    chunk = self._sock.recv(_TCP_RECV_CHUNK_BYTES)
+                    if not chunk:
+                        return None
+                    self._buf.extend(chunk)
+                except socket.timeout:
+                    break
+            if len(self._buf) < needed_bytes:
+                return None
+            raw = bytes(self._buf[:needed_bytes])
+            del self._buf[:needed_bytes]
         return _u8_to_cf32(raw)
 
     def tune(self, freq_hz: float) -> None:
-        if self._sock:
+        with self._lock:
+            if self._sock is None:
+                return
             try:
-                self._cmd(self._sock, 0x01, int(freq_hz))
-                self._freq_hz = freq_hz
-            except Exception:
+                self._send_cmd(self._sock, _TCP_CMD_FREQ, int(freq_hz))
+                self._current_freq_hz = freq_hz
+            except Exception as exc:
+                log.warning(
+                    "TCP tune to %.3f MHz failed (%s); reconnecting",
+                    freq_hz / 1e6,
+                    exc,
+                )
+                self._sock = None
+                self._buf.clear()
                 try:
-                    self.close()
                     self._connect(freq_hz)
-                except Exception:
-                    pass
+                except Exception as reconnect_exc:
+                    log.error("TCP reconnect failed: %s", reconnect_exc)
 
-    def set_gain(self, gain: object) -> None:
-        if self._sock:
+    def set_gain(self, gain: GainValue) -> None:
+        with self._lock:
+            if self._sock is None:
+                return
             try:
-                g = 0 if str(gain).lower() == "auto" else int(float(gain) * 10)
-                self._cmd(self._sock, 0x04, g)
-            except Exception:
-                pass
+                raw_gain = (
+                    0
+                    if str(gain).lower() == _TCP_GAIN_AUTO_TAG
+                    else int(float(gain) * _TCP_GAIN_SCALE)
+                )
+                self._send_cmd(self._sock, _TCP_CMD_GAIN, raw_gain)
+            except Exception as exc:
+                log.warning("TCP set_gain failed: %s", exc)
 
     def close(self) -> None:
-        if self._sock:
-            try:
-                self._sock.close()
-            except Exception:
-                pass
-            self._sock = None
-
-# Archivo IQ (replay)
+        with self._lock:
+            if self._sock is not None:
+                try:
+                    self._sock.close()
+                except Exception as exc:
+                    log.debug("TCP socket close error (ignored): %s", exc)
+                finally:
+                    self._sock = None
 
 
 class _FileBackend(SDRBackend):
+
     def __init__(self, path: str, loop: bool = True) -> None:
-        self._fh = open(path, "rb")
+        resolved = Path(path).resolve()
+        if not resolved.exists():
+            raise FileNotFoundError(f"IQ file not found: {resolved}")
+        self._fh = resolved.open("rb")
         self._loop = loop
-        self.hw_name = f"FILE:{Path(path).name}"
-        atexit.register(self.close)
+        self.hw_name = f"FILE:{resolved.name}"
+        _register_backend(self)
+        log.info("File backend opened: %s", self.hw_name)
 
     def read_raw(self, n_samples: int) -> np.ndarray | None:
-        needed = n_samples * 2  # pares u8 I+Q
+        needed = n_samples * _FILE_READ_ALIGNMENT
         data = self._fh.read(needed)
         if not data:
-            if self._loop:
-                self._fh.seek(0)
-                data = self._fh.read(needed)
-            if not data:
+            if not self._loop:
                 return None
-        if len(data) % 2:
-            data = data[:-1]
-        return _u8_to_cf32(data)
+            self._fh.seek(0)
+            data = self._fh.read(needed)
+        if not data:
+            return None
+        aligned = data if len(data) % _FILE_READ_ALIGNMENT == 0 else data[:-1]
+        return _u8_to_cf32(aligned)
 
     def tune(self, freq_hz: float) -> None:
-        pass  # los archivos no se resintoizan; no-op intencional
+        pass
+
+    def set_gain(self, gain: GainValue) -> None:
+        pass
 
     def close(self) -> None:
         try:
             self._fh.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("File backend close error (ignored): %s", exc)
 
-# Mock (señales sintéticas, sin hardware)
+
+_MockSignalSpec = tuple[float, float, str, float]
+
+_DEFAULT_DEMO_SIGNALS: tuple[_MockSignalSpec, ...] = (
+    (200_000,  -44.0, "nfm",  12_500.0),
+    (-300_000, -58.0, "wfm", 200_000.0),
+    (500_000,  -72.0, "tone",    500.0),
+    (-700_000, -81.0, "tone",  1_000.0),
+)
 
 
 class _MockBackend(SDRBackend):
+
     def __init__(
         self,
         sample_rate: int = 2_048_000,
-        freq_hz:     float = 100_000_000.0,
-        add_demo_signals: bool = True,
+        freq_hz: float = 100_000_000.0,
+        demo_signals: tuple[_MockSignalSpec, ...] = _DEFAULT_DEMO_SIGNALS,
     ) -> None:
         from modules.rf.rf_mock import MockSDRManager, SyntheticSignal
 
-        self._mock = MockSDRManager(sample_rate=sample_rate)
-        self._freq = freq_hz
-        self._sr = sample_rate
-        self._toff = 0.0
-        self.hw_name = f"MockSDR  sr={sample_rate / 1e6:.3f} MHz"
+        self._manager = MockSDRManager(sample_rate=sample_rate)
+        self._freq_hz = freq_hz
+        self._sample_rate = sample_rate
+        self._time_offset = 0.0
+        self.hw_name = f"MockSDR sr={sample_rate / 1e6:.3f} MHz"
 
-        if add_demo_signals:
-            for offset, pwr, mode, bw in (
-                (200_000, -44.0, "nfm",   12_500.0),
-                (-300_000, -58.0, "wfm",  200_000.0),
-                (500_000, -72.0, "tone",     500.0),
-                (-700_000, -81.0, "tone",   1_000.0),
-            ):
-                self._mock.add_signal(
-                    SyntheticSignal(
-                        freq_offset=offset, power_dbm=pwr,
-                        mode=mode, bw_hz=bw,
-                    )
+        for freq_offset, power_dbm, mode, bw_hz in demo_signals:
+            self._manager.add_signal(
+                SyntheticSignal(
+                    freq_offset=freq_offset,
+                    power_dbm=power_dbm,
+                    mode=mode,
+                    bw_hz=bw_hz,
                 )
+            )
+
+        _register_backend(self)
+        log.info("Mock backend initialised: %s", self.hw_name)
 
     def read_raw(self, n_samples: int) -> np.ndarray | None:
-        iq = self._mock.capture(
-            int(self._freq), n_samples, t_offset=self._toff)
-        self._toff += n_samples / self._sr
+        iq = self._manager.capture(
+            int(self._freq_hz), n_samples, t_offset=self._time_offset
+        )
+        self._time_offset += n_samples / self._sample_rate
         return iq
 
     def tune(self, freq_hz: float) -> None:
-        self._freq = freq_hz
+        self._freq_hz = freq_hz
 
-    def set_gain(self, gain: object) -> None:
-        pass  # Mock no tiene ganancia física
+    def set_gain(self, gain: GainValue) -> None:
+        pass
 
     def close(self) -> None:
         pass
 
-# Funciones de fábrica públicas
 
-
-def open_backend(
-    freq_hz:      float = 100_000_000.0,
-    sample_rate:  int = 2_048_000,
-    gain:         float = 49.6,
-    ppm:          int = 0,
+def open_rtlsdr_backend(
+    freq_hz: float = 100_000_000.0,
+    sample_rate: int = 2_048_000,
+    gain: float = 49.6,
+    ppm: int = 0,
     device_index: int = 0,
 ) -> SDRBackend:
     try:
         return _RTLSDRBackend(freq_hz, sample_rate, gain, ppm, device_index)
-    except Exception:
-        pass
-    return _MockBackend(sample_rate, freq_hz)
+    except ImportError:
+        raise
+    except Exception as exc:
+        log.warning(
+            "RTL-SDR unavailable (%s); falling back to MockBackend", exc
+        )
+        return _MockBackend(sample_rate, freq_hz)
 
 
-def tcp_backend(
-    host:        str = "127.0.0.1",
-    port:        int = 1234,
-    freq_hz:     float = 100_000_000.0,
+def open_tcp_backend(
+    host: str = "127.0.0.1",
+    port: int = 1234,
+    freq_hz: float = 100_000_000.0,
     sample_rate: int = 2_048_000,
-    gain:        int = 400,
+    gain: int = 400,
 ) -> SDRBackend:
     return _TCPBackend(host, port, freq_hz, sample_rate, gain)
 
 
-def file_backend(path: str, loop: bool = True) -> SDRBackend:
+def open_file_backend(path: str, loop: bool = True) -> SDRBackend:
     return _FileBackend(path, loop)
 
 
-def mock_backend(
+def open_mock_backend(
     sample_rate: int = 2_048_000,
-    freq_hz:     float = 100_000_000.0,
+    freq_hz: float = 100_000_000.0,
+    demo_signals: tuple[_MockSignalSpec, ...] = _DEFAULT_DEMO_SIGNALS,
 ) -> SDRBackend:
-    return _MockBackend(sample_rate, freq_hz)
+    return _MockBackend(sample_rate, freq_hz, demo_signals)
+
+
+open_backend = open_rtlsdr_backend
+tcp_backend  = open_tcp_backend
+file_backend = open_file_backend
+mock_backend = open_mock_backend

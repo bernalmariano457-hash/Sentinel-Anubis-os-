@@ -10,7 +10,6 @@ import pytest
 from core.ModuleRegistry import MODULOS, ModuleRegistry, ModuleSpec
 
 
-# FIXTURES
 @pytest.fixture()
 def sentinel() -> MagicMock:
     s = MagicMock()
@@ -50,7 +49,6 @@ def _fake_module(cls_name: str, cls: type | None = None) -> types.ModuleType:
     return mod
 
 
-# BLOQUE 1 — ModuleSpec
 class TestModuleSpec:
 
     def test_display_name_hereda_cls_name_si_vacio(self):
@@ -102,7 +100,6 @@ class TestModuleSpec:
         assert "rf" in rf.module_path
 
 
-# BLOQUE 2 — _importar (importación dinámica)
 class TestImportar:
 
     def test_retorna_clase_cuando_modulo_existe(self, registry: ModuleRegistry):
@@ -136,7 +133,6 @@ class TestImportar:
         assert resultado is None
 
 
-# BLOQUE 3 — _cargar_uno
 class TestCargarUno:
 
     def test_instancia_con_sentinel_cuando_needs_sentinel_true(
@@ -263,8 +259,6 @@ class TestCargarUno:
         sentinel.log.warning.assert_called()
 
 
-# BLOQUE 4 — _cargar_recovery y _cargar_motor_rep (dependencias)
-
 class TestCargaDependencias:
 
     def test_recovery_retorna_false_si_security_es_none(
@@ -294,8 +288,7 @@ class TestCargaDependencias:
     def test_recovery_retorna_false_si_import_falla(
         self, registry: ModuleRegistry, sentinel: MagicMock
     ):
-        # _cargar_recovery usa 'from core.Recovery import …' (import directo),
-        # no importlib.import_module. Se debe ocultar el módulo en sys.modules.
+
         sentinel.security = MagicMock()
         with patch.dict("sys.modules", {"core.Recovery": None}):
             ok = registry._cargar_recovery()
@@ -327,14 +320,12 @@ class TestCargaDependencias:
     def test_motor_rep_retorna_false_si_import_falla(
         self, registry: ModuleRegistry, sentinel: MagicMock
     ):
-        # Mismo patrón: import directo dentro de _cargar_motor_rep.
         sentinel.gp = MagicMock()
         with patch.dict("sys.modules", {"modules.reporte.MotorReportes": None}):
             ok = registry._cargar_motor_rep()
         assert ok is False
 
 
-# BLOQUE 5 — _cargar_extras (callables y primitivas)
 class TestCargarExtras:
 
     def test_evil_twin_se_asigna_si_flask_disponible(
@@ -354,7 +345,6 @@ class TestCargarExtras:
     def test_evil_twin_es_none_si_flask_no_disponible(
         self, registry: ModuleRegistry, sentinel: MagicMock
     ):
-        # El módulo puede estar ya cacheado en sys.modules — lo ocultamos explícitamente.
         with patch.dict("sys.modules", {"modules.network.EvilTwinServer": None}):
             registry._cargar_extras()
         assert sentinel._evil_twin_server is None
@@ -376,7 +366,6 @@ class TestCargarExtras:
         assert sentinel._wa_decryptor_cls is None
 
 
-# BLOQUE 6 — estados() y disponible()
 class TestEstadosYDisponible:
 
     def test_estados_vacio_antes_de_cargar(self, registry: ModuleRegistry):
@@ -432,7 +421,6 @@ class TestEstadosYDisponible:
         assert registry.disponible("modulo_cargado_con_error") is False
 
 
-# BLOQUE 7 — cargar_todos (integración del flujo completo)
 class TestCargarTodos:
 
     def _mock_cargadores(self, registry: ModuleRegistry) -> None:

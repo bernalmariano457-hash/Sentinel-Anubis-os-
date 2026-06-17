@@ -13,7 +13,7 @@ class _DomainBase:
 
     @property
     def console(self) -> Console:
-        return self.s.console  # type: ignore[return-value]
+        return self.s.console
 
     def _modulo_ok(self, nombre_attr: str) -> bool:
         return self.s._modulo_ok(nombre_attr)

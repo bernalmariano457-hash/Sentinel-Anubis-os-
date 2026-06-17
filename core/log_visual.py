@@ -6,7 +6,6 @@ from typing import Any
 
 log = logging.getLogger("sentinel.log_visual")
 
-# Estilos heredados — mismos que ESTILOS_LOG en bootscreen/log_sistema
 ESTILOS = {
     "INFO":    ("cyan",    "ℹ"),
     "WARNING": ("yellow",  "⚠"),
@@ -23,17 +22,14 @@ class LogVisual:
             DeprecationWarning,
             stacklevel=2,
         )
-        # Intentar obtener el Console del sentinel si está en el proceso
         try:
             from rich.console import Console
             self._console = Console()
         except ImportError:
-            self._console = None  # type: ignore[assignment]
+            self._console = None
 
         self._entradas: list[dict] = []
         log.warning("LogVisual instanciado — migrar a LogSistema.")
-
-    # API pública
 
     def info(self, mensaje: str, modulo: str = "Sistema") -> None:
         self._registrar("INFO", mensaje, modulo)
@@ -71,8 +67,6 @@ class LogVisual:
     def verificar_y_limpiar(self, max_entradas: int = 500) -> None:
         if len(self._entradas) > max_entradas:
             self._entradas = self._entradas[-max_entradas:]
-
-    # Internos
 
     def _registrar(self, nivel: str, mensaje: str, modulo: str) -> None:
         from datetime import datetime

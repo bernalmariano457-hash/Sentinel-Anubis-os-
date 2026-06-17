@@ -19,7 +19,6 @@ class EjemploPlugin(PluginBase):
                 f"[cyan]Plugin:[/cyan] {self.NOMBRE} v{self.VERSION}\n"
                 f"[cyan]Args:[/cyan]   {args}"
             )
-            # Registrar evidencia si hay proyecto activo
             if self.sentinel.gp.proyecto_activo:
                 self.sentinel.gp.registrar_evidencia(
                     "plugin_ejemplo", "Comando de ejemplo ejecutado", {

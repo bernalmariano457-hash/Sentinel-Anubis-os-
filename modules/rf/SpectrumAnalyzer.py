@@ -13,7 +13,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple, Sequence
 
 import numpy as np
 from rich import box
@@ -46,7 +46,24 @@ _FKEY_MAP: dict[bytes, str] = {
     b"A": "UP",  b"B": "DOWN", b"C": "RIGHT", b"D": "LEFT",
 }
 
-# CONFIGURACIÓN
+_COLOR_THRESHOLDS: tuple[tuple[float, str], ...] = (
+    (0.90, "bold bright_red"),
+    (0.75, "red"),
+    (0.55, "bright_yellow"),
+    (0.35, "yellow"),
+    (0.15, "green"),
+    (0.00, "dim green"),
+)
+
+_WF_DELTA_THRESHOLDS: tuple[tuple[float, str], ...] = (
+    (40.0, "bold bright_red"),
+    (30.0, "bright_red"),
+    (20.0, "yellow"),
+    (10.0, "bright_green"),
+    (0.0,  "cyan"),
+    (-10.0, "blue"),
+    (-999.0, "dim"),
+)
 
 
 @dataclass
@@ -63,13 +80,12 @@ class SAConfig:
     display_height: int = 14
     sample_rate:    int = 2_048_000
     band_label:     str = ""
-    # v2: corrección y detección
-    ppm_offset:     float = 0.0     # PPM de error del reloj RTL-SDR
-    threshold_dbm:  float = -80.0   # umbral de detección de señales
-    waterfall_h:    int = 8       # filas del waterfall
-    waterfall_on:   bool = True    # mostrar waterfall
-    show_labels:    bool = True    # etiquetar picos detectados
-    record_wf:      bool = False   # grabar frames a disco
+    ppm_offset:     float = 0.0
+    threshold_dbm:  float = -80.0
+    waterfall_h:    int = 8
+    waterfall_on:   bool = True
+    show_labels:    bool = True
+    record_wf:      bool = False
 
     def fft_size(self) -> int:
         raw = int(1.5 * self.sample_rate / (self.rbw_khz * 1_000))
@@ -94,16 +110,12 @@ class SAConfig:
     def from_platform(cls, info: PlatformInfo, kb: KeyBindings) -> SAConfig:
         sc = info.screen
         cols = kb.display_cols if kb.display_cols > 0 else sc.spectrum_width
-        # Repartir filas: fijas ~14 (header+axis+bar+status+ctrl+bordes)
-        # variables = rows - 14 → 2/3 espectro, 1/3 waterfall
         var = max(16, sc.rows - 14)
         wf_h = max(4, min(10, var // 3))
         sp_h = max(8, var - wf_h)
         if kb.display_rows > 0:
             sp_h = kb.display_rows
         return cls(display_width=cols, display_height=sp_h, waterfall_h=wf_h)
-
-# MARCADORES Y SEÑALES
 
 
 @dataclass
@@ -121,8 +133,6 @@ class _DetectedSignal:
     power_dbm: float
     snr_db:    float
     bw_khz:    float
-
-# BUFFER DE FRAMES — peak hold + promedio
 
 
 class FrameBuffer:
@@ -153,20 +163,17 @@ class FrameBuffer:
         self._frames.clear()
         self._peak = None
 
-# WATERFALL BUFFER — historia de frames para display y grabación
-
 
 class _WaterfallBuffer:
 
     def __init__(self, h: int = 8) -> None:
         self._h:    int = h
         self._rows: deque[np.ndarray] = deque(maxlen=h)
-        # Grabación en memoria
         self._rec:  list[tuple[float, np.ndarray]] = []
         self._recording = False
 
     def push(self, psd: np.ndarray, ts: float) -> None:
-        self._rows.appendleft(psd.copy())   # más reciente al frente
+        self._rows.appendleft(psd.copy())
         if self._recording:
             self._rec.append((ts, psd.copy()))
 
@@ -191,8 +198,6 @@ class _WaterfallBuffer:
     def is_recording(self) -> bool:
         return self._recording
 
-# DETECTOR DE SEÑALES — picos sobre umbral con estimación de BW y SNR
-
 
 class _SignalDetector:
 
@@ -211,12 +216,10 @@ class _SignalDetector:
         for i in range(min_spacing, n - min_spacing):
             if psd_db[i] < threshold_dbm:
                 continue
-            # Máximo local
             window = psd_db[i - min_spacing: i + min_spacing + 1]
             if psd_db[i] < window.max():
                 continue
 
-            # Ancho de banda −3 dB
             lo, hi = i, i
             thr_3db = psd_db[i] - 3.0
             while lo > 0 and psd_db[lo] > thr_3db:
@@ -236,8 +239,6 @@ class _SignalDetector:
         signals.sort(key=lambda s: s.power_dbm, reverse=True)
         return signals[:max_signals]
 
-# TECLADO — raw mode, flechas, F-keys
-
 
 class _KeyReader(threading.Thread):
 
@@ -251,7 +252,7 @@ class _KeyReader(threading.Thread):
             return
         try:
             import termios
-            import tty  # noqa: PLC0415
+            import tty
             fd = sys.stdin.fileno()
             old = termios.tcgetattr(fd)
             tty.setraw(fd)
@@ -305,11 +306,9 @@ class _KeyReader(threading.Thread):
     def stop(self) -> None:
         self._stop.set()
 
-# ADAPTADOR SDR — interfaz uniforme hardware / MockSDR
-
 
 class _SDRAdapter:
-    def __init__(self, cfg: "SAConfig") -> None:
+    def __init__(self, cfg: SAConfig) -> None:
         self._cfg = cfg
         from modules.rf.rf_source import open_backend
         self._backend = open_backend(
@@ -319,7 +318,6 @@ class _SDRAdapter:
         )
         log.info("SA backend: %s", self._backend.hw_name)
 
-    # API pública (sin cambios de interfaz)
     @property
     def hw_name(self) -> str:
         return self._backend.hw_name
@@ -341,14 +339,10 @@ class _SDRAdapter:
     def close(self) -> None:
         self._backend.close()
 
-    # Hot-swap de backend (TCP / archivo IQ)
     def swap_backend(self, backend: "SDRBackend") -> None:
-        """Sustituye el backend en caliente; cierra el anterior."""
         self._backend.close()
         self._backend = backend
         log.info("SA backend cambiado → %s", backend.hw_name)
-
-# FRAME — resultado de un ciclo de adquisición
 
 
 @dataclass
@@ -362,7 +356,141 @@ class _SpectrumFrame:
     ts:          str
     detected:    list[_DetectedSignal] = field(default_factory=list)
 
-# RENDERER
+
+class _DoubleBuffer:
+    """
+    Lock-free double buffer: producer writes to back, consumer reads front.
+    Only one CAS-style swap under a lightweight lock per write cycle.
+    """
+
+    def __init__(self) -> None:
+        self._slots: list[_SpectrumFrame | None] = [None, None]
+        self._front: int = 0
+        self._swap_lock = threading.Lock()
+
+    def write(self, frame: _SpectrumFrame) -> None:
+        back = 1 - self._front
+        self._slots[back] = frame
+        with self._swap_lock:
+            self._front = back
+
+    def read(self) -> _SpectrumFrame | None:
+        with self._swap_lock:
+            idx = self._front
+        return self._slots[idx]
+
+
+class _SpectrumRenderState(NamedTuple):
+    powers:     np.ndarray
+    peak_psd:   np.ndarray | None
+    norm_mat:   np.ndarray
+    peak_norm:  np.ndarray | None
+    mcols:      dict[int, Marker]
+    det_cols:   dict[int, _DetectedSignal]
+    thresh_row: int
+
+
+def _build_render_state(
+    frame:   _SpectrumFrame,
+    buf:     FrameBuffer,
+    cfg:     SAConfig,
+    markers: list[Marker],
+    W:       int,
+    H:       int,
+) -> _SpectrumRenderState:
+    powers = _interp(frame.powers_dbm, W)
+
+    peak_psd: np.ndarray | None = None
+    if cfg.peak_hold:
+        ph = buf.peak()
+        if ph is not None:
+            peak_psd = _interp(ph, W)
+
+    db_range = max(cfg.ref_dbm - cfg.floor_dbm, 1e-6)
+    norm_mat = np.clip((powers - cfg.floor_dbm) / db_range * H, 0.0, H)
+    peak_norm: np.ndarray | None = None
+    if peak_psd is not None:
+        peak_norm = np.clip((peak_psd - cfg.floor_dbm) / db_range * H, 0.0, H)
+
+    mcols: dict[int, Marker] = {}
+    for m in markers:
+        if not m.active:
+            continue
+        rel = (m.freq_mhz - cfg.freq_start_mhz()) / max(cfg.span_mhz, 1e-9)
+        mcols[int(np.clip(rel * W, 0, W - 1))] = m
+
+    det_cols: dict[int, _DetectedSignal] = {}
+    if cfg.show_labels:
+        for s in frame.detected:
+            rel = (s.freq_mhz - cfg.freq_start_mhz()) / max(cfg.span_mhz, 1e-9)
+            col = int(np.clip(rel * W, 0, W - 1))
+            det_cols[col] = s
+
+    thresh_row = int(
+        (cfg.threshold_dbm - cfg.floor_dbm)
+        / max(cfg.ref_dbm - cfg.floor_dbm, 1)
+        * H
+    )
+
+    return _SpectrumRenderState(
+        powers=powers,
+        peak_psd=peak_psd,
+        norm_mat=norm_mat,
+        peak_norm=peak_norm,
+        mcols=mcols,
+        det_cols=det_cols,
+        thresh_row=thresh_row,
+    )
+
+
+def _render_spectrum_matrix(
+    state:  _SpectrumRenderState,
+    cfg:    SAConfig,
+    H:      int,
+    W:      int,
+    body:   Text,
+) -> None:
+    norm = state.norm_mat
+    rows = np.arange(H - 1, -1, -1)
+    db_values = cfg.floor_dbm + (rows / H) * (cfg.ref_dbm - cfg.floor_dbm)
+
+    for row_idx, (row, db) in enumerate(zip(rows, db_values)):
+        body.append(f"{db:>6.0f} │", style="dim green")
+
+        norm_row = norm
+        row_f = float(row)
+
+        filled   = norm_row >= row_f + 1
+        partial  = (~filled) & (norm_row > row_f)
+        sub_idxs = np.where(partial, np.clip((norm_row - row_f) * 8, 1, 8).astype(np.int8), 0)
+
+        color_ratios = (row_f + 0.5) / H
+        col_color = _color(color_ratios)
+
+        peak_visible: np.ndarray | None = None
+        if state.peak_norm is not None:
+            peak_filled  = state.peak_norm >= row_f + 1
+            peak_partial = state.peak_norm > row_f
+            peak_visible = peak_filled | peak_partial
+
+        is_thresh_row = (row == state.thresh_row)
+
+        for col in range(W):
+            if filled[col]:
+                ch, st = "█", col_color
+            elif partial[col]:
+                ch, st = _SUB[int(sub_idxs[col])], col_color
+            elif peak_visible is not None and peak_visible[col]:
+                ch, st = _PEAK_CHR, "dim white"
+            elif is_thresh_row:
+                ch, st = _THRESH_CHR, "dim yellow"
+            elif col in state.mcols:
+                ch, st = " ", ""
+            else:
+                ch, st = " ", ""
+            body.append(ch, style=st)
+
+        body.append("\n")
 
 
 class _Renderer:
@@ -384,41 +512,9 @@ class _Renderer:
         W = cfg.display_width
         H = cfg.display_height
 
-        # Interpolar PSD al ancho de display
-        powers = _interp(frame.powers_dbm, W)
-        peak_psd = None
-        if cfg.peak_hold:
-            ph = buf.peak()
-            if ph is not None:
-                peak_psd = _interp(ph, W)
-
-        # Posición de marcadores
-        mcols: dict[int, Marker] = {}
-        for m in markers:
-            if not m.active:
-                continue
-            rel = (m.freq_mhz - cfg.freq_start_mhz()) / max(cfg.span_mhz, 1e-9)
-            mcols[int(np.clip(rel * W, 0, W - 1))] = m
-
-        # Posición de señales detectadas
-        det_cols: dict[int, _DetectedSignal] = {}
-        if cfg.show_labels:
-            for s in frame.detected:
-                rel = (s.freq_mhz - cfg.freq_start_mhz()) / \
-                    max(cfg.span_mhz, 1e-9)
-                col = int(np.clip(rel * W, 0, W - 1))
-                det_cols[col] = s
-
-        # Fila del umbral en el display
-        thresh_row = int(
-            (cfg.threshold_dbm - cfg.floor_dbm)
-            / max(cfg.ref_dbm - cfg.floor_dbm, 1)
-            * H
-        )
-
+        state = _build_render_state(frame, buf, cfg, markers, W, H)
         body = Text()
 
-        # Encabezado
         hdr = Text(justify="center")
         if cfg.band_label:
             hdr.append(f"[{cfg.band_label}]  ", style="bold yellow")
@@ -442,12 +538,11 @@ class _Renderer:
         body.append_text(hdr)
         body.append("\n")
 
-        # Etiquetas de señales detectadas
         if cfg.show_labels and frame.detected:
             lbl_line = Text("       ")
             prev_end = 0
-            for col in sorted(det_cols):
-                s = det_cols[col]
+            for col in sorted(state.det_cols):
+                s = state.det_cols[col]
                 txt = f"{s.freq_mhz:.2f}"
                 pad = max(0, col - prev_end)
                 lbl_line.append(" " * pad)
@@ -456,39 +551,21 @@ class _Renderer:
             lbl_line.append("\n")
             body.append_text(lbl_line)
 
-        # Línea de marcadores
         mline = Text("       ")
         for c in range(W):
-            m = mcols.get(c)
+            m = state.mcols.get(c)
             mline.append(_MARKER_CHR if m else " ",
                          style="bold yellow" if m else "")
         body.append_text(mline)
         body.append("\n")
 
-        # Espectro con línea de umbral integrada
-        for row in range(H - 1, -1, -1):
-            db = cfg.floor_dbm + (row / H) * (cfg.ref_dbm - cfg.floor_dbm)
-            body.append(f"{db:>6.0f} │", style="dim green")
-            for col in range(W):
-                ch, st = _cell(powers[col], row, H, cfg.ref_dbm, cfg.floor_dbm)
-                # Peak hold
-                if ch == " " and peak_psd is not None:
-                    pch, _ = _cell(peak_psd[col], row,
-                                   H, cfg.ref_dbm, cfg.floor_dbm)
-                    if pch != " ":
-                        ch, st = _PEAK_CHR, "dim white"
-                # Línea de umbral
-                if ch == " " and row == thresh_row:
-                    ch, st = _THRESH_CHR, "dim yellow"
-                body.append(ch, style=st)
-            body.append("\n")
+        _render_spectrum_matrix(state, cfg, H, W, body)
 
         body.append("       └" + "─" * W + "\n", style="dim green")
         body.append(
             "        " + _freq_axis(cfg.freq_start_mhz(), cfg.freq_end_mhz(), W))
         body.append("\n")
 
-        # Waterfall
         if cfg.waterfall_on:
             wf_rows = wf_buf.rows()
             body.append("  WF   │", style="dim")
@@ -499,12 +576,10 @@ class _Renderer:
                 for val in interp:
                     body.append("█", style=_wf_style(val, cfg.threshold_dbm))
                 body.append("│\n", style="dim")
-            # Rellenar si hay menos filas que waterfall_h
             for _ in range(cfg.waterfall_h - len(wf_rows)):
                 body.append("       │" + " " * W + "│\n", style="dim")
             body.append("       └" + "─" * W + "┘\n", style="dim")
 
-        # Marcadores y canal de potencia
         m1, m2 = markers[0], markers[1]
         mbar = Text()
         mbar.append_text(_marker_txt(m1, "bold yellow", "yellow"))
@@ -526,7 +601,6 @@ class _Renderer:
         body.append_text(mbar)
         body.append("\n")
 
-        # Señales detectadas resumidas
         if frame.detected:
             sig_line = Text("  ")
             for i, s in enumerate(frame.detected[:5]):
@@ -538,7 +612,6 @@ class _Renderer:
             body.append_text(sig_line)
             body.append("\n")
 
-        # Estado
         pk = "[green]ON[/green]" if cfg.peak_hold else "[dim]OFF[/dim]"
         avg = (f"[green]{cfg.avg_frames}f[/green]"
                if cfg.avg_frames > 1 else "[dim]OFF[/dim]")
@@ -553,7 +626,6 @@ class _Renderer:
         body.append_text(status)
         body.append("\n")
 
-        # Controles
         ctrl = Text(style="dim")
         ctrl.append(
             "  ←→ tune  +- span  ↑↓ ref  []thr  p peak  v avg  "
@@ -575,7 +647,144 @@ class _Renderer:
             expand=False,
         )
 
-# ANALIZADOR PRINCIPAL
+
+class _ExportPayload(NamedTuple):
+    timestamp:           str
+    platform_name:       str
+    platform_model:      str | None
+    center_mhz:          float
+    span_mhz:            float
+    rbw_khz:             float
+    ppm_offset:          float
+    threshold_dbm:       float
+    ref_dbm:             float
+    gain:                str
+    hardware:            str
+    band_label:          str
+    noise_floor:         float
+    peak_freq_mhz:       float
+    peak_power_dbm:      float
+    channel_power_dbm:   float | None
+    detected_signals:    list[_DetectedSignal]
+    markers:             list[Marker]
+    freqs_mhz:           np.ndarray
+    powers_dbm:          np.ndarray
+
+
+class _RecordingPayload(NamedTuple):
+    timestamp:   str
+    center_mhz:  float
+    freq_start:  float
+    freq_end:    float
+    bin_count:   int
+    frames:      list[tuple[float, np.ndarray]]
+
+
+def _build_export_payload(
+    frame:     _SpectrumFrame,
+    cfg:       SAConfig,
+    platform:  PlatformInfo,
+    hw_name:   str,
+    markers:   list[Marker],
+) -> _ExportPayload:
+    m1, m2 = markers[0], markers[1]
+    ch_pow: float | None = None
+    if m1.active and m2.active:
+        ch_pow = _channel_power(
+            frame.powers_dbm, frame.freqs_mhz,
+            min(m1.freq_mhz, m2.freq_mhz),
+            max(m1.freq_mhz, m2.freq_mhz),
+        )
+    return _ExportPayload(
+        timestamp=datetime.now(UTC).strftime("%Y%m%d_%H%M%S"),
+        platform_name=platform.kind.name,
+        platform_model=platform.model,
+        center_mhz=cfg.center_mhz,
+        span_mhz=cfg.span_mhz,
+        rbw_khz=cfg.rbw_actual_khz(),
+        ppm_offset=cfg.ppm_offset,
+        threshold_dbm=cfg.threshold_dbm,
+        ref_dbm=cfg.ref_dbm,
+        gain=cfg.gain,
+        hardware=hw_name,
+        band_label=cfg.band_label,
+        noise_floor=frame.noise_floor,
+        peak_freq_mhz=frame.peak_freq,
+        peak_power_dbm=frame.peak_power,
+        channel_power_dbm=ch_pow,
+        detected_signals=list(frame.detected),
+        markers=list(markers),
+        freqs_mhz=frame.freqs_mhz,
+        powers_dbm=frame.powers_dbm,
+    )
+
+
+def _build_recording_payload(
+    data:  list[tuple[float, np.ndarray]],
+    cfg:   SAConfig,
+) -> _RecordingPayload:
+    return _RecordingPayload(
+        timestamp=datetime.now(UTC).strftime("%Y%m%d_%H%M%S"),
+        center_mhz=cfg.center_mhz,
+        freq_start=cfg.freq_start_mhz(),
+        freq_end=cfg.freq_end_mhz(),
+        bin_count=len(data[0][1]) if data else 0,
+        frames=data,
+    )
+
+
+def _serialize_export_to_json(payload: _ExportPayload) -> str:
+    return json.dumps({
+        "timestamp":      payload.timestamp,
+        "platform":       payload.platform_name,
+        "model":          payload.platform_model,
+        "center_mhz":     payload.center_mhz,
+        "span_mhz":       payload.span_mhz,
+        "rbw_khz":        payload.rbw_khz,
+        "ppm_offset":     payload.ppm_offset,
+        "threshold_dbm":  payload.threshold_dbm,
+        "ref_dbm":        payload.ref_dbm,
+        "gain":           payload.gain,
+        "hardware":       payload.hardware,
+        "band_label":     payload.band_label,
+        "noise_floor":    payload.noise_floor,
+        "peak_freq_mhz":  payload.peak_freq_mhz,
+        "peak_power_dbm": payload.peak_power_dbm,
+        "channel_power_dbm": payload.channel_power_dbm,
+        "detected_signals": [
+            {"freq_mhz": s.freq_mhz, "power_dbm": s.power_dbm,
+             "snr_db": s.snr_db, "bw_khz": s.bw_khz}
+            for s in payload.detected_signals
+        ],
+        "markers": [
+            {"name": m.name, "freq_mhz": m.freq_mhz,
+             "power_dbm": m.power_dbm, "active": m.active}
+            for m in payload.markers
+        ],
+        "spectrum": [
+            {"freq_mhz": float(f), "power_dbm": float(p)}
+            for f, p in zip(payload.freqs_mhz.tolist(), payload.powers_dbm.tolist())
+        ],
+    }, indent=2)
+
+
+def _write_export_csv(path: Path, payload: _ExportPayload) -> None:
+    rows: list[tuple[float, float]] = list(
+        zip(payload.freqs_mhz.tolist(), payload.powers_dbm.tolist())
+    )
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["freq_mhz", "power_dbm"])
+        w.writerows(rows)
+
+
+def _write_recording_csv(path: Path, payload: _RecordingPayload) -> None:
+    freq_headers = np.linspace(payload.freq_start, payload.freq_end, payload.bin_count)
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["timestamp"] + [f"{f:.4f}" for f in freq_headers])
+        for ts_row, psd in payload.frames:
+            w.writerow([f"{ts_row:.3f}"] + [f"{p:.2f}" for p in psd])
 
 
 class SpectrumAnalyzer:
@@ -590,7 +799,6 @@ class SpectrumAnalyzer:
         self._kb = load_keys(self._platform)
         self._log.info(f"SpectrumAnalyzer v2 listo — {self._platform}", "SA")
 
-    # API pública
     def run(self, cfg: SAConfig | None = None) -> None:
         self._cfg = cfg or SAConfig.from_platform(self._platform, self._kb)
         self._buf = FrameBuffer()
@@ -600,8 +808,8 @@ class SpectrumAnalyzer:
         self._keys = _KeyReader()
         self._renderer = _Renderer(self._cfg, self._platform)
         self._action = self._kb.key_to_action()
+        self._double_buf = _DoubleBuffer()
 
-        # Teclas nuevas en v2 (sin pasar por TOML si no están)
         for k, a in {
             "t": "auto_tune",   "z": "toggle_wf",
             "l": "toggle_labels", "r": "toggle_record",
@@ -610,8 +818,6 @@ class SpectrumAnalyzer:
             self._action.setdefault(k, a)
 
         self._stop = threading.Event()
-        self._lock = threading.Lock()
-        self._frame:   _SpectrumFrame | None = None
         self._fps_buf: list[float] = []
 
         self._log.info(
@@ -621,8 +827,7 @@ class SpectrumAnalyzer:
             "SA",
         )
 
-        acq = threading.Thread(target=self._acq_loop,
-                               daemon=True, name="sa-acq")
+        acq = threading.Thread(target=self._acq_loop, daemon=True, name="sa-acq")
         self._keys.start()
         acq.start()
         try:
@@ -651,7 +856,6 @@ class SpectrumAnalyzer:
         }
 
     def use_tcp(self, host: str, port: int = 1234, gain: int = 400) -> None:
-        """Conecta el analizador a un SDR remoto vía rtl_tcp."""
         from modules.rf.rf_source import tcp_backend
         if hasattr(self, "_sdr"):
             freq_hz = int(self._cfg.center_mhz * 1e6)
@@ -666,7 +870,6 @@ class SpectrumAnalyzer:
             self._sdr.swap_backend(file_backend(path, loop))
             self._log.info(f"SA → FILE:{path}", "SA")
 
-    # Adquisición IQ + FFT
     def _acq_loop(self) -> None:
         cfg = self._cfg
         n_fft = cfg.fft_size()
@@ -684,13 +887,10 @@ class SpectrumAnalyzer:
                 psd = (np.abs(spec) ** 2) / (cfg.sample_rate * wgain)
                 pdb = 10 * np.log10(psd + 1e-20) + 30
 
-                # Submuestrear al ancho de display
                 if len(pdb) > cfg.display_width * 2:
                     step = len(pdb) // cfg.display_width
-                    pdb = np.array([
-                        pdb[i: i + step].max()
-                        for i in range(0, len(pdb) - step + 1, step)
-                    ])
+                    n_steps = len(pdb) // step
+                    pdb = pdb[:n_steps * step].reshape(n_steps, step).max(axis=1)
 
                 self._buf.push(pdb)
                 if cfg.avg_frames > 1:
@@ -698,15 +898,11 @@ class SpectrumAnalyzer:
                     if avg is not None:
                         pdb = avg
 
-                # Vector de frecuencias con corrección PPM
-                freqs = np.linspace(cfg.freq_start_mhz(),
-                                    cfg.freq_end_mhz(), len(pdb))
+                freqs = np.linspace(cfg.freq_start_mhz(), cfg.freq_end_mhz(), len(pdb))
                 noise = float(np.percentile(pdb, 15))
                 pidx = int(np.argmax(pdb))
 
-                # Detección de señales
-                detected = _SignalDetector.detect(
-                    pdb, freqs, noise, cfg.threshold_dbm)
+                detected = _SignalDetector.detect(pdb, freqs, noise, cfg.threshold_dbm)
 
                 elapsed = time.perf_counter() - t0
                 self._fps_buf.append(elapsed)
@@ -714,32 +910,30 @@ class SpectrumAnalyzer:
                     self._fps_buf.pop(0)
 
                 now_ts = time.time()
-                with self._lock:
-                    self._frame = _SpectrumFrame(
-                        freqs_mhz=freqs,
-                        powers_dbm=pdb,
-                        noise_floor=noise,
-                        peak_freq=float(freqs[pidx]),
-                        peak_power=float(pdb[pidx]),
-                        fps=1.0 / (sum(self._fps_buf) / len(self._fps_buf)),
-                        ts=datetime.now(UTC).strftime("%H:%M:%S"),
-                        detected=detected,
-                    )
+                frame = _SpectrumFrame(
+                    freqs_mhz=freqs,
+                    powers_dbm=pdb,
+                    noise_floor=noise,
+                    peak_freq=float(freqs[pidx]),
+                    peak_power=float(pdb[pidx]),
+                    fps=1.0 / (sum(self._fps_buf) / len(self._fps_buf)),
+                    ts=datetime.now(UTC).strftime("%H:%M:%S"),
+                    detected=detected,
+                )
+                self._double_buf.write(frame)
                 self._wf_buf.push(pdb, now_ts)
 
             except Exception as exc:
                 log.debug("Adquisición: %s", exc)
                 time.sleep(0.1)
 
-    # Display loop
     def _display_loop(self) -> None:
         with Live(console=self._console, refresh_per_second=15, screen=True) as live:
             while not self._stop.is_set():
                 key = self._keys.get()
                 if key and not self._handle_key(key):
                     break
-                with self._lock:
-                    frame = self._frame
+                frame = self._double_buf.read()
                 if frame is not None:
                     live.update(self._renderer.render(
                         frame, self._buf, self._wf_buf,
@@ -747,7 +941,6 @@ class SpectrumAnalyzer:
                     ))
                 time.sleep(0.04)
 
-    # Manejador de teclas
     def _handle_key(self, key: str) -> bool:
         action = self._action.get(key, "")
 
@@ -792,7 +985,6 @@ class SpectrumAnalyzer:
             fn()  # type: ignore[operator]
         return True
 
-    # Controles
     def _tune(self, mhz: float) -> None:
         mhz = float(np.clip(mhz, _FREQ_MIN_MHZ, _FREQ_MAX_MHZ))
         self._cfg.center_mhz = mhz
@@ -802,8 +994,7 @@ class SpectrumAnalyzer:
         self._wf_buf.clear()
 
     def _auto_tune(self) -> None:
-        with self._lock:
-            frame = self._frame
+        frame = self._double_buf.read()
         if frame is None:
             return
         pidx = int(np.argmax(frame.powers_dbm))
@@ -863,21 +1054,9 @@ class SpectrumAnalyzer:
         data = self._wf_buf.stop_recording()
         if not data:
             return
-        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        csv_path = _EVIDENCE_DIR / f"waterfall_rec_{ts}.csv"
-        with open(csv_path, "w", newline="", encoding="utf-8") as fh:
-            w = csv.writer(fh)
-            with self._lock:
-                frame = self._frame
-            if frame is not None:
-                freqs = np.linspace(
-                    self._cfg.freq_start_mhz(),
-                    self._cfg.freq_end_mhz(),
-                    len(data[0][1]),
-                )
-                w.writerow(["timestamp"] + [f"{f:.4f}" for f in freqs])
-            for ts_row, psd in data:
-                w.writerow([f"{ts_row:.3f}"] + [f"{p:.2f}" for p in psd])
+        payload = _build_recording_payload(data, self._cfg)
+        csv_path = _EVIDENCE_DIR / f"waterfall_rec_{payload.timestamp}.csv"
+        _write_recording_csv(csv_path, payload)
         self._log.info(
             f"Waterfall grabado: {csv_path} ({len(data)} frames)", "SA")
         if hasattr(self._s, "gp") and self._s.gp and self._s.gp.proyecto_activo:
@@ -888,8 +1067,7 @@ class SpectrumAnalyzer:
             )
 
     def _place_marker(self, idx: int) -> None:
-        with self._lock:
-            frame = self._frame
+        frame = self._double_buf.read()
         if frame is None:
             return
         pows = frame.powers_dbm.copy()
@@ -906,62 +1084,19 @@ class SpectrumAnalyzer:
         )
 
     def _export(self) -> None:
-        with self._lock:
-            frame = self._frame
+        frame = self._double_buf.read()
         if frame is None:
             return
-        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        stem = f"spectrum_{self._cfg.center_mhz:.3f}MHz_{ts}"
-
-        m1, m2 = self._markers
-        ch_pow = None
-        if m1.active and m2.active:
-            ch_pow = _channel_power(
-                frame.powers_dbm, frame.freqs_mhz,
-                min(m1.freq_mhz, m2.freq_mhz),
-                max(m1.freq_mhz, m2.freq_mhz),
-            )
+        payload = _build_export_payload(
+            frame, self._cfg, self._platform, self._sdr.hw_name, self._markers
+        )
+        stem = f"spectrum_{self._cfg.center_mhz:.3f}MHz_{payload.timestamp}"
 
         json_path = _EVIDENCE_DIR / f"{stem}.json"
-        json_path.write_text(json.dumps({
-            "timestamp":      ts,
-            "platform":       self._platform.kind.name,
-            "model":          self._platform.model,
-            "center_mhz":     self._cfg.center_mhz,
-            "span_mhz":       self._cfg.span_mhz,
-            "rbw_khz":        self._cfg.rbw_actual_khz(),
-            "ppm_offset":     self._cfg.ppm_offset,
-            "threshold_dbm":  self._cfg.threshold_dbm,
-            "ref_dbm":        self._cfg.ref_dbm,
-            "gain":           self._cfg.gain,
-            "hardware":       self._sdr.hw_name,
-            "band_label":     self._cfg.band_label,
-            "noise_floor":    frame.noise_floor,
-            "peak_freq_mhz":  frame.peak_freq,
-            "peak_power_dbm": frame.peak_power,
-            "channel_power_dbm": ch_pow,
-            "detected_signals": [
-                {"freq_mhz": s.freq_mhz, "power_dbm": s.power_dbm,
-                 "snr_db": s.snr_db, "bw_khz": s.bw_khz}
-                for s in frame.detected
-            ],
-            "markers": [
-                {"name": m.name, "freq_mhz": m.freq_mhz,
-                 "power_dbm": m.power_dbm, "active": m.active}
-                for m in self._markers
-            ],
-            "spectrum": [
-                {"freq_mhz": float(f), "power_dbm": float(p)}
-                for f, p in zip(frame.freqs_mhz.tolist(), frame.powers_dbm.tolist())
-            ],
-        }, indent=2), encoding="utf-8")
+        json_path.write_text(_serialize_export_to_json(payload), encoding="utf-8")
 
         csv_path = _EVIDENCE_DIR / f"{stem}.csv"
-        with open(csv_path, "w", newline="", encoding="utf-8") as fh:
-            w = csv.writer(fh)
-            w.writerow(["freq_mhz", "power_dbm"])
-            w.writerows(zip(frame.freqs_mhz.tolist(),
-                        frame.powers_dbm.tolist()))
+        _write_export_csv(csv_path, payload)
 
         if hasattr(self._s, "gp") and self._s.gp and self._s.gp.proyecto_activo:
             self._s.gp.registrar_evidencia(
@@ -971,8 +1106,6 @@ class SpectrumAnalyzer:
                 {"json": str(json_path), "csv": str(csv_path)},
             )
         log.info("Exportado → %s", json_path)
-
-# HELPERS DE MÓDULO
 
 
 def _interp(arr: np.ndarray, n: int) -> np.ndarray:
@@ -990,33 +1123,17 @@ def _cell(p: float, row: int, H: int, ref: float, floor: float) -> tuple[str, st
 
 
 def _color(r: float) -> str:
-    if r >= 0.90:
-        return "bold bright_red"
-    if r >= 0.75:
-        return "red"
-    if r >= 0.55:
-        return "bright_yellow"
-    if r >= 0.35:
-        return "yellow"
-    if r >= 0.15:
-        return "green"
+    for threshold, style in _COLOR_THRESHOLDS:
+        if r >= threshold:
+            return style
     return "dim green"
 
 
 def _wf_style(power: float, threshold: float) -> str:
     delta = power - threshold
-    if delta >= 40:
-        return "bold bright_red"
-    if delta >= 30:
-        return "bright_red"
-    if delta >= 20:
-        return "yellow"
-    if delta >= 10:
-        return "bright_green"
-    if delta >= 0:
-        return "cyan"
-    if delta >= -10:
-        return "blue"
+    for threshold_val, style in _WF_DELTA_THRESHOLDS:
+        if delta >= threshold_val:
+            return style
     return "dim"
 
 

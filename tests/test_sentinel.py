@@ -13,23 +13,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# ── Asegurar que el proyecto está en el path ──────────────────────────
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 
-# FIXTURES COMPARTIDOS
-
 @pytest.fixture
 def console():
     from rich.console import Console
-    return Console(quiet=True)   # silencia output en tests
+    return Console(quiet=True)
 
 
 @pytest.fixture
 def mock_log():
-    """Log falso que no escribe nada en disco."""
     log = MagicMock()
     log.info = MagicMock()
     log.warning = MagicMock()
@@ -43,8 +39,6 @@ def mock_log():
 def tmp_dir(tmp_path):
     return tmp_path
 
-
-# TESTS — VALIDADOR
 
 class TestValidador:
 
@@ -82,7 +76,6 @@ class TestValidador:
         # Una IP sola es un /32 implícito — válido
         assert self.V.es_rango_cidr("192.168.1.1")
 
-    # MAC
     def test_mac_valida(self):
         assert self.V.es_mac("AA:BB:CC:DD:EE:FF")
 
@@ -98,7 +91,6 @@ class TestValidador:
     def test_mac_vacia(self):
         assert not self.V.es_mac("")
 
-    # URL
     def test_url_http(self):
         assert self.V.es_url("http://ejemplo.com")
 
@@ -114,7 +106,6 @@ class TestValidador:
     def test_url_vacia(self):
         assert not self.V.es_url("")
 
-    # Frecuencia
     def test_frecuencia_valida(self):
         assert self.V.es_frecuencia("433.92")
 
@@ -137,8 +128,6 @@ class TestValidador:
         assert not self.V.es_frecuencia("")
 
 
-# TESTS — AUTENTICACIÓN
-
 class TestGestorAuth:
     @pytest.fixture
     def auth(self, console, mock_log):
@@ -147,7 +136,6 @@ class TestGestorAuth:
                               "primer_arranque": False}}
         return GestorAuth(config, console, mock_log)
 
-    # Hashing
     def test_hash_genera_string(self, auth):
         h = auth._hash("clave123")
         assert isinstance(h, str)
@@ -156,10 +144,8 @@ class TestGestorAuth:
     def test_hash_distinto_cada_vez(self, auth):
         h1 = auth._hash("misma_clave")
         h2 = auth._hash("misma_clave")
-        # bcrypt genera salt diferente cada vez
         assert h1 != h2
 
-    # Verificación SHA-256 legacy (64 hex chars, sin salt)
     def test_verificar_legacy_sha256(self, auth):
         pwd = "testpass"
         hash_legacy = hashlib.sha256(pwd.encode()).hexdigest()
@@ -170,7 +156,6 @@ class TestGestorAuth:
         hash_legacy = hashlib.sha256("correcto".encode()).hexdigest()
         assert not auth._verificar("incorrecto", hash_legacy)
 
-    # Verificación SHA-256 con salt (formato nuevo sin bcrypt)
     def test_verificar_sha256_con_salt(self, auth):
         import os as _os
         pwd = "clave_test"
@@ -186,7 +171,6 @@ class TestGestorAuth:
         almacenado = f"{salt}:{h}"
         assert not auth._verificar("incorrecto", almacenado)
 
-    # Verificación round-trip (hash → verify)
     def test_hash_y_verificar_correcto(self, auth):
         pwd = "MiClave@Segura123"
         h = auth._hash(pwd)
@@ -196,7 +180,6 @@ class TestGestorAuth:
         h = auth._hash("la_buena")
         assert not auth._verificar("la_mala", h)
 
-    # solicitar_acceso con hash en config
     def test_solicitar_acceso_correcto(self, console, mock_log):
         from core.auth import GestorAuth
         import hashlib
@@ -226,8 +209,6 @@ class TestGestorAuth:
             resultado = auth.solicitar_acceso()
         assert resultado is False
 
-
-# TESTS — LOG SISTEMA
 
 class TestLogSistema:
 
@@ -289,8 +270,6 @@ class TestLogSistema:
         log._entradas.clear()
         log.mostrar_historial()   # No debe lanzar excepción
 
-
-# TESTS — COLA DE TAREAS
 
 class TestColaTareas:
 
@@ -354,8 +333,6 @@ class TestColaTareas:
         time.sleep(0.5)
         assert len(resultados) == 5
 
-
-# TESTS — GESTOR DE PROYECTOS
 
 class TestGestorProyectos:
 
@@ -444,8 +421,6 @@ class TestGestorProyectos:
             gp.registrar_evidencia(f"tipo_{i}", f"evidencia {i}", {"n": i})
         assert len(proyecto_activo.evidencias) == 5
 
-
-# TESTS — PLUGIN SYSTEM
 
 class TestPluginSystem:
 
@@ -541,14 +516,11 @@ class PluginTest(PluginBase):
         monkeypatch.setattr(ps_mod, "PLUGINS_PATH",
                             str(plugin_archivo.parent))
         gestor.cargar_todos()
-        # No debe lanzar
         gestor.ejecutar_comando("test_cmd", [])
 
     def test_listar_no_lanza(self, gestor):
         gestor.listar()
 
-
-# TESTS — SECURITY MODULE
 
 class TestSecurityModule:
 
@@ -569,7 +541,6 @@ class TestSecurityModule:
 
         resultado = security.encriptar_archivo(str(archivo))
         assert resultado is True
-        # El contenido debe haber cambiado
         assert archivo.read_bytes() != original
 
     def test_encriptar_y_desencriptar(self, security, tmp_dir):
@@ -603,8 +574,6 @@ class TestSecurityModule:
         assert archivo.read_bytes() == datos
 
 
-# TESTS — CVE MATCHER
-
 class TestCVEMatcher:
     @pytest.fixture
     def cve(self, console):
@@ -629,11 +598,9 @@ class TestCVEMatcher:
             assert nivel in SEVERIDAD_EMOJI
 
     def test_analizar_resultado_scan_vacio(self, cve):
-        """No debe lanzar con lista vacía."""
         cve.analizar_resultado_scan([])
 
     def test_analizar_resultado_scan_mock(self, cve):
-        """Respuesta mockeada de NVD — verifica parseo."""
         respuesta_mock = {
             "vulnerabilities": [
                 {
@@ -665,8 +632,6 @@ class TestCVEMatcher:
                 [{"nombre": "OpenSSH", "version": "7.4"}])
 
 
-# TESTS — RF MODULE (sin hardware)
-
 class TestRFModuleIntegrado:
     @pytest.fixture
     def sentinel_mock(self, console, mock_log):
@@ -690,7 +655,6 @@ class TestRFModuleIntegrado:
 
     def test_identificar_banda_fm(self, rf):
         banda = rf._identificar_banda(100.0)
-        # Puede venir de bands.py o de BANDAS interno
         if banda:
             assert "FM" in banda["nombre"] or "Radio" in banda["nombre"]
 
@@ -743,8 +707,6 @@ class TestRFModuleIntegrado:
         rf._db = None
         rf.db_estadisticas()
 
-
-# TESTS — RFSCANNER (MotorDSP)
 
 class TestMotorDSP:
 
@@ -830,8 +792,6 @@ class TestMotorDSP:
         assert len(psd) == 2048
 
 
-# TESTS — HARDWARE (solo con flag --hardware)
-
 def pytest_addoption(parser):
     parser.addoption(
         "--hardware", action="store_true", default=False,
@@ -873,8 +833,6 @@ class TestRealHardware:
         rf.escanear_frecuencia(100.0, duracion=2)
         rf.cerrar()
 
-
-# PUNTO DE ENTRADA DIRECTO
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short", "-q"])

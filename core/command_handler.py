@@ -26,6 +26,4 @@ class CommandHandler(
     OfensivoCommands,
 ):
     def __init__(self, sentinel: ApexSentinel) -> None:
-        # _DomainBase.__init__ asigna self.s = sentinel.
-        # Con el MRO de Python todos los mixins lo heredan correctamente.
         self.s = sentinel

@@ -14,7 +14,6 @@ __all__ = [
     "Demodulator",
 ]
 
-# Añadir el directorio padre al path para que los módulos planos sean importables
 _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in _sys.path:
     _sys.path.insert(0, _parent)

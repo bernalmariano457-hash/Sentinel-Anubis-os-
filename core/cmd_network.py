@@ -11,10 +11,8 @@ from rich.table import Table
 from core._base import _DomainBase
 from core.validators import Validador
 
+
 class NetworkCommands(_DomainBase):
-
-    # ARP Scan
-
     def scan(self) -> None:
         s = self.s
         if s._ARP is None:
@@ -50,8 +48,6 @@ class NetworkCommands(_DomainBase):
         except Exception:
             self.console.print(
                 "[red][!] Error de permisos. Ejecuta como root/administrador.[/red]")
-
-    # Port Scan
 
     def portscan(self) -> None:
         s = self.s
@@ -96,8 +92,6 @@ class NetworkCommands(_DomainBase):
                 s.cve.analizar_resultado_scan(
                     [{"nombre": a["servicio"], "version": ""} for a in abiertos])
 
-    # Sweep / Sniff / AdvScan
-
     def sweep(self) -> None:
         if not self._modulo_ok("sweep"):
             return
@@ -119,8 +113,6 @@ class NetworkCommands(_DomainBase):
         if ip:
             self.s.adv_scanner.escanear_objetivo(ip)
 
-    # Radar
-
     def radar(self) -> None:
         s = self.s
         if not self._modulo_ok("radar") or not self._modulo_ok("geomap"):
@@ -136,8 +128,6 @@ class NetworkCommands(_DomainBase):
                 time.sleep(2)
         except KeyboardInterrupt:
             self.console.print("\n[yellow][!] Radar detenido.[/yellow]")
-
-    # Auditoría / Hydra
 
     def audit(self) -> None:
         s = self.s
@@ -164,8 +154,6 @@ class NetworkCommands(_DomainBase):
                 target, servicio, "root", diccionario)
             if resultado:
                 s.mostrar_dashboard_exito(target, servicio, resultado)
-
-    # Vuln Scan / SQL Check
 
     def vulnscan(self) -> None:
         s = self.s

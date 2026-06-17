@@ -12,7 +12,6 @@ _DEPRECATION_MSG = (
 
 
 class LocatorModule:
-    # Adaptador de compatibilidad — delega en OSINTEngine.
 
     def __init__(self, sentinel):
         self._sentinel = sentinel

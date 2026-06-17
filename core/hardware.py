@@ -15,8 +15,6 @@ from modules.rf.RFScanner import (
 )
 
 log = logging.getLogger("rfscanner.hardware")
-
-# Disponibilidad de backends SDR
 _RTL_OK = False
 _SOAPY_OK = False
 
@@ -32,8 +30,6 @@ try:
     _SOAPY_OK = True
 except ImportError:
     pass
-
-# Diagnóstico de permisos USB
 
 
 def check_usb_permissions() -> tuple[bool, str]:
@@ -62,13 +58,12 @@ def check_usb_permissions() -> tuple[bool, str]:
                 f"Luego cierra sesión y vuelve a entrar."
             )
     except (KeyError, ImportError):
-        pass  # plugdev no existe en macOS ni en entornos sin /etc/group
+        pass
 
     return True, ""
 
 
 def check_rtlsdr_rules() -> tuple[bool, str]:
-    # Verifica que las reglas udev del RTL-SDR están instaladas.
     rules_paths = [
         Path("/etc/udev/rules.d/rtl-sdr.rules"),
         Path("/lib/udev/rules.d/rtl-sdr.rules"),
@@ -83,8 +78,6 @@ def check_rtlsdr_rules() -> tuple[bool, str]:
         "Luego: sudo udevadm control --reload-rules && sudo udevadm trigger"
     )
 
-# Gestor de hardware SDR
-
 
 class SDRManager:
     def __init__(self, hw_cfg) -> None:
@@ -95,8 +88,6 @@ class SDRManager:
         self._lock = threading.Lock()
         self._sample_rate = float(getattr(hw_cfg, "sample_rate", 2_048_000))
         self._connected = False
-
-    # Conexión
 
     def connect(self) -> None:
         self._validar_permisos()
@@ -192,8 +183,6 @@ class SDRManager:
         time.sleep(getattr(self._cfg, "reconnect_delay_s", 1.0))
         self.connect()
 
-    # Lectura de muestras
-
     def read_samples(
         self,
         freq_hz:    float,
@@ -238,8 +227,6 @@ class SDRManager:
                 f"SoapySDR readStream error: {sr.ret}")
         return buff[:sr.ret]
 
-    # Ajustes en caliente
-
     def set_gain(self, gain_db: float) -> None:
         with self._lock:
             if not self._connected:
@@ -271,8 +258,6 @@ class SDRManager:
                     log.info(f"Bias-T: {'ON' if enabled else 'OFF'}")
                 else:
                     log.warning("Este RTL-SDR no soporta Bias-T")
-
-    # Propiedades
 
     @property
     def is_connected(self) -> bool:

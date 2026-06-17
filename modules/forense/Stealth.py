@@ -15,10 +15,6 @@ from rich.table import Table
 
 if TYPE_CHECKING:
     from Main import ApexSentinel
-
-# Constantes
-# La clave de pánico va en el mismo directorio que la maestra de SecurityModule.
-# No genera una clave paralela — StealthModule reutiliza SecurityModule.
 _SECURITY_DIR = Path("data/security")
 
 _ISP_KEYWORDS_SEGUROS: frozenset[str] = frozenset({
@@ -26,8 +22,6 @@ _ISP_KEYWORDS_SEGUROS: frozenset[str] = frozenset({
     "HOSTING", "MULLVAD", "NORDVPN", "TOR", "ANONIMIZADOR",
 })
 
-# Archivos que el protocolo de pánico debe cifrar antes de cerrar.
-# Usamos rutas relativas al CWD del proyecto.
 _ARCHIVOS_SENSIBLES: tuple[str, ...] = (
     "config.json",
     "sentinel_activity.log",
@@ -45,8 +39,6 @@ class StealthModule:
         self._console = sentinel.console
         self._log = sentinel.log
         _SECURITY_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Verificación de identidad digital
 
     def verificar_identidad(self) -> dict[str, str | bool]:
         self._console.print(
@@ -125,8 +117,6 @@ class StealthModule:
             "protegido": protegido,
         }
 
-    # Cifrado de archivos sensibles
-
     def cifrar_archivos(self) -> tuple[int, int]:
         sec = getattr(self.sentinel, "security", None)
         if sec is None:
@@ -149,8 +139,6 @@ class StealthModule:
                 err += 1
         return ok, err
 
-    # Limpieza de historial de terminal
-
     def limpiar_historial(self) -> bool:
         if sys.platform == "win32":
             self._console.print(
@@ -170,8 +158,6 @@ class StealthModule:
                 f"  [red][-][/red] Error purgando historial: {exc}")
             return False
 
-    # Borrado de temporales
-
     def limpiar_temporales(self) -> int:
         eliminados = 0
         for patron in ("*.pyc", "__pycache__", ".pytest_cache", "htmlcov", ".coverage"):
@@ -182,8 +168,6 @@ class StealthModule:
                 except Exception:
                     pass
         return eliminados
-
-    # Protocolo de pánico completo
 
     def activar_panico(self) -> None:
         with _barra_progreso(self._console) as pg:
@@ -225,11 +209,8 @@ class StealthModule:
 
         sys.exit(0)
 
-# Helpers privados de módulo
-
 
 def _bool_tag(valor: bool, invertir: bool = True) -> str:
-    """Formatea un bool como markup Rich con color verde/rojo."""
     if invertir:
         return "[green]Sí[/green]" if valor else "[red]No[/red]"
     return "[white]Sí[/white]" if valor else "[dim]No[/dim]"

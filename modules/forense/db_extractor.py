@@ -35,7 +35,6 @@ class DatabaseExtractor:
         remote_key_path = "/data/data/com.whatsapp/files/key"
         local_key_file = os.path.join(save_path, "whatsapp.key")
 
-        # Comando táctico: copia y cambio de permisos
         cmd = f"su -c 'cp {remote_key_path} /sdcard/key_export && chmod 777 /sdcard/key_export'"
         subprocess.run([self.adb, "shell", cmd])
 

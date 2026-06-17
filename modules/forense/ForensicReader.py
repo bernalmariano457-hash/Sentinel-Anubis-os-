@@ -15,8 +15,6 @@ class ForensicReader:
         self.main_app = main_app
         self.console: Console = main_app.console
 
-    # Formateo de timestamps
-
     def formatear_fecha_wa(self, timestamp: int | float) -> str:
         try:
             if timestamp > 1_000_000_000_000:
@@ -36,8 +34,6 @@ class ForensicReader:
             return (epoch_start + delta).strftime("%d/%m %H:%M")
         except (OverflowError, ValueError):
             return "Desconocida"
-
-    # Lectores
 
     def leer_whatsapp_mensajes(self, db_path: str) -> None:
         _QUERY_IOS = (

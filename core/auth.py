@@ -29,25 +29,24 @@ _BCRYPT_ROUNDS = int(os.getenv("BCRYPT_ROUNDS", 12))
 _MAX_INTENTOS = int(os.getenv("MAX_LOGIN_ATTEMPTS", 5))
 _VENTANA_SEG = int(os.getenv("LOCKOUT_WINDOW_SECONDS", 300))
 
-# Hashing
 
 def _hash_bcrypt(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt(_BCRYPT_ROUNDS)).decode()
 
+
 def _hash_sha256_salted(password: str) -> str:
-    # Fallback cuando bcrypt no está disponible. Usar solo en entornos donde
-    # no se puede instalar la extensión C.
     salt = os.urandom(16).hex()
     h = hashlib.sha256((salt + password).encode()).hexdigest()
     return f"sha256s:{salt}:{h}"
+
 
 def _hash(password: str) -> str:
     if len(password) < 8:
         raise ValueError("La contraseña debe tener al menos 8 caracteres.")
     return _hash_bcrypt(password) if _BCRYPT else _hash_sha256_salted(password)
 
+
 def _verificar(password: str, almacenado: str) -> bool:
-    """Verifica password contra hash almacenado. Soporta bcrypt, sha256s y legacy."""
     if not almacenado:
         return False
 
@@ -69,12 +68,12 @@ def _verificar(password: str, almacenado: str) -> bool:
         except Exception:
             return False
 
-    # Legacy: SHA-256 sin sal — se migra automáticamente en el siguiente login
     if len(almacenado) == 64 and all(c in "0123456789abcdef" for c in almacenado):
         candidate = hashlib.sha256(password.encode()).hexdigest()
         return hmac.compare_digest(candidate, almacenado)
 
     return False
+
 
 def _es_legacy(almacenado: str) -> bool:
     return (
@@ -82,7 +81,6 @@ def _es_legacy(almacenado: str) -> bool:
         (len(almacenado) == 64 and ":" not in almacenado)
     )
 
-# Control de bloqueo persistente
 
 class _LockoutManager:
     def __init__(self):
@@ -113,23 +111,19 @@ class _LockoutManager:
         self._escribir(data)
 
     def esta_bloqueado(self) -> tuple[bool, int]:
-        """Retorna (bloqueado, segundos_restantes)."""
         data = self._leer()
         restante = max(0, int(data.get("bloqueado_hasta", 0) - time.time()))
         return restante > 0, restante
 
     def reiniciar(self) -> None:
-        """Borra el historial de intentos y desbloquea el sistema."""
         self._escribir({"intentos": [], "bloqueado_hasta": 0})
 
     def intentos_restantes(self) -> int:
-        """Retorna cuántos intentos quedan antes del bloqueo automático."""
         data = self._leer()
         now = time.time()
         recientes = [t for t in data["intentos"] if now - t < _VENTANA_SEG]
         return max(0, _MAX_INTENTOS - len(recientes))
 
-# Almacén de credenciales
 
 class _CredentialStore:
     def __init__(self, config: dict):
@@ -137,8 +131,6 @@ class _CredentialStore:
         _CREDS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     def leer(self) -> str | None:
-
-        # Prioridad: variable de entorno > archivo > config.json (legacy)
         env_hash = os.getenv("SENTINEL_PASSWORD_HASH")
         if env_hash:
             return env_hash.strip()
@@ -186,7 +178,6 @@ class _CredentialStore:
     def existe(self) -> bool:
         return bool(self.leer())
 
-# API pública
 
 class GestorAuth:
 

@@ -37,7 +37,6 @@ def mock_log() -> MagicMock:
     return log
 
 
-# BLOQUE 1 — FUNCIONES DE HASHING (core.auth)
 class TestHashFunctions:
 
     def test_hash_bcrypt_devuelve_prefijo_correcto(self):
@@ -62,10 +61,9 @@ class TestHashFunctions:
     def test_hash_acepta_password_minima(self):
         from core.auth import _hash
         h = _hash("12345678")
-        assert h  # no lanza excepción
+        assert h
 
     def test_dos_hashes_del_mismo_password_son_distintos(self):
-        """La sal garantiza que el mismo input produce hashes distintos."""
         from core.auth import _hash
         h1 = _hash("mismapassword1")
         h2 = _hash("mismapassword1")
@@ -95,7 +93,6 @@ class TestVerificar:
         assert _verificar("otra_password_1", h) is False
 
     def test_verifica_hash_legacy_sin_sal(self):
-        """Hash SHA-256 plano de 64 hex chars — formato legacy."""
         from core.auth import _verificar
         legacy = hashlib.sha256("legacy_pass1".encode()).hexdigest()
         assert _verificar("legacy_pass1", legacy) is True
@@ -133,12 +130,10 @@ class TestEsLegacy:
         assert _es_legacy(h) is False
 
 
-# BLOQUE 2 — LOCKOUT MANAGER
 class TestLockoutManager:
 
     @pytest.fixture(autouse=True)
     def _patch_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Redirige _LOCKOUT_FILE al directorio temporal."""
         import core.auth as auth_mod
         lockout_file = tmp_path / ".lockout"
         monkeypatch.setattr(auth_mod, "_LOCKOUT_FILE", lockout_file)
@@ -189,7 +184,6 @@ class TestLockoutManager:
         assert lm.intentos_restantes() == 1
 
     def test_bloqueo_persiste_entre_instancias(self, tmp_path: Path):
-        """El lockout sobrevive crear una nueva instancia (simula reinicio)."""
         import core.auth as auth_mod
         lm1 = _LockoutManager_new(auth_mod)
         lm1.registrar_fallo()
@@ -204,13 +198,11 @@ class TestLockoutManager:
         import core.auth as auth_mod
         lm = _LockoutManager_new(auth_mod)
 
-        # Escribir manualmente intentos con timestamps viejos
         datos_viejos = {"intentos": [time.time() - 999], "bloqueado_hasta": 0}
         auth_mod._LOCKOUT_FILE.write_text(
             json.dumps(datos_viejos), encoding="utf-8")
 
         lm.registrar_fallo()
-        # El intento viejo no debe contar; solo hay 1 intento válido
         assert lm.intentos_restantes() == 2
 
 
@@ -218,7 +210,6 @@ def _LockoutManager_new(auth_mod):
     return auth_mod._LockoutManager()
 
 
-# BLOQUE 3 — CREDENTIAL STORE
 class TestCredentialStore:
 
     @pytest.fixture(autouse=True)
@@ -265,7 +256,6 @@ class TestCredentialStore:
         assert auth_mod._CREDS_FILE.exists()
 
 
-# BLOQUE 4 — GESTOR AUTH (integración)
 class TestGestorAuthCambiarPassword:
 
     @pytest.fixture(autouse=True)
@@ -315,7 +305,6 @@ class TestMigracionBcrypt:
         import core.auth as auth_mod
         from core.auth import GestorAuth
 
-        # Guardar hash legacy (SHA-256 sin sal)
         legacy_hash = hashlib.sha256("mi_password1".encode()).hexdigest()
         auth_mod._CREDS_FILE.write_text(legacy_hash, encoding="utf-8")
 
@@ -340,7 +329,6 @@ class TestMigracionBcrypt:
         assert mtime_antes == mtime_despues, "El archivo no debe haberse modificado"
 
 
-# BLOQUE 5 — SECURITY MODULE (Fernet)
 class TestSecurityModuleInit:
 
     @pytest.fixture(autouse=True)
@@ -530,7 +518,6 @@ class TestRotacionClave:
         assert estado["backups"] == 2
 
 
-# BLOQUE 6 — VENDOR RESOLVER (core.vendor_resolver)
 class TestVendorResolver:
 
     @pytest.fixture(autouse=True)

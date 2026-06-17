@@ -13,11 +13,6 @@ _DEPRECATION_MSG = (
 
 
 class MapSentinel:
-    # Adaptador de compatibilidad — delega en GeomapSentinel.
-    # La implementación original era un prototipo sin integración con el sistema
-    # de consola ni manejo de errores. GeomapSentinel es la versión completa y
-    # mantenida. Este stub existe únicamente para no romper código externo que
-    # instancie MapSentinel directamente.
 
     def __init__(self, sentinel=None, lat_inicial: float = 0.0, lon_inicial: float = 0.0):
         self._sentinel = sentinel
@@ -27,7 +22,8 @@ class MapSentinel:
         log.warning(_DEPRECATION_MSG)
 
     def actualizar_mapa(self, targets: dict[str, dict[str, Any]] | None = None) -> None:
-        geomap = getattr(self._sentinel, "geomap", None) if self._sentinel else None
+        geomap = getattr(self._sentinel, "geomap",
+                         None) if self._sentinel else None
         if geomap is None:
             log.error(
                 "GeomapSentinel no disponible; no se puede generar el mapa. "

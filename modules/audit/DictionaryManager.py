@@ -61,8 +61,6 @@ class DictionaryManager:
 
     LOCAL_FALLBACK = Path("local_pass.txt")
 
-    # API pública
-
     def obtener_ruta_diccionario(self, protocolo: str) -> Path | None:
         protocolo = protocolo.lower().strip()
         candidatos = self.DICT_MAP.get(protocolo, self.DICT_MAP["default"])

@@ -25,7 +25,6 @@ def setup_logger(
     root = logging.getLogger(_ROOT_LOGGER)
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
-    # Evitar duplicar handlers si se llama varias veces
     if root.handlers:
         root.handlers.clear()
 
@@ -34,7 +33,6 @@ def setup_logger(
         datefmt="%H:%M:%S",
     )
 
-    # Consola
     if rich and _RICH_OK:
         console_h = RichHandler(
             level=getattr(logging, level.upper(), logging.INFO),
@@ -47,7 +45,6 @@ def setup_logger(
 
     root.addHandler(console_h)
 
-    # Archivo con rotación
     if log_file:
         try:
             log_path = Path(log_file)
@@ -73,7 +70,6 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-# Logger por defecto para módulos que importen antes de setup_logger()
 _default = logging.getLogger(_ROOT_LOGGER)
 if not _default.handlers:
     _h = logging.StreamHandler(sys.stderr)

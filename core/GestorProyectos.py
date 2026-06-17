@@ -23,8 +23,6 @@ _COLORES_SEV = {"CRITICO": "red", "ALTO": "red",
 
 
 class Proyecto:
-    """Workspace de operación — scope, evidencia y hallazgos en un mismo lugar."""
-
     def __init__(
         self,
         nombre: str,
@@ -86,14 +84,10 @@ class GestorProyectos:
         _PROYECTOS_BASE.mkdir(parents=True, exist_ok=True)
         self.proyecto_activo: Proyecto | None = None
 
-        # Usar el Console del sentinel si está disponible;
-        # crear uno propio solo como fallback de uso standalone.
         if sentinel is not None and hasattr(sentinel, "console"):
             self._console: Console = sentinel.console
         else:
             self._console = Console()
-
-    # CRUD
 
     def crear_proyecto(self) -> Proyecto:
         self._console.print()
@@ -205,8 +199,6 @@ class GestorProyectos:
         )
         log.info(f"Proyecto cerrado: {self.proyecto_activo.nombre}")
         self.proyecto_activo = None
-
-    # Registro de evidencia y hallazgos
 
     def registrar_evidencia(
         self,
@@ -326,8 +318,6 @@ class GestorProyectos:
                 )
             self._console.print(
                 Panel(tabla_h, title="HALLAZGOS", border_style="red"))
-
-    # Workspace en disco
 
     def _crear_estructura(self, proyecto: Proyecto) -> None:
         for carpeta in _SUBCARPETAS:

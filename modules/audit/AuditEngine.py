@@ -38,8 +38,6 @@ class AuditEngine:
         self.console: Console = main_app.console
         self._verificar_dependencias()
 
-    # Verificación de herramientas al inicio
-
     def _verificar_dependencias(self) -> None:
         faltantes = [
             h for h in self.HERRAMIENTAS_REQUERIDAS if shutil.which(h) is None]
@@ -49,8 +47,6 @@ class AuditEngine:
                 f"{', '.join(faltantes)}[/bold red]"
             )
             log.warning("Dependencias faltantes: %s", faltantes)
-
-    # Utilidad interna para ejecutar subprocesos
 
     def _ejecutar(
         self,
@@ -93,8 +89,6 @@ class AuditEngine:
 
         return resultado
 
-    # FASE 3: Detección de vulnerabilidades (Nmap NSE)
-
     def escaneo_vulnerabilidades(
         self,
         target: str,
@@ -109,8 +103,6 @@ class AuditEngine:
             cmd += ["-p", puertos]
 
         return self._ejecutar(cmd, self.TIMEOUT_NMAP, "Nmap-NSE", target)
-
-    # FASE 4: Auditoría SQL (SQLmap)
 
     def auditoria_sql(
         self,
@@ -133,8 +125,6 @@ class AuditEngine:
             cmd.extend(extra_args)
 
         return self._ejecutar(cmd, self.TIMEOUT_SQLMAP, "SQLmap", url)
-
-    # FASE 5: Control de exploits (Metasploit RPC)
 
     def conectar_metasploit(
         self,

@@ -21,43 +21,37 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("sentinel.osint")
 
-# Configuración
-_TIMEOUT    = int(os.getenv("OSINT_TIMEOUT", "8"))
-_MAX_WHOIS  = int(os.getenv("OSINT_WHOIS_FIELDS", "14"))
+_TIMEOUT = int(os.getenv("OSINT_TIMEOUT", "8"))
+_MAX_WHOIS = int(os.getenv("OSINT_WHOIS_FIELDS", "14"))
 
-# Rutas
 _EVIDENCE_DIR = Path("data/evidence/osint")
 
-# APIs
-_URL_GEO     = (
+_URL_GEO = (
     "https://ip-api.com/json/{ip}"
     "?fields=status,country,regionName,city,lat,lon,timezone,"
     "isp,org,as,mobile,proxy,hosting"
 )
-_URL_ASN     = "https://ipinfo.io/{ip}/json"
-_URL_WHOIS   = "https://api.whois.vu/?q={dominio}"
-_URL_ABUSE   = "https://api.abuseipdb.com/api/v2/check"
+_URL_ASN = "https://ipinfo.io/{ip}/json"
+_URL_WHOIS = "https://api.whois.vu/?q={dominio}"
+_URL_ABUSE = "https://api.abuseipdb.com/api/v2/check"
 
-# Headers HTTP de interés para fingerprinting
 _HEADERS_RELEVANTES: tuple[str, ...] = (
     "Server", "X-Powered-By", "X-Frame-Options",
     "Content-Security-Policy", "Strict-Transport-Security",
     "X-Content-Type-Options", "X-Generator", "Set-Cookie",
 )
 
-# CLASE PRINCIPAL
 
 class OSINTEngine:
 
     def __init__(self, sentinel: ApexSentinel) -> None:
-        self._s      = sentinel
-        self._con    = sentinel.console
-        self._log    = sentinel.log
+        self._s = sentinel
+        self._con = sentinel.console
+        self._log = sentinel.log
         self._sesion = self._crear_sesion()
         self._abuse_key: str = os.getenv("ABUSEIPDB_KEY", "")
         _EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # API pública
     def analizar_ip(self, ip: str) -> dict[str, Any]:
         self._con.print(
             f"\n[bold cyan]OSINT  →  IP:[/bold cyan] "
@@ -165,7 +159,6 @@ class OSINTEngine:
                 log.debug("Resolución DNS de %s falló: %s", objetivo, exc)
             self.analizar_dominio(objetivo)
 
-    # IP Intelligence
     def _geo_ip(self, ip: str) -> dict[str, Any] | None:
         try:
             r = self._sesion.get(_URL_GEO.format(ip=ip), timeout=_TIMEOUT)
@@ -215,7 +208,6 @@ class OSINTEngine:
             log.warning("AbuseIPDB: error — %s", exc)
         return None
 
-    # Domain Intelligence
     def _resolver_dns(self, dominio: str) -> dict[str, Any]:
         resultado: dict[str, Any] = {}
         try:
@@ -225,7 +217,6 @@ class OSINTEngine:
             log.debug("DNS A de %s: %s", dominio, exc)
             resultado["A"] = []
 
-        # MX — intento con dnspython si disponible
         try:
             import dns.resolver  # noqa: PLC0415
             mx = [str(r.exchange).rstrip(".") for r in
@@ -276,7 +267,6 @@ class OSINTEngine:
                 log.debug("Headers HTTP: %s — %s", url, exc)
         return None
 
-    # Display
     def _mostrar_geo(self, geo: dict[str, Any]) -> None:
         tb = self._tabla_kv()
         campos: list[tuple[str, str]] = [
@@ -288,8 +278,10 @@ class OSINTEngine:
             ("ISP",          geo.get("isp", "—")),
             ("Organización", geo.get("org", "—")),
             ("ASN",          geo.get("as", "—")),
-            ("Proxy/VPN",    "[red]SÍ[/red]"   if geo.get("proxy")   else "[green]NO[/green]"),
-            ("Hosting/DC",   "[yellow]SÍ[/yellow]" if geo.get("hosting") else "NO"),
+            ("Proxy/VPN",    "[red]SÍ[/red]" if geo.get("proxy")
+             else "[green]NO[/green]"),
+            ("Hosting/DC",
+             "[yellow]SÍ[/yellow]" if geo.get("hosting") else "NO"),
             ("Red móvil",    "SÍ" if geo.get("mobile") else "NO"),
         ]
         for k, v in campos:
@@ -307,8 +299,9 @@ class OSINTEngine:
 
     def _mostrar_abuso(self, abuso: dict[str, Any]) -> None:
         score = int(abuso.get("abuseConfidenceScore", 0))
-        color = "red" if score >= 50 else ("yellow" if score >= 10 else "green")
-        tb    = self._tabla_kv()
+        color = "red" if score >= 50 else (
+            "yellow" if score >= 10 else "green")
+        tb = self._tabla_kv()
         tb.add_row("Score de abuso",   f"[{color}]{score}%[/{color}]")
         tb.add_row("Total reportes",   str(abuso.get("totalReports", 0)))
         tb.add_row("Último reporte",   str(abuso.get("lastReportedAt", "—")))
@@ -343,7 +336,6 @@ class OSINTEngine:
             self._con.print(Panel(tb, title="[dim cyan]HEADERS HTTP[/dim cyan]",
                                   border_style="dim cyan"))
 
-    # Utilidades internas
     def _crear_sesion(self) -> requests.Session:
         s = requests.Session()
         s.headers.update({
@@ -368,17 +360,15 @@ class OSINTEngine:
         objetivo: str,
         datos:    dict[str, Any],
     ) -> None:
-        # Log en Sentinel
         self._log.info(
             f"OSINT completado — {objetivo} ({tipo})",
             "OSINTEngine",
         )
 
-        # Guardar JSON en evidencias
         from datetime import datetime, UTC
-        ts       = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        seguro   = objetivo.replace(".", "_").replace("/", "_")[:40]
-        destino  = _EVIDENCE_DIR / f"{tipo}_{seguro}_{ts}.json"
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        seguro = objetivo.replace(".", "_").replace("/", "_")[:40]
+        destino = _EVIDENCE_DIR / f"{tipo}_{seguro}_{ts}.json"
 
         import json  # importación diferida — solo cuando se necesita
         destino.write_text(
@@ -387,7 +377,6 @@ class OSINTEngine:
         )
         log.info("OSINT exportado: %s", destino)
 
-        # Registrar en proyecto activo
         gp = getattr(self._s, "gp", None)
         if gp and gp.proyecto_activo:
             gp.registrar_evidencia(

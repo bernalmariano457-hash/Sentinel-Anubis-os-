@@ -11,8 +11,6 @@ class ExifAnalyzer:
     def __init__(self, main_app):
         self.main_app = main_app
 
-    # Internos
-
     def _to_decimal(self, coords, ref: str) -> float:
         d = coords[0][0] / coords[0][1]
         m = coords[1][0] / coords[1][1]
@@ -35,8 +33,6 @@ class ExifAnalyzer:
             return lat, lon
         except (KeyError, ZeroDivisionError, AttributeError, piexif.InvalidImageDataError):
             return None
-
-    # API pública
 
     def analizar_foto(self, ruta: str) -> None:
         try:

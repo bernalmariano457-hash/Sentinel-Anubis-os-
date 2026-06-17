@@ -5,14 +5,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Modificadores HID estándar
 MOD_NONE = 0x00
 MOD_CTRL = 0x01
 MOD_SHIFT = 0x02
 MOD_ALT = 0x04
-MOD_GUI = 0x08  # Windows / Meta / Cmd
+MOD_GUI = 0x08
 
-# Scan codes base (layout US)
 _BASE = {
     'a': 0x04, 'b': 0x05, 'c': 0x06, 'd': 0x07, 'e': 0x08, 'f': 0x09,
     'g': 0x0a, 'h': 0x0b, 'i': 0x0c, 'j': 0x0d, 'k': 0x0e, 'l': 0x0f,
@@ -32,7 +30,6 @@ _BASE = {
     'UP': 0x52, 'DOWN': 0x51, 'LEFT': 0x50, 'RIGHT': 0x4f,
 }
 
-# Caracteres que requieren Shift en layout US → (scan_code, MOD_SHIFT)
 _SHIFT_MAP = {
     'A': (_BASE['a'], MOD_SHIFT), 'B': (_BASE['b'], MOD_SHIFT),
     'C': (_BASE['c'], MOD_SHIFT), 'D': (_BASE['d'], MOD_SHIFT),
@@ -60,7 +57,6 @@ _SHIFT_MAP = {
     '~': (_BASE['`'], MOD_SHIFT),
 }
 
-# Comandos multi-tecla del estilo "CTRL c" → (modificador, tecla)
 _COMBO_MOD = {
     'CTRL':    MOD_CTRL,
     'ALT':     MOD_ALT,
@@ -72,17 +68,13 @@ _COMBO_MOD = {
 
 class DuckyModule:
 
-    DEFAULT_DELAY = 0.01   # segundos entre pulsaciones
-    RELEASE_DELAY = 0.005  # segundos entre press y release
+    DEFAULT_DELAY = 0.01
+    RELEASE_DELAY = 0.005
 
     def __init__(self, sentinel, hid_path: str = "/dev/hidg0"):
         self.sentinel = sentinel
         self.hid_path = hid_path
-        self._fd = None  # file descriptor persistente
-
-    # ------------------------------------------------------------------ #
-    #  Gestión del file descriptor (context manager)                       #
-    # ------------------------------------------------------------------ #
+        self._fd = None
 
     def __enter__(self):
         self._fd = open(self.hid_path, 'rb+')
@@ -109,10 +101,6 @@ class DuckyModule:
                 fd.write(reporte)
                 time.sleep(self.RELEASE_DELAY)
                 fd.write(bytearray(8))
-
-    # ------------------------------------------------------------------ #
-    #  API pública                                                         #
-    # ------------------------------------------------------------------ #
 
     def presionar(self, key_code: int, modifier: int = MOD_NONE):
         try:
@@ -169,16 +157,13 @@ class DuckyModule:
                     time.sleep(int(arg) / 1000)
 
                 elif cmd in _BASE:
-                    # Teclas especiales directas: ENTER, TAB, ESC, DELETE, etc.
                     self.presionar(_BASE[cmd])
 
                 elif cmd in _COMBO_MOD:
-                    # Combinaciones tipo "CTRL c", "ALT F4", "GUI r"
                     mod = _COMBO_MOD[cmd]
                     if arg:
                         self.combo(mod, arg)
                     else:
-                        # Modificador solo (raro, pero válido)
                         self.presionar(0x00, mod)
 
                 elif cmd == "DEFAULTDELAY" or cmd == "DEFAULT_DELAY":

@@ -8,9 +8,8 @@ from rich.panel import Panel
 
 from core._base import _DomainBase
 
-class MobileCommands(_DomainBase):
 
-    # Triage básico
+class MobileCommands(_DomainBase):
 
     def mobile(self) -> None:
         s = self.s
@@ -45,8 +44,6 @@ class MobileCommands(_DomainBase):
                 s.log.error(f"Screenshot ADB: {e}", "MobileSentinel")
             except Exception as e:
                 self.console.print(f"[red][!] Error inesperado ADB: {e}[/red]")
-
-    # Extracción profunda
 
     def mobile_deep(self) -> None:
         s = self.s
@@ -103,8 +100,6 @@ class MobileCommands(_DomainBase):
             except Exception as e:
                 self.console.print(f"[red][!] Error en descifrado: {e}[/red]")
                 s.log.error(f"WADecryptor: {e}", "MobileDeep")
-
-    # Lector forense
 
     def view(self) -> None:
         s = self.s

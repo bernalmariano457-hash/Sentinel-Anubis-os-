@@ -7,10 +7,10 @@ from typing import Any
 
 @dataclass
 class ModuleSpec:
-    attr:           str   # atributo en el sentinel (self.radar, self.rf…)
-    cls_name:       str   # nombre de la clase a instanciar
-    module_path:    str   # ruta Python dotted: "modules.network.RadarSentinel"
-    needs_sentinel: bool = True   # True → Cls(sentinel) | False → Cls()
+    attr:           str
+    cls_name:       str
+    module_path:    str
+    needs_sentinel: bool = True
     display_name:   str = ""
     critico:        bool = False
 
@@ -20,13 +20,11 @@ class ModuleSpec:
 
 
 MODULOS: list[ModuleSpec] = [
-    # Core
     ModuleSpec("security",     "SecurityModule",    "core.Security",
                critico=True,  display_name="SecurityModule"),
     ModuleSpec("cola",         "ColaTareas",        "core.ColaTareas"),
     ModuleSpec("gp",           "GestorProyectos",   "core.GestorProyectos"),
 
-    # Red
     ModuleSpec("sniffer",      "TacticalSniffer",
                "modules.network.TacticalSniffer"),
     ModuleSpec("radar",        "RadarSentinel",
@@ -45,7 +43,6 @@ MODULOS: list[ModuleSpec] = [
     ModuleSpec("wifitri",      "WiFiTriangulation",  "modules.network.wifi_triangulation",
                display_name="WiFi Triangulation"),
 
-    # Forense
     ModuleSpec("reader",       "ForensicReader",
                "modules.forense.ForensicReader"),
     ModuleSpec("exif",         "ExifAnalyzer",
@@ -55,14 +52,12 @@ MODULOS: list[ModuleSpec] = [
     ModuleSpec("mobile",       "MobileSentinel",
                "modules.forense.MobileSentinel"),
 
-    # Geo
     ModuleSpec("locator",      "LocatorModule",
                "modules.geo.LocatorModule"),
     ModuleSpec("geoprecise",   "GeoPrecise",        "modules.geo.GeoPrecise"),
     ModuleSpec("geomap",       "GeomapSentinel",
                "modules.geo.GeomapSentinel"),
 
-    # Auditoría
     ModuleSpec("audit_engine", "AuditEngine",
                "modules.audit.AuditEngine"),
     ModuleSpec("dict_manager", "DictionaryManager", "modules.audit.DictionaryManager",
@@ -70,17 +65,15 @@ MODULOS: list[ModuleSpec] = [
     ModuleSpec("ducky",        "DuckyModule",
                "modules.audit.DuckyModule"),
 
-    # Reportes
     ModuleSpec("reportes",     "ReportManager",     "modules.reporte.ReportManager",
                needs_sentinel=False),
 
-    # OSINT
+
     ModuleSpec("osint",        "OSINTEngine",
                "modules.osint.OSINTEngine"),
     ModuleSpec("cve",          "CVEMatcher",
                "modules.osint.CVEMatcher"),
 
-    # RF
     ModuleSpec("rf",           "RFModuleIntegrado", "modules.rf.rf_module"),
     ModuleSpec("sa",           "SpectrumAnalyzer",
                "modules.rf.SpectrumAnalyzer"),
@@ -180,7 +173,6 @@ class ModuleRegistry:
             return False
 
     def _cargar_extras(self) -> None:
-        # Callables y primitivas que no son instancias de clase
 
         try:
             from modules.network.EvilTwinServer import iniciar_servidor
@@ -248,5 +240,4 @@ class ModuleRegistry:
                 for attr, (ok, spec) in self._resultados.items()}
 
     def disponible(self, attr: str) -> bool:
-        """True si el sentinel tiene el atributo `attr` instanciado (no None)."""
         return getattr(self._sentinel, attr, None) is not None

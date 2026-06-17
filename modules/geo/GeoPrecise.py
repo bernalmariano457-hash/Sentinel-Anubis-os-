@@ -20,20 +20,16 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("sentinel.geoprecise")
 
-# Rutas
 _RESULTS_DIR = Path("data/evidence/geo")
 
-# Configuración por variables de entorno
-_TIMEOUT_SEG  = int(os.getenv("GEO_TIMEOUT",        "8"))
-_MIN_REDES    = int(os.getenv("GEO_MIN_NETWORKS",    "2"))
-_CACHE_SEG    = int(os.getenv("GEO_CACHE_SECONDS",   "30"))
+_TIMEOUT_SEG = int(os.getenv("GEO_TIMEOUT",        "8"))
+_MIN_REDES = int(os.getenv("GEO_MIN_NETWORKS",    "2"))
+_CACHE_SEG = int(os.getenv("GEO_CACHE_SECONDS",   "30"))
 
-# Endpoints de proveedores
 _URL_MOZILLA = "https://location.services.mozilla.com/v1/geolocate?key=test"
-_URL_GOOGLE  = "https://www.googleapis.com/geolocation/v1/geolocate?key={key}"
-_URL_IPAPI   = "http://ip-api.com/json/"
+_URL_GOOGLE = "https://www.googleapis.com/geolocation/v1/geolocate?key={key}"
+_URL_IPAPI = "http://ip-api.com/json/"
 
-# DATACLASSES
 
 @dataclass
 class PuntoAcceso:
@@ -61,6 +57,7 @@ class PuntoAcceso:
             d["signalToNoiseRatio"] = self.signalToNoiseRatio
         return d
 
+
 @dataclass
 class ResultadoGeo:
     latitud:      float
@@ -78,18 +75,16 @@ class ResultadoGeo:
     def coords(self) -> tuple[float, float]:
         return (self.latitud, self.longitud)
 
-# MÓDULO PRINCIPAL
 
 class GeoPrecise:
 
     def __init__(self, sentinel: ApexSentinel) -> None:
-        self._s           = sentinel
+        self._s = sentinel
         self.console:     Console = getattr(sentinel, "console", Console())
-        self._google_key: str     = os.getenv("GOOGLE_GEO_KEY", "")
+        self._google_key: str = os.getenv("GOOGLE_GEO_KEY", "")
         self._cache:      tuple[float, ResultadoGeo] | None = None
         _RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # API pública
     def triangular(
         self,
         redes:   list[PuntoAcceso | dict[str, Any]],
@@ -104,7 +99,7 @@ class GeoPrecise:
             )
             return None
 
-        validos     = [p for p in puntos if p.validar()]
+        validos = [p for p in puntos if p.validar()]
         descartados = len(puntos) - len(validos)
         if descartados:
             log.warning("%d punto(s) de acceso descartados (MAC/RSSI inválidos).",
@@ -159,7 +154,7 @@ class GeoPrecise:
         ruta: str | None = None,
     ) -> Path:
         ts_safe = r.timestamp.replace(":", "-").replace(" ", "_")
-        nombre  = f"geo_{ts_safe}_{r.proveedor.replace(' ', '_')}.json"
+        nombre = f"geo_{ts_safe}_{r.proveedor.replace(' ', '_')}.json"
         destino = Path(ruta) if ruta else _RESULTS_DIR / nombre
 
         payload: dict[str, Any] = {**asdict(r), "maps_url": r.maps_url}
@@ -176,7 +171,6 @@ class GeoPrecise:
 
         return destino
 
-    # Proveedores
     def _consultar_mozilla(
         self, puntos: list[PuntoAcceso]
     ) -> ResultadoGeo | None:
@@ -192,7 +186,8 @@ class GeoPrecise:
                     longitud=data["location"]["lng"],
                     precision=float(data.get("accuracy", 0)),
                     proveedor="Mozilla MLS",
-                    timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    timestamp=datetime.now(UTC).strftime(
+                        "%Y-%m-%d %H:%M:%S UTC"),
                     redes_usadas=len(puntos),
                 )
             log.warning("Mozilla MLS: HTTP %d", resp.status_code)
@@ -210,7 +205,7 @@ class GeoPrecise:
         payload = {"wifiAccessPoints": [p.to_dict() for p in puntos]}
         log.debug("Google Geolocation — %d redes", len(puntos))
         try:
-            url  = _URL_GOOGLE.format(key=self._google_key)
+            url = _URL_GOOGLE.format(key=self._google_key)
             resp = requests.post(url, json=payload, timeout=_TIMEOUT_SEG)
             if resp.status_code == 200:
                 data = resp.json()
@@ -219,7 +214,8 @@ class GeoPrecise:
                     longitud=data["location"]["lng"],
                     precision=float(data.get("accuracy", 0)),
                     proveedor="Google Geolocation",
-                    timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    timestamp=datetime.now(UTC).strftime(
+                        "%Y-%m-%d %H:%M:%S UTC"),
                     redes_usadas=len(puntos),
                 )
             log.warning("Google Geolocation: HTTP %d", resp.status_code)
@@ -249,7 +245,6 @@ class GeoPrecise:
             log.error("ip-api fallback falló: %s", exc)
         return None
 
-    # Utilidades internas
     def _normalizar(
         self, redes: list[Any]
     ) -> list[PuntoAcceso]:
@@ -270,7 +265,8 @@ class GeoPrecise:
                     log.warning("Punto ignorado por datos inválidos: %s — %s",
                                 r, exc)
             else:
-                log.warning("Tipo de entrada desconocido ignorado: %s", type(r))
+                log.warning(
+                    "Tipo de entrada desconocido ignorado: %s", type(r))
         return resultado
 
     def _registrar(self, r: ResultadoGeo, n_redes: int) -> None:

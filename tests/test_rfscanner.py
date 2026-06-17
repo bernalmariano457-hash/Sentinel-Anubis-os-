@@ -11,11 +11,8 @@ import os
 import pytest
 import numpy as np
 
-# Añadir el directorio padre al path para importar los módulos
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-
-# FIXTURES PYTEST
 
 @pytest.fixture
 def sample_rate():
@@ -70,8 +67,6 @@ def signal_db(storage_cfg):
     return SignalDB(storage_cfg)
 
 
-# TESTS — CONFIGURACIÓN
-
 class TestConfig:
     def test_default_loads(self):
         from modules.rf.rf_config import load_config
@@ -121,8 +116,6 @@ class TestConfig:
         assert cfg2.hardware.gain_db == cfg.hardware.gain_db
 
 
-# TESTS — BANDS
-
 class TestBands:
     def test_fm_radio_identified(self):
         from modules.rf.bands import identify_band
@@ -169,8 +162,6 @@ class TestBands:
                     for b in [{"peligro": peligro}]])
 
 
-# TESTS — DSP
-
 class TestDSP:
 
     def test_psd_shape(self, dsp_engine, sample_rate, fft_size):
@@ -182,7 +173,6 @@ class TestDSP:
         assert len(psd) == fft_size
 
     def test_psd_output_is_finite(self, dsp_engine, fft_size):
-        """No debe haber NaN o inf en la PSD."""
         n = fft_size * 4
         iq = (np.random.randn(n) + 1j * np.random.randn(n)).astype(np.complex64)
         _, psd = dsp_engine.compute_psd(iq)
@@ -207,7 +197,6 @@ class TestDSP:
         f_tone = 200_000  # 200 kHz offset
         amp = 0.1
         iq = (amp * np.exp(2j * np.pi * f_tone * t)).astype(np.complex64)
-        # Añadir ruido suave
         iq += (0.001 * np.random.randn(n) + 1j * 0.001 *
                np.random.randn(n)).astype(np.complex64)
 
@@ -216,7 +205,6 @@ class TestDSP:
         picos = dsp_engine.detect_peaks(freqs, psd, center)
 
         assert len(picos) >= 1, "No se detectó el tono puro"
-        # La señal más fuerte debe estar cerca del offset esperado
         best = max(picos, key=lambda p: p.snr_db)
         offset = abs(best.freq_mhz - (center + f_tone) / 1e6)
         assert offset < 0.1, f"Offset de detección demasiado grande: {offset:.3f} MHz"
@@ -227,7 +215,6 @@ class TestDSP:
               np.random.randn(n)).astype(np.complex64)
         _, psd = dsp_engine.compute_psd(iq)
         floor = dsp_engine.noise_floor(psd)
-        # El piso debe estar entre límites razonables
         assert -140.0 < floor < 0.0
 
     def test_psd_with_short_samples(self, dsp_engine):
@@ -242,18 +229,14 @@ class TestDSP:
     def test_bw_measurement(self, dsp_engine, sample_rate, fft_size):
         n = fft_size * 4
         t = np.arange(n) / sample_rate
-        # Señal con BW controlado por filtro rectangular
         bw = 25_000  # 25 kHz
         iq = np.zeros(n, dtype=np.complex64)
         for f in np.linspace(-bw/2, bw/2, 20):
             iq += (0.05 * np.exp(2j * np.pi * f * t)).astype(np.complex64)
         freqs, psd = dsp_engine.compute_psd(iq)
         picos = dsp_engine.detect_peaks(freqs, psd, 433.92e6)
-        # Al menos debe haber un pico
-        assert len(picos) >= 0  # No fallar
+        assert len(picos) >= 0
 
-
-# TESTS — MOCK SDR
 
 class TestMockSDR:
     def test_capture_returns_array(self, mock_sdr):
@@ -303,9 +286,6 @@ class TestMockSDR:
             assert np.all(np.isfinite(s)), f"Modo {mode} generó NaN/inf"
 
 
-# TESTS — DEMODULADOR
-
-
 class TestDemodulator:
     @pytest.fixture
     def demod(self, sample_rate):
@@ -353,8 +333,6 @@ class TestDemodulator:
         assert wav.exists()
         assert wav.stat().st_size > 0
 
-
-# TESTS — ALMACENAMIENTO
 
 class TestSignalDB:
     def test_create_and_open_session(self, signal_db):
@@ -455,9 +433,6 @@ class TestSigMF:
         assert meta["captures"][0]["core:frequency"] == pytest.approx(433.92e6)
 
 
-# TESTS — CAPTURA PIPELINE
-
-
 class TestCapturePipeline:
     def test_pipeline_produces_samples(self, mock_sdr, dsp_cfg):
         from modules.network.capture import CapturePipeline
@@ -489,9 +464,6 @@ class TestCapturePipeline:
         pipeline.start(433.92e6)
         pipeline.stop()
         assert not pipeline.is_running
-
-
-# TESTS — HARDWARE (solo con --hardware flag)
 
 
 def pytest_addoption(parser):

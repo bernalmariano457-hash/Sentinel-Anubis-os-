@@ -111,8 +111,7 @@ class AFC:
         if abs(self._offset_hz) < 5.0:
             self._sample_offset += n
             return iq
-        # NCO phase-continuous across chunks: use cumulative sample offset
-        # so the rotator phase never jumps at chunk boundaries.
+
         t = (np.arange(n, dtype=np.float64) +
              self._sample_offset) / self.sample_rate
         self._sample_offset += n
@@ -167,8 +166,7 @@ class SyncPLL:
         return env_out, ph_out
 
     def find_line_starts(self, audio: np.ndarray) -> list[int]:
-        # Fast path: scipy AM envelope is faster and equally robust for NOAA SNR.
-        # The Python PLL loop remains as fallback when scipy is unavailable.
+
         if _SCIPY_OK:
             env = _am_envelope(audio, self.audio_rate)
         else:
@@ -539,7 +537,6 @@ class NOAADecoder:
         self._decoder = APTLineDecoder(APT_AUDIO_RATE)
         self._render = TerminalRenderer(self.console)
 
-        # Extraer parámetros de hardware desde sentinel.rf si está disponible
         rf_cfg = getattr(getattr(sentinel, "rf", None), "cfg", None)
         hw = getattr(rf_cfg, "hardware", None)
 

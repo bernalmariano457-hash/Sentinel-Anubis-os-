@@ -24,11 +24,7 @@ _ISP_KEYWORDS_SEGUROS = frozenset({
 
 
 class OfensivoCommands(_DomainBase):
-
-    # Phishing
-
     def phishing(self) -> None:
-        """Lanza zphisher con validaciones previas de entorno."""
         s = self.s
         self.console.print(
             Rule("[bold red]SUITE DE PHISHING[/bold red]", style="red"))
@@ -70,8 +66,6 @@ class OfensivoCommands(_DomainBase):
         except Exception as exc:
             self.console.print(f"[red][!] Error inesperado: {exc}[/red]")
             s.log.error(str(exc), "Phishing")
-
-    # Rubber Ducky
 
     def ducky(self) -> None:
         s = self.s
@@ -152,8 +146,6 @@ class OfensivoCommands(_DomainBase):
             self.console.print(f"[red][!] Error en payload: {exc}[/red]")
             s.log.error(str(exc), "DuckyModule")
 
-    # Stealth
-
     def stealth(self) -> None:
         # Delega en StealthModule.verificar_identidad() — sin reimplementación inline.
         s = self.s
@@ -163,8 +155,6 @@ class OfensivoCommands(_DomainBase):
             Rule("[bold blue]STEALTH — IDENTIDAD DIGITAL[/bold blue]", style="blue"))
         s.animar_barra("Consultando máscara de red...", pasos=12)
         s.stealth.verificar_identidad()
-
-    # Panic
 
     def panic(self) -> None:
         s = self.s
@@ -197,8 +187,6 @@ class OfensivoCommands(_DomainBase):
             self.console.print(
                 f"[red][!] Error durante el pánico: {exc}[/red]")
             s.log.error(str(exc), "StealthModule — panic")
-
-    # Evil Twin
 
     def eviltwin(self) -> None:
         s = self.s
@@ -271,8 +259,6 @@ class OfensivoCommands(_DomainBase):
                 f"Portal cautivo ejecutado — SSID: {ssid}",
                 {"ssid": ssid},
             )
-
-# Helpers privados de módulo
 
 
 def _verificar_bash() -> bool:

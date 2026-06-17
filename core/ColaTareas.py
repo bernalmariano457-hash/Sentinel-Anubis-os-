@@ -88,12 +88,6 @@ class ColaTareas:
         self._lock = threading.Lock()
         self._semaforo = threading.Semaphore(self.MAX_CONCURRENTES)
 
-    # Logging interno
-    # Usa logging estándar desde hilos de fondo para no corromper
-    # un Rich Live activo en el hilo principal.  El mensaje también se
-    # imprime por console.print sólo cuando se llama desde el hilo
-    # principal (ident coincide).
-
     def _log(self, msg: str, estilo: str = "dim") -> None:
         log.debug("%s", msg)
         if threading.current_thread() is threading.main_thread():
@@ -104,8 +98,6 @@ class ColaTareas:
 
     def _log_bg(self, msg: str) -> None:
         log.info("%s", msg)
-
-    # API pública
 
     def agregar(
         self,
@@ -254,8 +246,6 @@ class ColaTareas:
         with self._lock:
             return [t for t in self._tareas.values()
                     if t.estado == EstadoTarea.CORRIENDO]
-
-    # Ejecución interna
 
     def _iniciar(self, tarea: Tarea) -> None:
         def _runner() -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from core._base import _DomainBase
 from core.validators import Validador
 
+
 class RFCommands(_DomainBase):
 
     def rfscan(self):
@@ -161,7 +162,6 @@ class RFCommands(_DomainBase):
             self.console.print("[red][!] rf_recorder.py no encontrado.[/red]")
 
     def noaa(self):
-        # Decodificador NOAA APT — imágenes satelitales en 137 MHz
         try:
             from modules.rf.NOAADecoder import NOAADecoder
             NOAADecoder(self.s).menu()
@@ -175,9 +175,6 @@ class RFCommands(_DomainBase):
             self.console.print(f"[red][!] Error NOAA: {e}[/red]")
 
     def adsb(self):
-        # Monitor ADS-B — decodifica transponders de aeronaves en 1090 MHz.
-        # Intenta ADSBDecoder (implementación nativa) y cae en AircraftMonitor
-        # (pyModeS + Rich) cuando no está disponible.
         try:
             from modules.rf.adsb_decoder import ADSBDecoder
             duracion_s = self.console.input(
@@ -186,7 +183,6 @@ class RFCommands(_DomainBase):
             duracion = int(duracion_s) if duracion_s.isdigit() else None
             ADSBDecoder(self.s).iniciar(duracion_seg=duracion)
         except ImportError:
-            # adsb_decoder no disponible → usar AircraftMonitor (adsb_pymodes)
             monitor = getattr(self.s, "adsb", None)
             if monitor is not None:
                 self.console.print(
@@ -200,10 +196,7 @@ class RFCommands(_DomainBase):
                     "[dim]Instala pyModeS:  pip install pyModeS --break-system-packages[/dim]"
                 )
 
-    # Analizador de espectro RF
-
     def spectrum(self) -> None:
-        # Analizador de espectro en tiempo real con waterfall, PPM y detección
         if not self._modulo_ok("sa"):
             return
         self.s.sa.run()

@@ -9,14 +9,14 @@ from core.platform import Platform, PlatformInfo, detect as detect_platform
 
 _CONFIG_PATH = Path("config/keybindings.toml")
 
-# Importar tomllib (stdlib 3.11+)
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     try:
-        import tomllib  # type: ignore[no-redef]
+        import tomllib
     except ImportError:
-        tomllib = None  # type: ignore[assignment]
+        tomllib = None
+
 
 @dataclass
 class BandPreset:
@@ -24,31 +24,33 @@ class BandPreset:
     span_mhz: float
     label:    str
 
+
 @dataclass
 class KeyBindings:
-    # Sintonización
+
     tune_right:    list[str] = field(default_factory=lambda: ["RIGHT", "d"])
     tune_left:     list[str] = field(default_factory=lambda: ["LEFT",  "a"])
-    # Span
+
     span_up:       list[str] = field(default_factory=lambda: ["+", "="])
     span_down:     list[str] = field(default_factory=lambda: ["-"])
-    # Referencia
+
     ref_up:        list[str] = field(default_factory=lambda: ["UP",   "w"])
     ref_down:      list[str] = field(default_factory=lambda: ["DOWN", "s"])
-    # Modos
+
     toggle_peak:   list[str] = field(default_factory=lambda: ["p"])
     toggle_avg:    list[str] = field(default_factory=lambda: ["v"])
     clear_buffer:  list[str] = field(default_factory=lambda: ["c"])
-    # Marcadores
+
     marker_1:      list[str] = field(default_factory=lambda: ["m"])
     marker_2:      list[str] = field(default_factory=lambda: ["n"])
-    # Otros
+
     cycle_gain:    list[str] = field(default_factory=lambda: ["g"])
     export_frame:  list[str] = field(default_factory=lambda: ["e"])
-    quit:          list[str] = field(default_factory=lambda: ["q", "Q", "ESC", "\x03"])
-    # Bandas (F1-F10 y alternativas Termux)
+    quit:          list[str] = field(default_factory=lambda: [
+                                     "q", "Q", "ESC", "\x03"])
+
     bands:         dict[str, BandPreset] = field(default_factory=dict)
-    # Tamaño de pantalla override (0 = usar detección automática)
+
     display_cols:  int = 0
     display_rows:  int = 0
 
@@ -62,10 +64,11 @@ class KeyBindings:
         ):
             for key in getattr(self, action):
                 mapping[key] = action
-        # Bandas de F-keys
+
         for fname, preset in self.bands.items():
             mapping[fname] = f"band:{fname}"
         return mapping
+
 
 _DEFAULT_BANDS: dict[str, BandPreset] = {
     "F1":  BandPreset(88.0,    20.0, "FM Broadcast"),
@@ -84,15 +87,14 @@ _TERMUX_BAND_ALIASES: dict[str, str] = {
     "1": "F1", "2": "F2", "3": "F3", "4": "F4", "5": "F5",
 }
 
+
 def load(info: PlatformInfo | None = None) -> KeyBindings:
     info = info or detect_platform()
-    raw  = _read_toml()
-    kb   = KeyBindings()
+    raw = _read_toml()
+    kb = KeyBindings()
 
-    # Aplicar [global]
     _apply_section(kb, raw.get("global", {}))
 
-    # Aplicar override de plataforma
     section_name = {
         Platform.UCONSOLE: "uconsole",
         Platform.TERMUX:   "termux",
@@ -102,9 +104,8 @@ def load(info: PlatformInfo | None = None) -> KeyBindings:
     }.get(info.kind, "kali")
     _apply_section(kb, raw.get(section_name, {}))
 
-    # Cargar bandas desde [bands]
     bands_raw = raw.get("bands", {})
-    kb.bands  = _DEFAULT_BANDS.copy()
+    kb.bands = _DEFAULT_BANDS.copy()
     for key, val in bands_raw.items():
         if isinstance(val, dict):
             kb.bands[key] = BandPreset(
@@ -113,21 +114,22 @@ def load(info: PlatformInfo | None = None) -> KeyBindings:
                 label=str(val.get("label", key)),
             )
 
-    # En Termux añadir aliases numéricos para bandas
     if info.is_termux:
         termux_raw = raw.get("termux", {})
-        alias_map  = {
+        alias_map = {
             "band_fm":    "F1", "band_noaa": "F2",
-            "band_ism433":"F4", "band_ism915":"F7", "band_adsb": "F8",
+            "band_ism433": "F4", "band_ism915": "F7", "band_adsb": "F8",
         }
         for cfg_key, f_key in alias_map.items():
             if cfg_key in termux_raw:
                 keys = termux_raw[cfg_key]
                 if isinstance(keys, list):
                     for k in keys:
-                        kb.bands[k] = kb.bands.get(f_key, BandPreset(433.920, 2.0, f_key))
+                        kb.bands[k] = kb.bands.get(
+                            f_key, BandPreset(433.920, 2.0, f_key))
 
     return kb
+
 
 def _read_toml() -> dict[str, Any]:
     if not _CONFIG_PATH.exists():
@@ -139,6 +141,7 @@ def _read_toml() -> dict[str, Any]:
             return tomllib.load(fh)
     except Exception:
         return {}
+
 
 def _apply_section(kb: KeyBindings, section: dict[str, Any]) -> None:
     str_list_fields = {

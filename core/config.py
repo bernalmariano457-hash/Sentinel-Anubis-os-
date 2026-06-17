@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 log = logging.getLogger(__name__)
-
-# Intentar importar tomllib (Python ≥ 3.11) o tomli (pip)
 try:
     import tomllib                      # stdlib Python 3.11+
     _TOML_READ = tomllib
@@ -26,8 +24,6 @@ try:
     import tomllib as _TOML_WRITE       # pip install tomli-w
 except ImportError:
     pass
-
-# DATACLASSES DE CONFIGURACIÓN
 
 
 @dataclass
@@ -59,7 +55,7 @@ class DemodConfig:
     squelch_db:   float = 5.0
 
 
-_DATA = Path("data")  # relativo al CWD del proyecto (donde se lanza Main.py)
+_DATA = Path("data")
 
 
 @dataclass
@@ -90,8 +86,6 @@ class LoggingConfig:
     max_bytes:    int = 5_242_880
     backup_count: int = 3
 
-# CONFIG PRINCIPAL
-
 
 class Config:
 
@@ -121,8 +115,6 @@ class Config:
                     break
             else:
                 log.info("Config: sin archivo encontrado, usando defaults")
-
-    # Carga
 
     def _load(self, path: Path) -> None:
         if _TOML_READ is None:
@@ -161,8 +153,6 @@ class Config:
         if "logging" in data:
             merge(self.logging,   data["logging"])
 
-    # Guardado
-
     def save(self, path: str | None = None):
         target = Path(path) if path else self._path
         if target is None:
@@ -170,7 +160,6 @@ class Config:
         target.parent.mkdir(parents=True, exist_ok=True)
 
         if _TOML_WRITE is None:
-            # Fallback: escritura manual básica
             self._save_manual(target)
             return
 
@@ -191,7 +180,6 @@ class Config:
             log.error(f"Error guardando config: {e}")
 
     def _save_manual(self, target: Path) -> None:
-        """Escritura TOML manual sin dependencias (solo tipos básicos)."""
         lines = []
 
         def section(name, dc):

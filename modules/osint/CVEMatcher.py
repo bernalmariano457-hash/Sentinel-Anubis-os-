@@ -14,10 +14,8 @@ from rich.rule import Rule
 from rich import box
 
 
-# Logging
 log = logging.getLogger(__name__)
 
-# Constantes
 NVD_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 REQUEST_TIMEOUT = 10
 MAX_RESULTS = 10
@@ -50,8 +48,6 @@ SEVERITY_RANK: dict[str, int] = {
     "NONE":     0,
 }
 
-# Modelo de datos
-
 
 @dataclass(frozen=True, slots=True)
 class CVERecord:
@@ -75,8 +71,6 @@ class CVERecord:
     def is_high(self) -> bool:
         return self.severity == "HIGH"
 
-# HTTP helpers
-
 
 def _build_session() -> requests.Session:
     retry = Retry(
@@ -92,8 +86,6 @@ def _build_session() -> requests.Session:
     session.mount("http://",  adapter)
     session.headers["User-Agent"] = USER_AGENT
     return session
-
-# Parser NVD
 
 
 def _parse_metrics(metrics: dict) -> tuple[float | None, str, str]:
@@ -148,8 +140,6 @@ def _parse_nvd_response(data: dict) -> list[CVERecord]:
         ))
 
     return records
-
-# Clase principal
 
 
 class CVEMatcher:
@@ -252,8 +242,6 @@ class CVEMatcher:
 
         return []
 
-    # Registro en el proyecto (GestorProyecto)
-
     def _register_findings(self, records: list[CVERecord], query: str) -> None:
         if not self.gp:
             return
@@ -278,7 +266,6 @@ class CVEMatcher:
             },
         )
 
-    # Renderizado
     def _render_cve_table(self, records: list[CVERecord], query: str) -> None:
         critical_count = sum(1 for r in records if r.is_critical)
         high_count = sum(1 for r in records if r.is_high)
@@ -364,8 +351,6 @@ class CVEMatcher:
             title="CVE SUMMARY BY SERVICE",
             border_style="red",
         ))
-
-# Utilidades de formato
 
 
 def _score_cell(score: float) -> str:

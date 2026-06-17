@@ -4,6 +4,7 @@ import os
 import sys
 import subprocess
 
+
 class PhishingModule:
     ZPHISHER_REPO = "https://github.com/htr-tech/zphisher.git"
 
@@ -16,7 +17,6 @@ class PhishingModule:
             os.getcwd(), "tools", "zphisher", "zphisher.sh"
         )
 
-        # Bash según plataforma
         if sys.platform == "win32":
             posibles = [
                 r"C:\Program Files\Git\bin\bash.exe",
@@ -30,7 +30,6 @@ class PhishingModule:
         else:
             self.bash_path = "bash"
 
-    # helpers
     def _print(self, msg: str):
         if self.console:
             self.console.print(msg)
@@ -79,7 +78,6 @@ class PhishingModule:
             return False
         return True
 
-    # API pública
     def lanzar(self):
         if not self._zphisher_instalado():
             if not self._instalar_zphisher():

@@ -6,8 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-# Herramientas por categoría
-# Formato: "Nombre descriptivo": ("ejecutable", "paquete para instalar")
+
 DEPENDENCIAS: dict[str, dict[str, tuple[str, str]]] = {
     "RF / SDR": {
         "rtl_sdr":        ("rtl_sdr",        "rtl-sdr"),
@@ -44,15 +43,13 @@ DEPENDENCIAS: dict[str, dict[str, tuple[str, str]]] = {
     },
 }
 
-# Herramientas críticas: si faltan, el sistema está degradado
 _CRITICOS = {"nmap", "aircrack-ng", "tshark", "adb"}
 
 
 class SystemChecker:
 
     def __init__(self, console: Console | None = None) -> None:
-        # Acepta el Console del sentinel o crea uno propio como fallback.
-        # NUNCA debe crearse un Console() global a nivel de módulo.
+
         self._console = console or Console()
 
     def verificar_dependencias(self, silencioso: bool = False) -> bool:

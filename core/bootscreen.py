@@ -18,14 +18,12 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
-# Importar detección de plataforma (opcional — graceful fallback)
 try:
     from core.platform import detect as _detect_platform
     _PLATFORM_OK = True
 except ImportError:
     _PLATFORM_OK = False
 
-# ARTE ASCII — mascara de Anubis (sin modificar)
 
 ANUBIS_ART = "\n".join([
     r"   ▄████████████████████▄",
@@ -42,8 +40,6 @@ ANUBIS_ART = "\n".join([
 
 ANUBIS = ANUBIS_ART
 
-# ESTILOS DE LOG
-
 ESTILOS_LOG: dict[str, tuple[str, str]] = {
     "INFO":    ("cyan",         "ℹ"),
     "SUCCESS": ("green",        "✔"),
@@ -52,8 +48,6 @@ ESTILOS_LOG: dict[str, tuple[str, str]] = {
     "AUDIT":   ("bold magenta", "⚑"),
     "DEBUG":   ("dim",          "·"),
 }
-
-# MÓDULOS CONOCIDOS — con agrupación por categoría para el resumen
 
 MODULOS_BOOT: list[tuple[str, str]] = [
     ("HydraModule",      "Fuerza bruta / auditoría"),
@@ -73,18 +67,16 @@ MODULOS_BOOT: list[tuple[str, str]] = [
     ("GestorPlugins",    "Plugins en caliente"),
 ]
 
-# Agrupación visual para la línea de resumen compacta
 _GRUPOS_MODULOS: dict[str, list[str]] = {
     "Red":      ["RadarSentinel", "TacticalSniffer", "BluetoothModule"],
     "RF":       ["RFModule", "SpectrumAnalyzer"],
     "Forense":  ["ExifAnalyzer", "ForensicReader", "MobileSentinel", "StealthModule"],
     "Acceso":   ["HydraModule"],
     "OSINT":    ["OSINTEngine", "CVEMatcher", "GeoPrecise"],
-    "Proyectos":["GestorProyectos", "MotorReportes", "ColaTareas", "GestorPlugins"],
-    "Seguridad":["SecurityModule", "Recovery"],
+    "Proyectos": ["GestorProyectos", "MotorReportes", "ColaTareas", "GestorPlugins"],
+    "Seguridad": ["SecurityModule", "Recovery"],
 }
 
-# TABLA DE AYUDA
 
 COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     "SISTEMA": [
@@ -132,7 +124,7 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     ],
     "FORENSE": [
         ("geofoto",          "Extraer GPS de fotografías EXIF"),
-        ("locate / locate -p","Localización por IP / GPS activo"),
+        ("locate / locate -p", "Localización por IP / GPS activo"),
         ("view",             "Leer archivo forense"),
         ("mobile",           "Triaje básico de móvil"),
         ("mobile-deep",      "Análisis profundo de móvil"),
@@ -155,15 +147,15 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
-# UTILIDADES INTERNAS
-
 _ip_cache: str | None = None
+
 
 def _limpiar() -> None:
     if os.name == "nt":
         subprocess.run(["cls"], shell=True, check=False)
     else:
         subprocess.run(["clear"], check=False)
+
 
 def _get_ip() -> str:
     global _ip_cache
@@ -179,8 +171,10 @@ def _get_ip() -> str:
     except Exception:
         return "—"
 
+
 def _ts() -> str:
     return datetime.now().strftime("%H:%M:%S")
+
 
 def _plataforma_str() -> str:
     if _PLATFORM_OK:
@@ -192,7 +186,6 @@ def _plataforma_str() -> str:
     import platform
     return f"{platform.machine()}  {sys.platform}"
 
-# COMPONENTES VISUALES
 
 def _panel_hero(nombre: str, version: str, iface: str) -> Panel:
     arte = Text(ANUBIS_ART, style="bold green")
@@ -211,7 +204,8 @@ def _panel_hero(nombre: str, version: str, iface: str) -> Panel:
     row("INTERFAZ",   f"[cyan]{iface}[/cyan]")
     row("IP LOCAL",   f"[cyan]{_get_ip()}[/cyan]")
     row("PLATAFORMA", f"[dim]{_plataforma_str()}[/dim]")
-    row("ARRANQUE",   f"[dim]{datetime.now().strftime('%d/%m/%Y  %H:%M:%S')}[/dim]")
+    row("ARRANQUE",
+        f"[dim]{datetime.now().strftime('%d/%m/%Y  %H:%M:%S')}[/dim]")
     row("",           "")
     row("AVISO",
         "[bold red]⚠  AUTHORIZED USE ONLY — ACCESO RESTRINGIDO[/bold red]")
@@ -228,6 +222,7 @@ def _panel_hero(nombre: str, version: str, iface: str) -> Panel:
         box=box.DOUBLE_EDGE,
         padding=(1, 3),
     )
+
 
 def _resumen_modulos(estados: dict[str, bool] | None) -> Text:
     t = Text("  ")
@@ -251,6 +246,7 @@ def _resumen_modulos(estados: dict[str, bool] | None) -> Text:
     t.append(f" [{ok}/{total}]", style="dim green")
     return t
 
+
 def _linea_modulo_live(idx: int, total: int, nombre: str) -> Text:
     pct = int((idx / total) * 100)
     bar_w = 20
@@ -263,7 +259,6 @@ def _linea_modulo_live(idx: int, total: int, nombre: str) -> Text:
     t.append(f"{nombre}", style="dim green")
     return t
 
-# BOOTLOADER — pantalla única que se actualiza con Rich Live
 
 def mostrar_bootloader(
     console: Console,
@@ -275,18 +270,20 @@ def mostrar_bootloader(
     _limpiar()
     hero = _panel_hero(nombre, version, iface)
 
-    modulos = list(estados_modulos.keys()) if estados_modulos else [m for m, _ in MODULOS_BOOT]
-    total   = len(modulos)
+    modulos = list(estados_modulos.keys()) if estados_modulos else [
+        m for m, _ in MODULOS_BOOT]
+    total = len(modulos)
 
     # Fase 1: Barra de carga animada
     with Live(console=console, refresh_per_second=30, screen=False) as live:
         for i, nombre_mod in enumerate(modulos, 1):
-            pct    = int((i / total) * 100)
-            bar_w  = 26
+            pct = int((i / total) * 100)
+            bar_w = 26
             filled = int(bar_w * i / total)
-            bar    = "█" * filled + "░" * (bar_w - filled)
+            bar = "█" * filled + "░" * (bar_w - filled)
             estado = "[bold green]OK[/bold green]" if (
-                estados_modulos is None or estados_modulos.get(nombre_mod, True)
+                estados_modulos is None or estados_modulos.get(
+                    nombre_mod, True)
             ) else "[yellow]—[/yellow]"
 
             contenido = (
@@ -304,11 +301,9 @@ def mostrar_bootloader(
             ))
             time.sleep(0.03)
 
-    # Fase 2: Hero panel
     console.print(hero)
 
-    # Fase 3: resumen de módulos (sin Layout — evita espacios vacíos)
-    ok_count   = (
+    ok_count = (
         sum(1 for v in estados_modulos.values() if v)
         if estados_modulos else total
     )
@@ -317,11 +312,12 @@ def mostrar_bootloader(
         if estados_modulos else []
     )
 
-    # Línea de grupos con colores
     grupos_str = "  "
     for grupo, nombres in _GRUPOS_MODULOS.items():
-        tiene_activos   = any(estados_modulos.get(n, False) for n in nombres) if estados_modulos else True
-        tiene_degradado = any(n in estados_modulos and not estados_modulos[n] for n in nombres) if estados_modulos else False
+        tiene_activos = any(estados_modulos.get(n, False)
+                            for n in nombres) if estados_modulos else True
+        tiene_degradado = any(
+            n in estados_modulos and not estados_modulos[n] for n in nombres) if estados_modulos else False
         if not any(n in (estados_modulos or {}) for n in nombres):
             continue
         if tiene_degradado and not tiene_activos:
@@ -334,7 +330,8 @@ def mostrar_bootloader(
     resumen_content = grupos_str
     if degradados:
         degrad_str = "  ".join(f"[dim]{d}[/dim]" for d in degradados[:6])
-        extra      = f"  [dim]+{len(degradados) - 6} más[/dim]" if len(degradados) > 6 else ""
+        extra = f"  [dim]+{len(degradados) - 6} más[/dim]" if len(
+            degradados) > 6 else ""
         resumen_content += f"\n\n  [yellow]○ Sin cargar:[/yellow]  {degrad_str}{extra}"
 
     console.print(Panel(
@@ -345,7 +342,6 @@ def mostrar_bootloader(
         padding=(0, 1),
     ))
 
-    # Cierre: ready line
     console.print(Rule(style="dim green"))
     console.print(
         Align.center(
@@ -356,7 +352,6 @@ def mostrar_bootloader(
     console.print(Rule(style="dim green"))
     console.print()
 
-# BANNER COMPACTO — comando clear / cls
 
 def mostrar_banner(
     console: Console,
@@ -376,7 +371,8 @@ def mostrar_banner(
     def row(k: str, v: str) -> None:
         inf.add_row(k, v)
 
-    row("SISTEMA",   f"[bold white]APEX SENTINEL[/bold white] [dim]v{version}[/dim]")
+    row("SISTEMA",
+        f"[bold white]APEX SENTINEL[/bold white] [dim]v{version}[/dim]")
     row("ESTADO",    "[bold green]● EN LÍNEA[/bold green]")
     row("INTERFAZ",  f"[cyan]{iface}[/cyan]  [dim]{_get_ip()}[/dim]")
     row("HORA",      f"[dim]{datetime.now().strftime('%H:%M:%S')}[/dim]")
@@ -388,7 +384,8 @@ def mostrar_banner(
     console.print(
         Panel(
             Columns(
-                [Align(arte, vertical="middle"), Align(inf, vertical="middle")],
+                [Align(arte, vertical="middle"),
+                 Align(inf, vertical="middle")],
                 equal=False,
                 expand=True,
             ),
@@ -401,7 +398,6 @@ def mostrar_banner(
     console.print(Rule(style="dim green"))
     console.print()
 
-# MENÚ DE AYUDA
 
 def mostrar_ayuda(
     console: Console,
@@ -435,11 +431,13 @@ def mostrar_ayuda(
             padding=(0, 1),
             min_width=38,
         )
-        tb.add_column(f"▸  {categoria}", style="cyan", min_width=22, no_wrap=True)
+        tb.add_column(f"▸  {categoria}", style="cyan",
+                      min_width=22, no_wrap=True)
         tb.add_column("Descripción", style="dim white")
         for cmd, desc in cmds:
             tb.add_row(f"[bold white]{cmd}[/bold white]", desc)
-        cols.append(Panel(tb, border_style="dim green", box=box.ROUNDED, padding=(0, 1)))
+        cols.append(Panel(tb, border_style="dim green",
+                    box=box.ROUNDED, padding=(0, 1)))
 
     pares = [cols[i: i + 2] for i in range(0, len(cols), 2)]
     for par in pares:
@@ -456,7 +454,6 @@ def mostrar_ayuda(
     console.print(Rule(style="dim green"))
     console.print()
 
-# PRUEBA STANDALONE
 
 if __name__ == "__main__":
     _con = Console()
@@ -466,14 +463,15 @@ if __name__ == "__main__":
         "ExifAnalyzer": True,   "ForensicReader": True,
         "StealthModule": True,  "MobileSentinel": True,
         "OSINTEngine": True,    "CVEMatcher": True,
-        "GestorProyectos": True,"MotorReportes": True,
+        "GestorProyectos": True, "MotorReportes": True,
         "HydraModule": True,    "GestorPlugins": True,
         "Recovery": False,
     }
     try:
         mostrar_bootloader(_con, "Sentinel", "2.3", "wlan0mon", estados_demo)
         input("AnubisOS@Sentinel~# ")
-        mostrar_banner(_con, "Sentinel", "2.3", "wlan0mon", proyecto="Operacion-Alpha")
+        mostrar_banner(_con, "Sentinel", "2.3", "wlan0mon",
+                       proyecto="Operacion-Alpha")
         input("AnubisOS@Sentinel~# ")
         mostrar_ayuda(_con, "2.3")
     except KeyboardInterrupt:

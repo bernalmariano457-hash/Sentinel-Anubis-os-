@@ -62,8 +62,6 @@ class SecurityModule:
                 log.warning(
                     f"No se pudieron establecer permisos en {ruta}: {e}")
 
-    # Cifrado de archivos
-
     def encriptar_archivo(self, ruta: str | Path) -> bool:
         archivo = Path(ruta)
         if not archivo.is_file():
@@ -106,8 +104,6 @@ class SecurityModule:
 
     def descifrar_datos(self, datos_cifrados: bytes) -> bytes:
         return self._fernet.decrypt(datos_cifrados)
-
-    # Rotación de clave
 
     def rotar_clave(self, archivos_cifrados: list[str | Path] | None = None) -> bool:
         log.info("Iniciando rotación de clave maestra...")
