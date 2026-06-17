@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import os
 import signal
+import stat
 import sys
+import threading
 import time
 from pathlib import Path
-from typing import Any
+from types import TracebackType
+from typing import Any, Callable
 
 from rich.console import Console
 from rich.markup import escape as _esc
@@ -14,16 +17,15 @@ from rich.prompt import Prompt
 from rich.panel import Panel
 from rich.rule import Rule
 
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
 from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
 from core.vendor_resolver import VendorResolver
 from core.command_handler import CommandHandler
 from core.ModuleRegistry import ModuleRegistry
 from core.log_sistema import LogSistema
-
-# Modo desarrollo: asegura que el proyecto esté en el path antes de importar core/
-_HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
 
 try:
     from core.bootscreen import (
@@ -47,8 +49,6 @@ except ImportError:
                       cmds: dict[str, Any] | None = None) -> None:
         c.print(Panel("[dim]Sin ayuda.[/dim]", title="AYUDA"))
 
-# auth es crítico — si no existe el módulo el sistema no debería arrancar,
-# pero mantenemos el fallback para entornos de desarrollo sin el paquete completo
 try:
     from core.auth import GestorAuth
 except ImportError:
@@ -57,16 +57,108 @@ except ImportError:
         def solicitar_acceso(self) -> bool: return True
 
 
-_WORK_DIRS = (
+_WORK_DIRS: tuple[str, ...] = (
     "data/logs", "data/evidence", "data/evidence/rf",
     "data/evidence/rf/iq", "data/evidence/mobile",
     "core/data/logs", "core/data/security", "plugins",
 )
 
+_ENV_REQUIREMENTS: tuple[str, ...] = ()
 
-def _ensure_dirs() -> None:
-    for d in _WORK_DIRS:
-        os.makedirs(d, exist_ok=True)
+_MIN_FREE_BYTES: int = 50 * 1024 * 1024
+
+
+class BootstrapError(RuntimeError):
+    pass
+
+
+def _validate_bootstrap() -> None:
+    missing_vars = [v for v in _ENV_REQUIREMENTS if not os.environ.get(v)]
+    if missing_vars:
+        raise BootstrapError(
+            f"[FATAL] Variables de entorno requeridas ausentes: {missing_vars}"
+        )
+
+    for raw_path in _WORK_DIRS:
+        target = Path(raw_path)
+        target.mkdir(parents=True, exist_ok=True)
+
+        resolved = target.resolve()
+        try:
+            mode = resolved.stat().st_mode
+        except FileNotFoundError:
+            raise BootstrapError(
+                f"[FATAL] No se pudo crear o acceder al directorio: {resolved}"
+            )
+
+        owner_writable = bool(mode & stat.S_IWUSR)
+        group_writable = bool(mode & stat.S_IWGRP)
+        other_writable = bool(mode & stat.S_IWOTH)
+        effective_uid = os.geteuid() if hasattr(os, "geteuid") else -1
+        effective_gid = os.getegid() if hasattr(os, "getegid") else -1
+
+        try:
+            dir_stat = resolved.stat()
+        except OSError:
+            raise BootstrapError(
+                f"[FATAL] Permisos ilegibles en: {resolved}"
+            )
+
+        is_owner = (effective_uid == dir_stat.st_uid)
+        is_group = (effective_gid == dir_stat.st_gid)
+
+        write_ok = (
+            (is_owner and owner_writable)
+            or (is_group and group_writable)
+            or other_writable
+            or effective_uid == 0
+        )
+
+        if not write_ok:
+            raise BootstrapError(
+                f"[FATAL] Sin permisos de escritura en: {resolved}"
+            )
+
+    try:
+        statvfs = os.statvfs(".")
+        free_bytes = statvfs.f_bavail * statvfs.f_frsize
+        if free_bytes < _MIN_FREE_BYTES:
+            raise BootstrapError(
+                f"[FATAL] Espacio insuficiente en disco: "
+                f"{free_bytes // 1024 // 1024} MB disponibles, "
+                f"mínimo requerido: {_MIN_FREE_BYTES // 1024 // 1024} MB"
+            )
+    except AttributeError:
+        pass
+
+
+class _ShutdownCoordinator:
+
+    def __init__(self) -> None:
+        self._shutdown_event: threading.Event = threading.Event()
+        self._registered_workers: list[Callable[[], None]] = []
+        self._lock: threading.Lock = threading.Lock()
+
+    def register_worker_shutdown(self, callback: Callable[[], None]) -> None:
+        with self._lock:
+            self._registered_workers.append(callback)
+
+    def trigger(self) -> None:
+        self._shutdown_event.set()
+        with self._lock:
+            workers = list(self._registered_workers)
+        threads = [
+            threading.Thread(target=cb, daemon=True, name=f"shutdown-{i}")
+            for i, cb in enumerate(workers)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5.0)
+
+    @property
+    def is_shutdown(self) -> bool:
+        return self._shutdown_event.is_set()
 
 
 class ApexSentinel:
@@ -75,15 +167,14 @@ class ApexSentinel:
     NOMBRE = "ApexSentinel"
 
     def __init__(self) -> None:
-        _ensure_dirs()
+        self._initialized: bool = False
+        self._coordinator: _ShutdownCoordinator = _ShutdownCoordinator()
 
         self.console = Console()
         self.log = LogSistema(self.console)
         self.config = self._cargar_config()
-        self.nombre = self.config.get(
-            "sistema", {}).get("nombre",  self.NOMBRE)
-        self.version = self.config.get(
-            "sistema", {}).get("version", self.VERSION)
+        self.nombre: str = self.config.get("sistema", {}).get("nombre", self.NOMBRE)
+        self.version: str = self.config.get("sistema", {}).get("version", self.VERSION)
         self.auth = GestorAuth(self.config, self.console, self.log)
 
         self._registrar_senales()
@@ -94,6 +185,7 @@ class ApexSentinel:
         self._registry.cargar_todos()
 
         self._cmd = CommandHandler(self)
+        self._command_map: dict[str, Callable[[], None]] = self._build_command_map()
 
         if self.config.get("sistema", {}).get("primer_arranque", False):
             self.config["sistema"]["primer_arranque"] = False
@@ -107,73 +199,93 @@ class ApexSentinel:
             estados_modulos=self._registry.estados(),
         )
 
-    # Señales del sistema
+        self._initialized = True
+
+    def __enter__(self) -> "ApexSentinel":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
+        self._coordinator.trigger()
+        self._cleanup()
+        return False
 
     def _registrar_senales(self) -> None:
-        def _handler(signum: int, frame: Any) -> None:
-            sig = "SIGINT" if signum == getattr(
-                signal, "SIGINT", 2) else "SIGTERM"
-            self.console.print(
-                f"\n[yellow][!] Señal {sig} — cerrando...[/yellow]")
+        def _signal_handler(signum: int, frame: Any) -> None:
+            sig_name = "SIGINT" if signum == getattr(signal, "SIGINT", 2) else "SIGTERM"
+            self.console.print(f"\n[yellow][!] Señal {sig_name} — cerrando...[/yellow]")
+            self._coordinator.trigger()
             self._cleanup()
             sys.exit(0)
 
-        signal.signal(signal.SIGINT, _handler)
-        term = getattr(signal, "SIGTERM", None)
-        if term:
-            signal.signal(term, _handler)
+        signal.signal(signal.SIGINT, _signal_handler)
+        sigterm = getattr(signal, "SIGTERM", None)
+        if sigterm:
+            signal.signal(sigterm, _signal_handler)
 
     def _cleanup(self) -> None:
         try:
-            if self.log:
-                self.log.info("Sesión terminada.", "ApexSentinel")
-            if getattr(self, "radar", None):
-                try:
-                    self.radar.stop_sniffing()
-                except Exception:
-                    pass
-            if getattr(self, "cola", None):
-                self.cola.limpiar_completadas()
-            if getattr(self, "gp", None) and self.gp.proyecto_activo:
-                self.gp.cerrar_proyecto()
-            if getattr(self, "rf", None):
-                try:
-                    self.rf.cerrar()
-                except Exception:
-                    pass
-            for _attr in ("wifitri", "adsb"):
-                _mod = getattr(self, _attr, None)
-                if _mod and hasattr(_mod, "cerrar"):
-                    try:
-                        _mod.cerrar()
-                    except Exception:
-                        pass
+            self.log.info("Sesión terminada.", "ApexSentinel")
         except Exception:
             pass
 
-    # Config
+        _closeable_attrs: tuple[tuple[str, str], ...] = (
+            ("radar",   "stop_sniffing"),
+            ("rf",      "cerrar"),
+            ("wifitri", "cerrar"),
+            ("adsb",    "cerrar"),
+        )
+
+        for attr_name, method_name in _closeable_attrs:
+            module_instance = getattr(self, attr_name, None)
+            if module_instance is None:
+                continue
+            closer = getattr(module_instance, method_name, None)
+            if callable(closer):
+                try:
+                    closer()
+                except Exception:
+                    pass
+
+        cola = getattr(self, "cola", None)
+        if cola is not None:
+            try:
+                cola.limpiar_completadas()
+            except Exception:
+                pass
+
+        gp = getattr(self, "gp", None)
+        if gp is not None and getattr(gp, "proyecto_activo", False):
+            try:
+                gp.cerrar_proyecto()
+            except Exception:
+                pass
 
     def _cargar_config(self) -> dict[str, Any]:
         try:
-            with open("config.json", encoding="utf-8") as f:
-                return json.load(f)
+            with open("config.json", encoding="utf-8") as config_file:
+                return json.load(config_file)
         except FileNotFoundError:
-            return {"sistema": {
-                "nombre": "Sentinel",
-                "version": self.VERSION,
-                "primer_arranque": True,
-            }}
+            return {
+                "sistema": {
+                    "nombre": "Sentinel",
+                    "version": self.VERSION,
+                    "primer_arranque": True,
+                }
+            }
         except json.JSONDecodeError:
             raise SystemExit("[FATAL] config.json está dañado.")
 
     def _guardar_config(self) -> None:
         try:
-            with open("config.json", "w", encoding="utf-8") as f:
-                json.dump(self.config, f, ensure_ascii=False, indent=2)
-        except OSError as e:
-            self.log.warning(f"No se pudo guardar config.json: {e}", "Config")
-
-    # Helpers
+            with open("config.json", "w", encoding="utf-8") as config_file:
+                json.dump(self.config, config_file, ensure_ascii=False, indent=2)
+        except OSError as write_error:
+            self.log.warning(f"No se pudo guardar config.json: {write_error}", "Config")
 
     def _iface(self) -> str:
         return getattr(getattr(self, "bt", None), "iface", "wlan0mon")
@@ -190,8 +302,6 @@ class ApexSentinel:
     def _limpiar(self) -> None:
         os.system("cls" if os.name == "nt" else "clear")
 
-    # Delegados de UI — compatibilidad con módulos existentes
-
     def obtener_fabricante(self, mac: str) -> str:
         return VendorResolver.resolve(mac)
 
@@ -204,155 +314,173 @@ class ApexSentinel:
             gp=getattr(self, "gp", None),
         )
 
-    # Despachador de comandos
+    def _build_command_map(self) -> dict[str, Callable[[], None]]:
+        c = self._cmd
+
+        def _banner() -> None:
+            proyecto_nombre = (
+                self.gp.proyecto_actual.nombre
+                if getattr(self, "gp", None) and getattr(self.gp, "proyecto_actual", None)
+                else None
+            )
+            mostrar_banner(
+                self.console, self.nombre, self.version, self._iface(),
+                proyecto=proyecto_nombre,
+            )
+
+        def _btmapa() -> None:
+            if not self._modulo_ok("bt"):
+                return
+            try:
+                from modules.network.bt_mapa import BLEMapaRadar
+            except ImportError:
+                self.console.print(
+                    "[red][!] bt_mapa.py no encontrado en modules/network/[/red]"
+                )
+                return
+            duracion = 120
+            try:
+                raw_input = self.console.input(
+                    "\n[bold cyan]  [?] Duración en segundos (Enter = 120)[/bold cyan]: "
+                ).strip()
+                if raw_input.isdigit():
+                    duracion = int(raw_input)
+            except (KeyboardInterrupt, EOFError):
+                pass
+            BLEMapaRadar(self.bt).iniciar(duracion_seg=duracion)
+
+        return {
+            "help":        lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
+            "?":           lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
+            "status":      c.status,
+            "hora":        lambda: self.console.print(
+                               f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
+            "clear":       _banner,
+            "cls":         _banner,
+            "logs":        self.log.mostrar_historial,
+            "files":       c.files,
+            "scan":        c.scan,
+            "netscan":     c.scan,
+            "advscan":     c.advscan,
+            "portscan":    c.portscan,
+            "sweep":       c.sweep,
+            "sniff":       c.sniff,
+            "radar":       c.radar,
+            "audit":       c.audit,
+            "vulnscan":    c.vulnscan,
+            "sqlcheck":    c.sqlcheck,
+            "wifi":        c.wifi,
+            "eviltwin":    c.eviltwin,
+            "btjumper":    lambda: (self.bt.iniciar_jumper() if self._modulo_ok("bt") else None),
+            "btmapa":      _btmapa,
+            "rfscan":      c.rfscan,
+            "rfmenu":      c.rfmenu,
+            "rfbarrido":   c.rfbarrido,
+            "rfbandas":    c.rfbandas,
+            "rfdb":        c.rfdb,
+            "rfstats":     c.rfstats,
+            "rfstatus":    c.rfestado,
+            "radio":       c.radio,
+            "rfgrabar":    c.rfgrabar,
+            "rfplay":      c.rfplay,
+            "adsb":        c.adsb,
+            "noaa":        c.noaa,
+            "wifitri":     lambda: (self.wifitri.menu() if self._modulo_ok("wifitri") else None),
+            "spectrum":    c.spectrum,
+            "sa":          c.spectrum,
+            "mobile":      c.mobile,
+            "mobile-deep": c.mobile_deep,
+            "view":        c.view,
+            "geofoto":     c.geofoto,
+            "osint":       c.osint,
+            "cve":         c.cve,
+            "phishing":    c.phishing,
+            "ducky":       c.ducky,
+            "stealth":     c.stealth,
+            "panic":       c.panic,
+        }
 
     def _despachar(self, entrada: str) -> bool:
         partes = entrada.strip().lower().split()
         if not partes:
             return True
+
         cmd, args = partes[0], partes[1:]
         c = self._cmd
-
-        def _ble_mapa(s: "ApexSentinel") -> None:
-            try:
-                from modules.network.bt_mapa import BLEMapaRadar
-            except ImportError:
-                self.console.print(
-                    "[red][!] bt_mapa.py no encontrado en modules/network/[/red]")
-                return
-            duracion = 120
-            try:
-                raw = self.console.input(
-                    "\n[bold cyan]  [?] Duración en segundos (Enter = 120)[/bold cyan]: "
-                ).strip()
-                if raw.isdigit():
-                    duracion = int(raw)
-            except (KeyboardInterrupt, EOFError):
-                pass
-            BLEMapaRadar(s.bt).iniciar(duracion_seg=duracion)
 
         if cmd == "proyecto":
             c.proyecto(args)
             return True
+
         if cmd == "reporte":
             c.reporte(args)
             return True
+
         if cmd in ("job", "jobs"):
             c.jobs(args)
             return True
+
         if cmd in ("plugin", "plugins"):
             c.plugins(args)
             return True
+
         if cmd == "locate":
             (c.locate_p if "-p" in args else c.locate)()
             return True
 
-        def _banner() -> None:
-            proy = (self.gp.proyecto_actual.nombre
-                    if getattr(self, "gp", None) and
-                    getattr(self.gp, "proyecto_actual", None) else None)
-            mostrar_banner(self.console, self.nombre,
-                           self.version, self._iface(), proyecto=proy)
-
-        tabla: dict[str, Any] = {
-            "help": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
-            "?": lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
-            "status":    c.status,
-            "hora": lambda: self.console.print(
-                f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
-            "clear":     _banner,
-            "cls":       _banner,
-            "logs":      self.log.mostrar_historial,
-            "files":     c.files,
-            # Red
-            "scan":      c.scan,      "netscan":   c.scan,
-            "advscan":   c.advscan,   "portscan":  c.portscan,
-            "sweep":     c.sweep,     "sniff":     c.sniff,
-            "radar":     c.radar,     "audit":     c.audit,
-            "vulnscan":  c.vulnscan,  "sqlcheck":  c.sqlcheck,
-            # Wireless
-            "wifi":      c.wifi,      "eviltwin":  c.eviltwin,
-            "btjumper": lambda: (self.bt.iniciar_jumper()
-                                 if self._modulo_ok("bt") else None),
-            "btmapa": lambda: (_ble_mapa(self)
-                               if self._modulo_ok("bt") else None),
-            # RF / SDR
-            "rfscan":    c.rfscan,    "rfmenu":    c.rfmenu,
-            "rfbarrido": c.rfbarrido, "rfbandas":  c.rfbandas,
-            "rfdb":      c.rfdb,      "rfstats":   c.rfstats,
-            "rfstatus":  c.rfestado,  "radio":     c.radio,
-            "rfgrabar":  c.rfgrabar,  "rfplay":    c.rfplay,
-            "adsb":      c.adsb,
-            "noaa":      c.noaa,
-            # WiFi triangulación
-            "wifitri": lambda: (self.wifitri.menu()
-                                if self._modulo_ok("wifitri") else None),
-            # Spectrum
-            "spectrum":  c.spectrum,
-            "sa":        c.spectrum,
-            # Mobile / Forense
-            "mobile":      c.mobile,
-            "mobile-deep": c.mobile_deep,
-            "view":        c.view,
-            # OSINT / Geo
-            "geofoto":   c.geofoto,
-            "osint":     c.osint,
-            "cve":       c.cve,
-            # Ofensivo
-            "phishing":  c.phishing,
-            "ducky":     c.ducky,
-            "stealth":   c.stealth,
-            "panic":     c.panic,
-        }
-
-        if cmd in tabla:
+        handler = self._command_map.get(cmd)
+        if handler is not None:
             try:
-                tabla[cmd]()
-            except Exception as exc:
-                self.console.print(f"[red][!] Error en '{cmd}': {exc}[/red]")
-                self.log.error(str(exc), f"cmd:{cmd}")
+                handler()
+            except Exception as dispatch_error:
+                self.console.print(f"[red][!] Error en '{cmd}': {dispatch_error}[/red]")
+                self.log.error(str(dispatch_error), f"cmd:{cmd}")
             return True
 
-        if getattr(self, "plugins", None) and self.plugins.tiene_comando(cmd):
-            self.plugins.ejecutar_comando(cmd, args)
+        plugin_registry = getattr(self, "plugins", None)
+        if plugin_registry is not None and plugin_registry.tiene_comando(cmd):
+            plugin_registry.ejecutar_comando(cmd, args)
             return True
 
         return False
 
-    # Bucle principal
-
     def ejecutar(self) -> None:
         if not self.auth.solicitar_acceso():
-            self.console.print(
-                "[red][!] Acceso denegado. Sistema bloqueado.[/red]")
-            self.log.warning(
-                "Sistema bloqueado por intentos fallidos.", "GestorAuth")
+            self.console.print("[red][!] Acceso denegado. Sistema bloqueado.[/red]")
+            self.log.warning("Sistema bloqueado por intentos fallidos.", "GestorAuth")
             return
 
-        if getattr(self, "checker", None):
-            self.checker.verificar_dependencias()
+        dependency_checker = getattr(self, "checker", None)
+        if dependency_checker is not None:
+            dependency_checker.verificar_dependencias()
 
         self.log.verificar_y_limpiar()
 
-        if getattr(self, "stealth", None):
-            self.stealth.verificar_identidad()
+        stealth_module = getattr(self, "stealth", None)
+        if stealth_module is not None:
+            stealth_module.verificar_identidad()
 
         self.log.info("Sistema iniciado correctamente.", "ApexSentinel")
 
-        if getattr(self, "rf", None):
-            rf_tag = (f"[green]{self.rf.hw_nombre}[/green]"
-                      if self.rf.hw_disponible
-                      else f"[yellow]{self.rf.hw_nombre}[/yellow]")
-            self.console.print(f"\n[dim][RF] Hardware: {rf_tag}[/dim]")
+        rf_module = getattr(self, "rf", None)
+        if rf_module is not None:
+            rf_hardware_tag = (
+                f"[green]{rf_module.hw_nombre}[/green]"
+                if rf_module.hw_disponible
+                else f"[yellow]{rf_module.hw_nombre}[/yellow]"
+            )
+            self.console.print(f"\n[dim][RF] Hardware: {rf_hardware_tag}[/dim]")
 
-        if getattr(self, "gp", None) and not self.gp.proyecto_activo:
+        gp_module = getattr(self, "gp", None)
+        if gp_module is not None and not gp_module.proyecto_activo:
             self.console.print(
                 "\n[dim][tip] Usa [bold white]proyecto nuevo[/bold white] "
-                "para crear un workspace de operación.[/dim]\n")
+                "para crear un workspace de operación.[/dim]\n"
+            )
 
-        while True:
+        while not self._coordinator.is_shutdown:
             try:
-                plab = (
+                proyecto_label = (
                     f"[{_esc(str(self.gp.proyecto_activo.nombre))}]"
                     if getattr(self, "gp", None) and self.gp.proyecto_activo
                     else ""
@@ -361,37 +489,43 @@ class ApexSentinel:
                     f"[bold green]AnubisOS[/bold green]"
                     f"[dim white]@[/dim white]"
                     f"[bold cyan]Sentinel[/bold cyan]"
-                    f"[dim]{plab}[/dim]"
+                    f"[dim]{proyecto_label}[/dim]"
                     f"[bold white]~#[/bold white]"
                 )
                 entrada = Prompt.ask(prompt_str, default="").strip()
+
                 if not entrada:
                     continue
+
                 if entrada.lower() == "exit":
-                    self.console.print(
-                        "[yellow][!] Desconectando Sentinel...[/yellow]")
-                    self.log.info(
-                        "Sesión cerrada por el operador.", "ApexSentinel")
-                    self._cleanup()
+                    self.console.print("[yellow][!] Desconectando Sentinel...[/yellow]")
+                    self.log.info("Sesión cerrada por el operador.", "ApexSentinel")
                     time.sleep(0.5)
                     break
+
                 if not self._despachar(entrada):
                     self.console.print(
                         f"[yellow][?] Comando '[bold]{entrada}[/bold]' no "
                         f"reconocido. Escribe [bold white]help[/bold white] "
-                        f"para ver opciones.[/yellow]")
+                        f"para ver opciones.[/yellow]"
+                    )
+
             except EOFError:
-                self._cleanup()
                 break
-            except Exception as exc:
-                self.console.print(f"[red][!] Error inesperado: {exc}[/red]")
-                self.log.error(str(exc), "Bucle principal")
+            except Exception as loop_error:
+                self.console.print(f"[red][!] Error inesperado: {loop_error}[/red]")
+                self.log.error(str(loop_error), "Bucle principal")
 
 
 def main() -> None:
-    # Entry point registrado en pyproject.toml → [project.scripts] sentinel
-    _ensure_dirs()
-    ApexSentinel().ejecutar()
+    try:
+        _validate_bootstrap()
+    except BootstrapError as bootstrap_failure:
+        sys.stderr.write(str(bootstrap_failure) + "\n")
+        sys.exit(1)
+
+    with ApexSentinel() as sentinel:
+        sentinel.ejecutar()
 
 
 if __name__ == "__main__":

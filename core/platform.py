@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 
+from numpy import generic
+
 _DT_MODEL = Path("/proc/device-tree/model")
 _DT_BASE = Path("/sys/firmware/devicetree/base/model")
 _DT_COMPAT = Path("/proc/device-tree/compatible")
@@ -127,7 +129,6 @@ def _classify(model: str, machine: str) -> Platform:
     if machine == "aarch64" and _is_bcm2711() and _DSI_DRM.exists():
         return Platform.UCONSOLE
 
-    Pi genérico
     if "raspberry" in model_lo or "raspberrypi" in model_lo or (
         machine in ("aarch64", "armv7l") and _is_bcm27xx()
     ):
