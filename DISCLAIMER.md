@@ -1,28 +1,67 @@
-# Legal Disclaimer — APEX SENTINEL / Anubis OS
+# Legal Disclaimer — APEX SENTINEL / Sentinel Anubis OS
+
+## Evaluator Notice (Clockwork Pi Co., Ltd.)
+
+This software is shared with Clockwork Pi Co., Ltd. solely for the
+purpose of technical evaluation under the terms of the hardware
+exchange agreement described in `LICENSE`. Clockwork Pi's access
+to this repository does not constitute a license of any kind.
+
+Clockwork Pi Co., Ltd. agrees that any technical information, source
+code, architecture details, or implementation strategies observed
+during evaluation are confidential and proprietary to Mariano Bernal
+González, and shall not be disclosed to third parties or used as
+reference for the development of competing or derivative products.
+
 
 ## Intended Use
 
-This project was built for educational purposes, personal security research, and authorized penetration testing. Every module in this system was developed to understand how networks, RF signals, and security systems work — not to exploit them without permission.
+This project was built for educational purposes, personal security
+research, and authorized penetration testing. Every module in this
+system was developed to understand how networks, RF signals, and
+security systems work — not to exploit them without authorization.
 
-## Your Responsibility
 
-By downloading, installing, or using any part of this software, you agree that:
+## User Responsibility
 
-- You will only use it on systems and networks you own or have **explicit written permission** to test
-- You understand that unauthorized access to computer systems, networks, or RF communications may be **illegal** in your country
-- The author is **not responsible** for any damage, legal consequences, or misuse resulting from the use of this software
-- Tools like the Wi-Fi scanner, packet capture, and RF modules must comply with local telecommunications regulations
+By downloading, installing, or using any part of this software, you
+confirm that:
 
-## RF / SDR Specific
+- You will only use it on systems and networks you own or have
+  explicit written permission to test.
+- You understand that unauthorized access to computer systems,
+  networks, or RF communications may be illegal in your jurisdiction.
+- The author is not responsible for any damage, legal consequences,
+  or misuse resulting from the use of this software.
+- All use of RF, wireless, and packet capture modules must comply
+  with applicable local telecommunications regulations.
 
-Radio frequency monitoring laws vary by country. In most jurisdictions, **passive listening** to unencrypted transmissions is legal, but transmitting, jamming, or intercepting private communications is not. Know your local laws before using the RF modules.
+
+## RF and SDR Modules
+
+Radio frequency monitoring laws vary by country. In most
+jurisdictions, passive monitoring of unencrypted transmissions is
+legal. Transmitting on regulated frequencies, jamming, or
+intercepting private communications is not. Verify your local legal
+framework before using any RF module included in this software.
+
 
 ## No Warranty
 
-This software is provided as-is, with no guarantees of fitness for any particular purpose. Use at your own risk.
+This software is provided as-is, without guarantees of fitness for
+any particular purpose. Use at your own risk. The author provides no
+warranty, express or implied, regarding reliability, accuracy, or
+suitability for any use case.
+
+
+## Summary
+
+If you are using this in a lab, a CTF, or on your own
+infrastructure — that is what it is designed for.
+
+If you are considering using it on systems you do not own or have
+not received written authorization to test — do not.
 
 ---
 
-If you're using this for a CTF, a lab environment, or your own infrastructure — have fun with it. That's what it's for.
-
-If you're thinking about using it on someone else's network without permission — don't.
+© 2026 Mariano Bernal González — All Rights Reserved.

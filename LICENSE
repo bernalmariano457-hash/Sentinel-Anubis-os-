@@ -1,66 +1,88 @@
 Copyright (c) 2026 Mariano Bernal González
-Todos los derechos reservados.
+All Rights Reserved.
 
-PROYECTO: Sentinel Anubis OS (APEX SENTINEL)
-AUTOR: Mariano Bernal González
-FECHA DE CREACIÓN: Enero 2026
+PROJECT:  Sentinel Anubis OS (APEX SENTINEL)
+AUTHOR:   Mariano Bernal González
+CREATED:  January 2026
 
-────────────────────────────────────────────────────────────────────
 
-PROPIEDAD INTELECTUAL
+OWNERSHIP
 
-Este software, su código fuente, arquitectura, documentación y todos
-los archivos asociados son propiedad exclusiva de Mariano Bernal
-González, desarrollados de forma original e independiente a partir de
-enero de 2026.
+This software, its source code, architecture, documentation, and all
+associated files are the exclusive intellectual property of Mariano
+Bernal González, developed independently and originally beginning
+January 2026.
 
-────────────────────────────────────────────────────────────────────
+No part of this work was created under employment, commission, or
+joint authorship. Sole authorship and full ownership are retained by
+Mariano Bernal González in their entirety.
 
-USO NO AUTORIZADO
 
-Queda estrictamente prohibido, sin autorización expresa y por escrito
-del autor:
+RESTRICTED EVALUATION LICENSE
 
-  - Usar este software con cualquier fin, comercial o no
-  - Copiar, reproducir o distribuir el código fuente o cualquier
-    parte de él
-  - Modificar, adaptar o crear trabajos derivados
-  - Sublicenciar o transferir cualquier derecho sobre el software
-  - Incorporar cualquier parte de este software en otros proyectos
+Access to this repository or any portion of its contents granted to
+Clockwork Pi Co., Ltd. ("Evaluator") is provided exclusively for the
+purpose of technical evaluation in connection with the hardware
+exchange agreement in which the Evaluator provides one (1) uConsole
+CM4 unit to the Author.
 
-────────────────────────────────────────────────────────────────────
+This access is non-exclusive, non-transferable, and strictly limited
+to internal review. It does not constitute, imply, or transfer any of
+the following:
 
-ACCESO PARA EVALUACIÓN
+  - Any license to use, execute, or deploy the software
+  - Any right to copy, reproduce, or distribute the source code
+  - Any right to modify, adapt, or create derivative works
+  - Any sublicense or transfer of rights to third parties
+  - Any claim of co-authorship, joint ownership, or contribution
+  - Any right to incorporate any portion of this software into
+    Evaluator's products, firmware, or services
 
-El acceso a este repositorio concedido a terceros tiene carácter
-exclusivamente evaluativo. Dicho acceso no implica ni transfiere
-ningún derecho de uso, propiedad, licencia o explotación del
-software. Cualquier uso fuera de la revisión del código requiere
-un acuerdo formal por escrito con el autor.
+Receipt of hardware from the Evaluator does not grant the Evaluator
+any rights beyond those explicitly stated in this section.
 
-────────────────────────────────────────────────────────────────────
 
-ACUERDOS COMERCIALES
+PROHIBITED ACTIONS
 
-Cualquier colaboración, licencia de uso, acuerdo comercial o
-transferencia de derechos sobre este software deberá formalizarse
-mediante contrato escrito firmado por el autor. Ningún acuerdo
-verbal o informal tendrá validez legal sobre los derechos aquí
-establecidos.
+Without prior express written authorization signed by the Author, the
+following actions are strictly prohibited for any party, including the
+Evaluator:
 
-────────────────────────────────────────────────────────────────────
+  - Executing or deploying this software in any environment
+  - Reproducing or distributing the source code or binaries
+  - Modifying or creating derivative works based on this software
+  - Sharing access credentials or repository content with third parties
+  - Using this software as reference or basis for competing products
+  - Reverse engineering any compiled component of this software
 
-EVIDENCIA DE AUTORÍA
 
-El autor conserva evidencia del desarrollo de este proyecto desde
-enero de 2026, incluyendo historial de versiones, archivos con fecha
-de creación y registro de actividad en el repositorio. Esta evidencia
-podrá ser presentada ante cualquier instancia legal en caso de
-disputa sobre la autoría o propiedad del software.
+BREACH AND REMEDIES
 
-────────────────────────────────────────────────────────────────────
+Any use of this software beyond the scope of this license constitutes
+a material breach of the terms herein and an infringement of the
+Author's intellectual property rights. The Author reserves the right
+to pursue all available legal remedies, including but not limited to
+injunctive relief, damages, and recovery of legal costs.
 
-Para solicitar una licencia de uso o formalizar un acuerdo de
-colaboración, contactar al autor directamente.
+
+EVIDENCE OF AUTHORSHIP
+
+The Author maintains documented evidence of independent development
+from January 2026, including version control history, timestamped
+source files, and repository activity records. This evidence is
+available for presentation in any legal proceeding concerning
+authorship or ownership of this software.
+
+
+COMMERCIAL AGREEMENTS
+
+Any collaboration, use license, commercial agreement, or rights
+transfer must be formalized through a written contract signed by the
+Author. No verbal, implied, or informal agreement shall have legal
+effect over the rights established herein.
+
+To request a use license or formalize a collaboration agreement,
+contact the Author directly.
+
 
 © 2026 Mariano Bernal González — All Rights Reserved.
