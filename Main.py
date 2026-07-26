@@ -4,6 +4,7 @@ import json
 import os
 import signal
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -55,6 +56,9 @@ except ImportError:
     class GestorAuth:  # type: ignore[misc]
         def __init__(self, *a: Any, **kw: Any) -> None: pass
         def solicitar_acceso(self) -> bool: return True
+
+
+ManejadorComando = Callable[[list[str]], None]
 
 
 _WORK_DIRS: tuple[str, ...] = (
@@ -132,29 +136,74 @@ def _validate_bootstrap() -> None:
         pass
 
 
+class TimeoutRequeridoError(ValueError):
+    pass
+
+
+class SubprocesoRechazadoError(RuntimeError):
+    pass
+
+
 class _ShutdownCoordinator:
 
-    def __init__(self) -> None:
+    CALLBACK_TIMEOUT_SECONDS: float = 5.0
+
+    def __init__(self, callback_timeout: float | None = None) -> None:
         self._shutdown_event: threading.Event = threading.Event()
-        self._registered_workers: list[Callable[[], None]] = []
+        self._registered_workers: list[tuple[int, str, Callable[[], None]]] = []
         self._lock: threading.Lock = threading.Lock()
+        self._triggered: bool = False
+        self._callback_timeout: float = callback_timeout or self.CALLBACK_TIMEOUT_SECONDS
 
-    def register_worker_shutdown(self, callback: Callable[[], None]) -> None:
+    def register_worker_shutdown(
+        self,
+        callback: Callable[[], None],
+        nombre: str | None = None,
+        prioridad: int = 0,
+    ) -> None:
+        etiqueta = nombre or getattr(callback, "__name__", "callback")
         with self._lock:
-            self._registered_workers.append(callback)
+            self._registered_workers.append((prioridad, etiqueta, callback))
 
-    def trigger(self) -> None:
-        self._shutdown_event.set()
+    def trigger(self) -> list[tuple[str, BaseException]]:
         with self._lock:
-            workers = list(self._registered_workers)
-        threads = [
-            threading.Thread(target=cb, daemon=True, name=f"shutdown-{i}")
-            for i, cb in enumerate(workers)
-        ]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=5.0)
+            if self._triggered:
+                return []
+            self._triggered = True
+            self._shutdown_event.set()
+            workers = sorted(self._registered_workers, key=lambda entrada: -entrada[0])
+
+        fallos: list[tuple[str, BaseException]] = []
+        for _prioridad, nombre, callback in workers:
+            try:
+                self._ejecutar_con_limite(nombre, callback)
+            except BaseException as error_apagado:
+                fallos.append((nombre, error_apagado))
+        return fallos
+
+    def _ejecutar_con_limite(self, nombre: str, callback: Callable[[], None]) -> None:
+        puede_usar_alarma = (
+            hasattr(signal, "SIGALRM")
+            and hasattr(signal, "setitimer")
+            and threading.current_thread() is threading.main_thread()
+        )
+        if not puede_usar_alarma:
+            callback()
+            return
+
+        def _al_expirar(signum: int, frame: Any) -> None:
+            raise TimeoutError(f"timeout de apagado excedido para {nombre}")
+
+        manejador_previo = signal.signal(signal.SIGALRM, _al_expirar)
+        signal.setitimer(signal.ITIMER_REAL, max(self._callback_timeout, 0.1))
+        try:
+            callback()
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(
+                signal.SIGALRM,
+                manejador_previo if manejador_previo is not None else signal.SIG_DFL,
+            )
 
     @property
     def is_shutdown(self) -> bool:
@@ -168,16 +217,18 @@ class ApexSentinel:
 
     def __init__(self) -> None:
         self._initialized: bool = False
-        self._coordinator: _ShutdownCoordinator = _ShutdownCoordinator()
 
         self.console = Console()
         self.log = LogSistema(self.console)
+
+        self._coordinator: _ShutdownCoordinator = _ShutdownCoordinator()
+        self._registrar_apagado_nucleo()
+        self._registrar_senales()
+
         self.config = self._cargar_config()
         self.nombre: str = self.config.get("sistema", {}).get("nombre", self.NOMBRE)
         self.version: str = self.config.get("sistema", {}).get("version", self.VERSION)
         self.auth = GestorAuth(self.config, self.console, self.log)
-
-        self._registrar_senales()
 
         VendorResolver._USER_AGENT = f"ApexSentinel/{self.version}"
 
@@ -185,7 +236,7 @@ class ApexSentinel:
         self._registry.cargar_todos()
 
         self._cmd = CommandHandler(self)
-        self._command_map: dict[str, Callable[[], None]] = self._build_command_map()
+        self._command_map: dict[str, ManejadorComando] = self._build_command_map()
 
         if self.config.get("sistema", {}).get("primer_arranque", False):
             self.config["sistema"]["primer_arranque"] = False
@@ -202,6 +253,8 @@ class ApexSentinel:
         self._initialized = True
 
     def __enter__(self) -> "ApexSentinel":
+        if not self._initialized:
+            raise RuntimeError("ApexSentinel no completó su inicialización")
         return self
 
     def __exit__(
@@ -210,60 +263,138 @@ class ApexSentinel:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        self._coordinator.trigger()
-        self._cleanup()
+        self._apagar()
         return False
 
     def _registrar_senales(self) -> None:
         def _signal_handler(signum: int, frame: Any) -> None:
-            sig_name = "SIGINT" if signum == getattr(signal, "SIGINT", 2) else "SIGTERM"
-            self.console.print(f"\n[yellow][!] Señal {sig_name} — cerrando...[/yellow]")
-            self._coordinator.trigger()
-            self._cleanup()
+            nombre_senal = signal.Signals(signum).name
+            self.console.print(
+                f"\n[yellow][!] Señal {nombre_senal} recibida. "
+                f"Iniciando apagado coordinado.[/yellow]"
+            )
+            self._apagar()
             sys.exit(0)
 
         signal.signal(signal.SIGINT, _signal_handler)
         sigterm = getattr(signal, "SIGTERM", None)
-        if sigterm:
+        if sigterm is not None:
             signal.signal(sigterm, _signal_handler)
 
-    def _cleanup(self) -> None:
+    def _apagar(self) -> None:
+        senales_a_bloquear = {
+            s for s in (getattr(signal, "SIGINT", None), getattr(signal, "SIGTERM", None))
+            if s is not None
+        }
+        puede_enmascarar = (
+            hasattr(signal, "pthread_sigmask")
+            and threading.current_thread() is threading.main_thread()
+        )
+        mascara_previa = None
+        if puede_enmascarar:
+            mascara_previa = signal.pthread_sigmask(signal.SIG_BLOCK, senales_a_bloquear)
+
         try:
-            self.log.info("Sesión terminada.", "ApexSentinel")
+            fallos = self._coordinator.trigger()
+            for nombre, error in fallos:
+                self._registrar_fallo_apagado(nombre, error)
+        finally:
+            if puede_enmascarar and mascara_previa is not None:
+                signal.pthread_sigmask(signal.SIG_SETMASK, mascara_previa)
+
+    def _registrar_fallo_apagado(self, nombre: str, error: BaseException) -> None:
+        try:
+            self.log.error(f"Fallo en apagado de '{nombre}': {error}", "ShutdownCoordinator")
         except Exception:
             pass
 
-        _closeable_attrs: tuple[tuple[str, str], ...] = (
+    def registrar_apagado(
+        self,
+        callback: Callable[[], None],
+        nombre: str | None = None,
+        prioridad: int = 0,
+    ) -> None:
+        self._coordinator.register_worker_shutdown(callback, nombre, prioridad)
+
+    def _registrar_apagado_nucleo(self) -> None:
+        self.registrar_apagado(self._detener_tareas_activas, "ColaTareas", prioridad=100)
+        self.registrar_apagado(self._cerrar_modulos_hardware, "ModulosHardware", prioridad=80)
+        self.registrar_apagado(self._cerrar_proyecto_activo, "GestorProyectos", prioridad=60)
+        self.registrar_apagado(self._registrar_cierre_sesion, "LogSistema", prioridad=0)
+
+    def _detener_tareas_activas(self) -> None:
+        cola = getattr(self, "cola", None)
+        if cola is None:
+            return
+        limpiador = getattr(cola, "limpiar_completadas", None)
+        if callable(limpiador):
+            limpiador()
+
+    def _cerrar_modulos_hardware(self) -> None:
+        closeable_attrs: tuple[tuple[str, str], ...] = (
             ("radar",   "stop_sniffing"),
             ("rf",      "cerrar"),
             ("wifitri", "cerrar"),
             ("adsb",    "cerrar"),
         )
-
-        for attr_name, method_name in _closeable_attrs:
+        for attr_name, method_name in closeable_attrs:
             module_instance = getattr(self, attr_name, None)
             if module_instance is None:
                 continue
             closer = getattr(module_instance, method_name, None)
             if callable(closer):
-                try:
-                    closer()
-                except Exception:
-                    pass
+                closer()
 
-        cola = getattr(self, "cola", None)
-        if cola is not None:
-            try:
-                cola.limpiar_completadas()
-            except Exception:
-                pass
-
+    def _cerrar_proyecto_activo(self) -> None:
         gp = getattr(self, "gp", None)
         if gp is not None and getattr(gp, "proyecto_activo", False):
-            try:
-                gp.cerrar_proyecto()
-            except Exception:
-                pass
+            gp.cerrar_proyecto()
+
+    def _registrar_cierre_sesion(self) -> None:
+        try:
+            self.log.info("Sesión terminada.", "ApexSentinel")
+        finally:
+            cerrador = getattr(self.log, "cerrar", None)
+            if callable(cerrador):
+                cerrador()
+
+    def ejecutar_subproceso(
+        self,
+        comando: list[str],
+        timeout: float,
+        cwd: str | Path | None = None,
+        env: dict[str, str] | None = None,
+        capturar_salida: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        if self._coordinator.is_shutdown:
+            raise SubprocesoRechazadoError(
+                f"Apagado en curso, subproceso rechazado: {comando!r}"
+            )
+        if timeout is None or timeout <= 0:
+            raise TimeoutRequeridoError(
+                f"timeout obligatorio y positivo para: {comando!r}"
+            )
+        try:
+            return subprocess.run(
+                comando,
+                timeout=timeout,
+                cwd=cwd,
+                env=env,
+                capture_output=capturar_salida,
+                text=True,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            self.log.error(f"Timeout ({timeout}s) ejecutando: {comando!r}", "Subproceso")
+            raise
+        except FileNotFoundError:
+            self.log.error(f"Binario no encontrado: {comando[0]!r}", "Subproceso")
+            raise
+        except OSError as error_sistema:
+            self.log.error(
+                f"Error de sistema ejecutando {comando!r}: {error_sistema}", "Subproceso"
+            )
+            raise
 
     def _cargar_config(self) -> dict[str, Any]:
         try:
@@ -300,7 +431,11 @@ class ApexSentinel:
         return True
 
     def _limpiar(self) -> None:
-        os.system("cls" if os.name == "nt" else "clear")
+        comando = ["cmd", "/c", "cls"] if os.name == "nt" else ["clear"]
+        try:
+            self.ejecutar_subproceso(comando, timeout=3.0, capturar_salida=False)
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError, SubprocesoRechazadoError):
+            pass
 
     def obtener_fabricante(self, mac: str) -> str:
         return VendorResolver.resolve(mac)
@@ -314,10 +449,10 @@ class ApexSentinel:
             gp=getattr(self, "gp", None),
         )
 
-    def _build_command_map(self) -> dict[str, Callable[[], None]]:
+    def _build_command_map(self) -> dict[str, ManejadorComando]:
         c = self._cmd
 
-        def _banner() -> None:
+        def _banner(args: list[str]) -> None:
             proyecto_nombre = (
                 self.gp.proyecto_actual.nombre
                 if getattr(self, "gp", None) and getattr(self.gp, "proyecto_actual", None)
@@ -328,7 +463,7 @@ class ApexSentinel:
                 proyecto=proyecto_nombre,
             )
 
-        def _btmapa() -> None:
+        def _btmapa(args: list[str]) -> None:
             if not self._modulo_ok("bt"):
                 return
             try:
@@ -349,55 +484,67 @@ class ApexSentinel:
                 pass
             BLEMapaRadar(self.bt).iniciar(duracion_seg=duracion)
 
+        def _locate(args: list[str]) -> None:
+            (c.locate_p if "-p" in args else c.locate)()
+
         return {
-            "help":        lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
-            "?":           lambda: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
-            "status":      c.status,
-            "hora":        lambda: self.console.print(
+            "help":        lambda args: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
+            "?":           lambda args: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
+            "status":      lambda args: c.status(),
+            "hora":        lambda args: self.console.print(
                                f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
             "clear":       _banner,
             "cls":         _banner,
-            "logs":        self.log.mostrar_historial,
-            "files":       c.files,
-            "scan":        c.scan,
-            "netscan":     c.scan,
-            "advscan":     c.advscan,
-            "portscan":    c.portscan,
-            "sweep":       c.sweep,
-            "sniff":       c.sniff,
-            "radar":       c.radar,
-            "audit":       c.audit,
-            "vulnscan":    c.vulnscan,
-            "sqlcheck":    c.sqlcheck,
-            "wifi":        c.wifi,
-            "eviltwin":    c.eviltwin,
-            "btjumper":    lambda: (self.bt.iniciar_jumper() if self._modulo_ok("bt") else None),
+            "logs":        lambda args: self.log.mostrar_historial(),
+            "files":       lambda args: c.files(),
+            "scan":        lambda args: c.scan(),
+            "netscan":     lambda args: c.scan(),
+            "advscan":     lambda args: c.advscan(),
+            "portscan":    lambda args: c.portscan(),
+            "sweep":       lambda args: c.sweep(),
+            "sniff":       lambda args: c.sniff(),
+            "radar":       lambda args: c.radar(),
+            "audit":       lambda args: c.audit(),
+            "vulnscan":    lambda args: c.vulnscan(),
+            "sqlcheck":    lambda args: c.sqlcheck(),
+            "wifi":        lambda args: c.wifi(),
+            "eviltwin":    lambda args: c.eviltwin(),
+            "btjumper":    lambda args: (
+                               self.bt.iniciar_jumper() if self._modulo_ok("bt") else None),
             "btmapa":      _btmapa,
-            "rfscan":      c.rfscan,
-            "rfmenu":      c.rfmenu,
-            "rfbarrido":   c.rfbarrido,
-            "rfbandas":    c.rfbandas,
-            "rfdb":        c.rfdb,
-            "rfstats":     c.rfstats,
-            "rfstatus":    c.rfestado,
-            "radio":       c.radio,
-            "rfgrabar":    c.rfgrabar,
-            "rfplay":      c.rfplay,
-            "adsb":        c.adsb,
-            "noaa":        c.noaa,
-            "wifitri":     lambda: (self.wifitri.menu() if self._modulo_ok("wifitri") else None),
-            "spectrum":    c.spectrum,
-            "sa":          c.spectrum,
-            "mobile":      c.mobile,
-            "mobile-deep": c.mobile_deep,
-            "view":        c.view,
-            "geofoto":     c.geofoto,
-            "osint":       c.osint,
-            "cve":         c.cve,
-            "phishing":    c.phishing,
-            "ducky":       c.ducky,
-            "stealth":     c.stealth,
-            "panic":       c.panic,
+            "rfscan":      lambda args: c.rfscan(),
+            "rfmenu":      lambda args: c.rfmenu(),
+            "rfbarrido":   lambda args: c.rfbarrido(),
+            "rfbandas":    lambda args: c.rfbandas(),
+            "rfdb":        lambda args: c.rfdb(),
+            "rfstats":     lambda args: c.rfstats(),
+            "rfstatus":    lambda args: c.rfestado(),
+            "radio":       lambda args: c.radio(),
+            "rfgrabar":    lambda args: c.rfgrabar(),
+            "rfplay":      lambda args: c.rfplay(),
+            "adsb":        lambda args: c.adsb(),
+            "noaa":        lambda args: c.noaa(),
+            "wifitri":     lambda args: (
+                               self.wifitri.menu() if self._modulo_ok("wifitri") else None),
+            "spectrum":    lambda args: c.spectrum(),
+            "sa":          lambda args: c.spectrum(),
+            "mobile":      lambda args: c.mobile(),
+            "mobile-deep": lambda args: c.mobile_deep(),
+            "view":        lambda args: c.view(),
+            "geofoto":     lambda args: c.geofoto(),
+            "osint":       lambda args: c.osint(),
+            "cve":         lambda args: c.cve(),
+            "phishing":    lambda args: c.phishing(),
+            "ducky":       lambda args: c.ducky(),
+            "stealth":     lambda args: c.stealth(),
+            "panic":       lambda args: c.panic(),
+            "proyecto":    lambda args: c.proyecto(args),
+            "reporte":     lambda args: c.reporte(args),
+            "job":         lambda args: c.jobs(args),
+            "jobs":        lambda args: c.jobs(args),
+            "plugin":      lambda args: c.plugins(args),
+            "plugins":     lambda args: c.plugins(args),
+            "locate":      _locate,
         }
 
     def _despachar(self, entrada: str) -> bool:
@@ -406,32 +553,11 @@ class ApexSentinel:
             return True
 
         cmd, args = partes[0], partes[1:]
-        c = self._cmd
-
-        if cmd == "proyecto":
-            c.proyecto(args)
-            return True
-
-        if cmd == "reporte":
-            c.reporte(args)
-            return True
-
-        if cmd in ("job", "jobs"):
-            c.jobs(args)
-            return True
-
-        if cmd in ("plugin", "plugins"):
-            c.plugins(args)
-            return True
-
-        if cmd == "locate":
-            (c.locate_p if "-p" in args else c.locate)()
-            return True
 
         handler = self._command_map.get(cmd)
         if handler is not None:
             try:
-                handler()
+                handler(args)
             except Exception as dispatch_error:
                 self.console.print(f"[red][!] Error en '{cmd}': {dispatch_error}[/red]")
                 self.log.error(str(dispatch_error), f"cmd:{cmd}")

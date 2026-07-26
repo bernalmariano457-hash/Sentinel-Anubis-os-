@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import bisect
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, TypedDict
 
 
 class BandRecord(NamedTuple):
@@ -100,99 +100,136 @@ TACTICAL_SCORE: Final[dict[str, int]] = {
 }
 
 
-class _BandDict(NamedTuple):
+class BandaInfo(TypedDict):
     nombre:         str
     tipo:           str
     desc:           str
     tactical:       bool
     color:          str
     tactical_score: int
-    rango_mhz:      float
     freq_min:       float
     freq_max:       float
 
 
-def _make_band_dict(b: BandRecord, include_range: bool = True) -> dict:
-    base_score = TACTICAL_SCORE.get(b.tipo, 0)
-    out: dict = {
+class BandaInfoConRango(BandaInfo):
+    rango_mhz: float
+
+
+class BandaTipoInfo(TypedDict):
+    nombre:   str
+    tipo:     str
+    desc:     str
+    tactical: bool
+    color:    str
+    freq_min: float
+    freq_max: float
+
+
+def _tactical_score_de(b: BandRecord) -> int:
+    return TACTICAL_SCORE.get(b.tipo, 0) + (50 if b.tactical else 0)
+
+
+def _construir_banda_info(b: BandRecord) -> BandaInfo:
+    return {
         "nombre":         b.nombre,
         "tipo":           b.tipo,
         "desc":           b.desc,
         "tactical":       b.tactical,
         "color":          COLORES_TIPO.get(b.tipo, "dim"),
-        "tactical_score": base_score + (50 if b.tactical else 0),
+        "tactical_score": _tactical_score_de(b),
         "freq_min":       b.freq_min,
         "freq_max":       b.freq_max,
     }
-    if include_range:
-        out["rango_mhz"] = b.freq_max - b.freq_min
-    return out
 
 
-_SORTED_BY_MAX:  Final[tuple[BandRecord, ...]] = tuple(
-    sorted(BANDAS_RF, key=lambda b: b.freq_max)
-)
-_FMAX_KEYS:      Final[tuple[float, ...]] = tuple(b.freq_max for b in _SORTED_BY_MAX)
+def _construir_banda_info_con_rango(b: BandRecord) -> BandaInfoConRango:
+    return {
+        "nombre":         b.nombre,
+        "tipo":           b.tipo,
+        "desc":           b.desc,
+        "tactical":       b.tactical,
+        "color":          COLORES_TIPO.get(b.tipo, "dim"),
+        "tactical_score": _tactical_score_de(b),
+        "freq_min":       b.freq_min,
+        "freq_max":       b.freq_max,
+        "rango_mhz":      b.freq_max - b.freq_min,
+    }
 
-_TACTICAL_CACHE: Final[tuple[dict, ...]] = tuple(
+
+def _construir_banda_tipo_info(b: BandRecord) -> BandaTipoInfo:
+    return {
+        "nombre":   b.nombre,
+        "tipo":     b.tipo,
+        "desc":     b.desc,
+        "tactical": b.tactical,
+        "color":    COLORES_TIPO.get(b.tipo, "dim"),
+        "freq_min": b.freq_min,
+        "freq_max": b.freq_max,
+    }
+
+
+def _calcular_prefijo_max_fin(bandas: tuple[BandRecord, ...]) -> tuple[float, ...]:
+    maximos: list[float] = []
+    maximo_actual = float("-inf")
+    for b in bandas:
+        maximo_actual = max(maximo_actual, b.freq_max)
+        maximos.append(maximo_actual)
+    return tuple(maximos)
+
+
+def _agrupar_por_tipo(bandas: tuple[BandRecord, ...]) -> dict[str, tuple[BandaTipoInfo, ...]]:
+    agrupado: dict[str, list[BandaTipoInfo]] = {}
+    for b in bandas:
+        agrupado.setdefault(b.tipo, []).append(_construir_banda_tipo_info(b))
+    return {tipo: tuple(infos) for tipo, infos in agrupado.items()}
+
+
+_SORTED_BY_MIN:  Final[tuple[BandRecord, ...]] = tuple(sorted(BANDAS_RF, key=lambda b: b.freq_min))
+_FMIN_KEYS:      Final[tuple[float, ...]] = tuple(b.freq_min for b in _SORTED_BY_MIN)
+_PREFIX_MAX_END: Final[tuple[float, ...]] = _calcular_prefijo_max_fin(_SORTED_BY_MIN)
+
+_TACTICAL_CACHE: Final[tuple[BandaInfoConRango, ...]] = tuple(
     sorted(
-        (_make_band_dict(b) for b in BANDAS_RF if b.tactical),
+        (_construir_banda_info_con_rango(b) for b in BANDAS_RF if b.tactical),
         key=lambda d: -d["tactical_score"],
     )
 )
 
-_BY_TYPE_CACHE: Final[dict[str, tuple[dict, ...]]] = {
-    tipo: tuple(
-        {
-            "nombre":   b.nombre,
-            "tipo":     b.tipo,
-            "desc":     b.desc,
-            "tactical": b.tactical,
-            "color":    COLORES_TIPO.get(b.tipo, "dim"),
-            "freq_min": b.freq_min,
-            "freq_max": b.freq_max,
-        }
-        for b in BANDAS_RF
-        if b.tipo == tipo
-    )
-    for tipo in {b.tipo for b in BANDAS_RF}
-}
+_BY_TYPE_CACHE: Final[dict[str, tuple[BandaTipoInfo, ...]]] = _agrupar_por_tipo(BANDAS_RF)
 
 
-def identify_band(freq_mhz: float) -> dict | None:
-    start = bisect.bisect_left(_FMAX_KEYS, freq_mhz)
-    candidates: list[dict] = []
-
-    for idx in range(start, len(_SORTED_BY_MAX)):
-        b = _SORTED_BY_MAX[idx]
-        if b.freq_min > freq_mhz:
-            break
-        if b.freq_min <= freq_mhz <= b.freq_max:
-            candidates.append(_make_band_dict(b))
-
-    if not candidates:
+def identify_band(freq_mhz: float) -> BandaInfoConRango | None:
+    limite = bisect.bisect_right(_FMIN_KEYS, freq_mhz)
+    if limite == 0 or _PREFIX_MAX_END[limite - 1] < freq_mhz:
         return None
 
-    return min(candidates, key=lambda d: (d["rango_mhz"], -d["tactical_score"]))
+    candidatos: list[BandaInfoConRango] = [
+        _construir_banda_info_con_rango(b)
+        for b in _SORTED_BY_MIN[:limite]
+        if b.freq_max >= freq_mhz
+    ]
+
+    if not candidatos:
+        return None
+
+    return min(candidatos, key=lambda d: (d["rango_mhz"], -d["tactical_score"]))
 
 
-def bands_in_range(freq_min_mhz: float, freq_max_mhz: float) -> list[dict]:
-    start = bisect.bisect_left(_FMAX_KEYS, freq_min_mhz)
-    result: list[dict] = []
+def bands_in_range(freq_min_mhz: float, freq_max_mhz: float) -> list[BandaInfo]:
+    limite = bisect.bisect_right(_FMIN_KEYS, freq_max_mhz)
+    if limite == 0 or _PREFIX_MAX_END[limite - 1] < freq_min_mhz:
+        return []
 
-    for idx in range(start, len(_SORTED_BY_MAX)):
-        b = _SORTED_BY_MAX[idx]
-        if b.freq_min > freq_max_mhz:
-            break
-        if b.freq_max >= freq_min_mhz and b.freq_min <= freq_max_mhz:
-            result.append(_make_band_dict(b, include_range=False))
-
-    return result
+    return [
+        _construir_banda_info(b)
+        for b in _SORTED_BY_MIN[:limite]
+        if b.freq_max >= freq_min_mhz
+    ]
 
 
-def tactical_bands() -> list[dict]:
+def tactical_bands() -> list[BandaInfoConRango]:
     return list(_TACTICAL_CACHE)
 
 
-def bands_by_type(tipo: str) -> list[dict]:
+def bands_by_type(tipo: str) -> list[BandaTipoInfo]:
     return list(_BY_TYPE_CACHE.get(tipo.upper(), ()))

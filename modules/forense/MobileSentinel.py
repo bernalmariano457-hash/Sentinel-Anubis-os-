@@ -17,11 +17,9 @@ class MobileSentinel:
 
     def extraer_whatsapp(self, save_path):
         self.sentinel.console.print("[cyan][*] Localizando base de datos de WhatsApp...[/cyan]")
-        # Ruta estándar en Android rooteado
         remote_path = "/data/data/com.whatsapp/databases/msgstore.db"
         local_file = os.path.join(save_path, "whatsapp_messages.db")
 
-        # Comando: Usar 'su' para copiar a un lugar accesible y luego hacer 'pull'
         cmd_copy = f"su -c 'cp {remote_path} /sdcard/msgstore.db && chmod 777 /sdcard/msgstore.db'"
         subprocess.run([self.adb, "shell", cmd_copy])
         result = subprocess.run(
@@ -29,7 +27,6 @@ class MobileSentinel:
 
         if result.returncode == 0:
             self.sentinel.console.print(f"[green][+] WhatsApp DB extraída: {local_file}[/green]")
-            # Limpieza en el dispositivo
             subprocess.run([self.adb, "shell", "rm /sdcard/msgstore.db"])
         else:
             self.sentinel.console.print("[red][-] No se pudo acceder a WhatsApp DB (¿Falta Root?)[/red]")
@@ -61,10 +58,8 @@ class MobileSentinel:
         os.makedirs(path, exist_ok=True)
         return path
 
-    # --- SECCIÓN ANDROID ---
     def triage_android(self):
         self.sentinel.console.print("\n[yellow][!] Intentando conexión con Android vía ADB...[/yellow]")
-        # Verificar si hay dispositivos
         check = subprocess.run(
             ["adb", "devices"], capture_output=True, text=True)
 
@@ -72,16 +67,13 @@ class MobileSentinel:
             path = self.preparar_directorio("Android")
             self.sentinel.console.print(f"[green][+] Dispositivo detectado. Triaje en: {path}[/green]")
 
-            # 1. Información del Sistema
             with open(f"{path}/sys_info.txt", "w") as f:
                 subprocess.run(["adb", "shell", "getprop"], stdout=f)
 
-            # 2. Lista de aplicaciones instaladas (detectar apps de mensajería cifrada)
             with open(f"{path}/apps_list.txt", "w") as f:
                 subprocess.run(["adb", "shell", "pm", "list",
                                "packages", "-f"], stdout=f)
 
-            # 3. Extracción de Logs (Logcat) - Útil para ver actividad reciente
             self.sentinel.console.print("[cyan][*] Capturando Logcat...[/cyan]")
             with open(f"{path}/activity_logs.txt", "w") as f:
                 subprocess.run(["adb", "logcat", "-d"], stdout=f)
@@ -90,7 +82,6 @@ class MobileSentinel:
         else:
             self.sentinel.console.print("[yellow][-] No se detectó Android con Depuración USB.[/yellow]")
 
-    # --- SECCIÓN iOS ---
     def triage_ios(self):
         self.sentinel.console.print("\n[yellow][!] Intentando comunicación con iOS...[/yellow]")
         try:
