@@ -358,10 +358,6 @@ class _SpectrumFrame:
 
 
 class _DoubleBuffer:
-    """
-    Lock-free double buffer: producer writes to back, consumer reads front.
-    Only one CAS-style swap under a lightweight lock per write cycle.
-    """
 
     def __init__(self) -> None:
         self._slots: list[_SpectrumFrame | None] = [None, None]
@@ -460,16 +456,17 @@ def _render_spectrum_matrix(
         norm_row = norm
         row_f = float(row)
 
-        filled   = norm_row >= row_f + 1
-        partial  = (~filled) & (norm_row > row_f)
-        sub_idxs = np.where(partial, np.clip((norm_row - row_f) * 8, 1, 8).astype(np.int8), 0)
+        filled = norm_row >= row_f + 1
+        partial = (~filled) & (norm_row > row_f)
+        sub_idxs = np.where(partial, np.clip(
+            (norm_row - row_f) * 8, 1, 8).astype(np.int8), 0)
 
         color_ratios = (row_f + 0.5) / H
         col_color = _color(color_ratios)
 
         peak_visible: np.ndarray | None = None
         if state.peak_norm is not None:
-            peak_filled  = state.peak_norm >= row_f + 1
+            peak_filled = state.peak_norm >= row_f + 1
             peak_partial = state.peak_norm > row_f
             peak_visible = peak_filled | peak_partial
 
@@ -779,7 +776,8 @@ def _write_export_csv(path: Path, payload: _ExportPayload) -> None:
 
 
 def _write_recording_csv(path: Path, payload: _RecordingPayload) -> None:
-    freq_headers = np.linspace(payload.freq_start, payload.freq_end, payload.bin_count)
+    freq_headers = np.linspace(
+        payload.freq_start, payload.freq_end, payload.bin_count)
     with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["timestamp"] + [f"{f:.4f}" for f in freq_headers])
@@ -827,7 +825,8 @@ class SpectrumAnalyzer:
             "SA",
         )
 
-        acq = threading.Thread(target=self._acq_loop, daemon=True, name="sa-acq")
+        acq = threading.Thread(target=self._acq_loop,
+                               daemon=True, name="sa-acq")
         self._keys.start()
         acq.start()
         try:
@@ -890,7 +889,8 @@ class SpectrumAnalyzer:
                 if len(pdb) > cfg.display_width * 2:
                     step = len(pdb) // cfg.display_width
                     n_steps = len(pdb) // step
-                    pdb = pdb[:n_steps * step].reshape(n_steps, step).max(axis=1)
+                    pdb = pdb[:n_steps *
+                              step].reshape(n_steps, step).max(axis=1)
 
                 self._buf.push(pdb)
                 if cfg.avg_frames > 1:
@@ -898,11 +898,13 @@ class SpectrumAnalyzer:
                     if avg is not None:
                         pdb = avg
 
-                freqs = np.linspace(cfg.freq_start_mhz(), cfg.freq_end_mhz(), len(pdb))
+                freqs = np.linspace(cfg.freq_start_mhz(),
+                                    cfg.freq_end_mhz(), len(pdb))
                 noise = float(np.percentile(pdb, 15))
                 pidx = int(np.argmax(pdb))
 
-                detected = _SignalDetector.detect(pdb, freqs, noise, cfg.threshold_dbm)
+                detected = _SignalDetector.detect(
+                    pdb, freqs, noise, cfg.threshold_dbm)
 
                 elapsed = time.perf_counter() - t0
                 self._fps_buf.append(elapsed)
@@ -1093,7 +1095,8 @@ class SpectrumAnalyzer:
         stem = f"spectrum_{self._cfg.center_mhz:.3f}MHz_{payload.timestamp}"
 
         json_path = _EVIDENCE_DIR / f"{stem}.json"
-        json_path.write_text(_serialize_export_to_json(payload), encoding="utf-8")
+        json_path.write_text(
+            _serialize_export_to_json(payload), encoding="utf-8")
 
         csv_path = _EVIDENCE_DIR / f"{stem}.csv"
         _write_export_csv(csv_path, payload)

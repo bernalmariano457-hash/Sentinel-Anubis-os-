@@ -7,7 +7,6 @@ import os
 import sys
 from pathlib import Path
 
-# Asegurar que el directorio del proyecto esté en el path
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
@@ -80,7 +79,6 @@ def setup_credenciales(forzar: bool = False) -> None:
 def verificar_integridad() -> None:
     print("\n── VERIFICACIÓN DE INTEGRIDAD ──\n")
 
-    # Credenciales
     if _CREDS_FILE.exists():
         contenido = _CREDS_FILE.read_text().strip()
         if contenido.startswith("$2"):
