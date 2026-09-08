@@ -2,7 +2,35 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+from typing import Any, Optional
+
+try:
+    from modules.forensic.MediaRecovery import (
+        MediaRecoveryEngine,
+        WorkspaceManagerInterface as _WorkspaceInterface,
+    )
+    _MEDIA_RECOVERY_OK = True
+except ImportError:
+    MediaRecoveryEngine = None  # type: ignore[assignment,misc]
+    _WorkspaceInterface = object  # type: ignore[assignment,misc]
+    _MEDIA_RECOVERY_OK = False
+
+
+class _SentinelWorkspaceAdapter(_WorkspaceInterface):  # type: ignore[misc]
+
+    def __init__(self, sentinel: Any) -> None:
+        self._sentinel = sentinel
+
+    def get_active_project_path(self) -> Optional[Path]:
+        gp = getattr(self._sentinel, "gp", None)
+        if gp is None:
+            return None
+        proyecto = getattr(gp, "proyecto_activo", None)
+        if proyecto is None:
+            return None
+        ruta = getattr(proyecto, "ruta", None)
+        return Path(ruta) if ruta is not None else None
 
 
 @dataclass
@@ -123,16 +151,18 @@ class ModuleRegistry:
             return False
 
     def _cargar_recovery(self) -> bool:
-        sec = getattr(self._sentinel, "security", None)
-        if sec is None:
+        if not _MEDIA_RECOVERY_OK:
+            self._warn("MediaRecoveryEngine — modulo no disponible en el entorno")
             setattr(self._sentinel, "recovery", None)
             return False
         try:
-            from core.Recovery import SentinelRecovery
-            setattr(self._sentinel, "recovery", SentinelRecovery(sec))
+            inst = MediaRecoveryEngine(
+                workspace_manager=_SentinelWorkspaceAdapter(self._sentinel)
+            )
+            setattr(self._sentinel, "recovery", inst)
             return True
         except Exception as exc:
-            self._warn(f"SentinelRecovery — error: {exc}")
+            self._warn(f"MediaRecoveryEngine — error al iniciar: {exc}")
             setattr(self._sentinel, "recovery", None)
             return False
 
@@ -219,7 +249,8 @@ class ModuleRegistry:
         ok = self._cargar_recovery()
         resultados["recovery"] = ok
         self._resultados["recovery"] = (ok, ModuleSpec(
-            "recovery", "SentinelRecovery", "core.Recovery"))
+            "recovery", "MediaRecoveryEngine", "modules.forensic.MediaRecovery",
+            display_name="Recovery"))
 
         ok = self._cargar_motor_rep()
         resultados["motor_rep"] = ok

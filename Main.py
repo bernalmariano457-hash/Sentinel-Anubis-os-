@@ -57,7 +57,6 @@ except ImportError:
         def __init__(self, *a: Any, **kw: Any) -> None: pass
         def solicitar_acceso(self) -> bool: return True
 
-
 ManejadorComando = Callable[[list[str]], None]
 
 
@@ -545,6 +544,7 @@ class ApexSentinel:
             "plugin":      lambda args: c.plugins(args),
             "plugins":     lambda args: c.plugins(args),
             "locate":      _locate,
+            "recover":     lambda args: c.recover(args),
         }
 
     def _despachar(self, entrada: str) -> bool:

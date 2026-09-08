@@ -10,6 +10,7 @@ from core.cmd_wireless import WirelessCommands
 from core.cmd_mobile import MobileCommands
 from core.cmd_osint import OsintCommands
 from core.cmd_ofensivo import OfensivoCommands
+from core.cmd_forense import ForenseCommands
 
 if TYPE_CHECKING:
     from Main import ApexSentinel
@@ -24,6 +25,7 @@ class CommandHandler(
     MobileCommands,
     OsintCommands,
     OfensivoCommands,
+    ForenseCommands,
 ):
     def __init__(self, sentinel: ApexSentinel) -> None:
         self.s = sentinel
