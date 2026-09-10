@@ -1,4 +1,3 @@
-# ══════════════════════════════════════════════════════════════════════
 #  APEX SENTINEL — Keybindings
 #  Teclas configurables por plataforma para el Spectrum Analyzer.
 #
@@ -10,10 +9,10 @@
 #
 #  En la uConsole, las teclas Fn+número envían F1-F10 al terminal.
 #  Usa esas combinaciones para los atajos de banda frecuencial.
-# ══════════════════════════════════════════════════════════════════════
 
 
-# ── Teclas globales (todas las plataformas) ───────────────────────────
+
+# Teclas globales (todas las plataformas)
 
 [global]
 
@@ -48,7 +47,7 @@ export_frame    = ["e"]            # JSON + CSV → data/evidence/rf/
 quit            = ["q", "Q", "ESC", "CTRL_C"]
 
 
-# ── Saltos rápidos de banda ───────────────────────────────────────────
+#  Saltos rápidos de banda 
 # Pulsa F1-F10 (en uConsole: Fn+1 … Fn+0) para ir directo a la banda.
 
 [bands]
@@ -65,7 +64,7 @@ F9   = { freq_mhz = 1575.42, span_mhz = 4.0,    label = "GPS L1"            }
 F10  = { freq_mhz = 433.920, span_mhz = 0.5,    label = "ISM 433 Zoom"     }
 
 
-# ── Overrides por plataforma ──────────────────────────────────────────
+#  Overrides por plataforma 
 # Las claves aquí sobreescriben las del bloque [global] para esa plataforma.
 # Útil si alguna tecla no está disponible o se comporta distinto.
 

@@ -1,6 +1,3 @@
-"""
-core/commands/cmd_osint.py — Comandos OSINT, geolocalización e inteligencia
-"""
 from __future__ import annotations
 
 from core.commands._base import _DomainBase

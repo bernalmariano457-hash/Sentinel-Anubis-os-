@@ -8,6 +8,7 @@ import socket
 import struct
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Union
@@ -46,11 +47,6 @@ _RUTA_SYS_NET: str = "/sys/class/net"
 _RUTA_THERMAL: str = "/sys/class/thermal/thermal_zone0/temp"
 _RUTA_PROC_STAT: str = "/proc/stat"
 _RUTA_PROC_MEMINFO: str = "/proc/meminfo"
-
-_GUTTER_COLUMNAS_AYUDA: int = 2
-_SOBRECARGA_PANEL_AYUDA: int = 8
-_ANCHO_MIN_COMANDO: int = 20
-_ANCHO_MIN_DESCRIPCION: int = 24
 
 _CAJA: box.Box = box.ROUNDED
 
@@ -396,18 +392,6 @@ def _linea_barra(idx: int, total: int, ancho: int) -> str:
     )
 
 
-def _columnas_ayuda(ancho_consola: int) -> int:
-    ancho_dos = max(1, (ancho_consola - _GUTTER_COLUMNAS_AYUDA) // 2 - 1)
-    max_desc_dos = ancho_dos - _SOBRECARGA_PANEL_AYUDA - _ANCHO_MIN_COMANDO
-    return 2 if max_desc_dos >= _ANCHO_MIN_DESCRIPCION else 1
-
-
-def _dimensiones_panel_ayuda(ancho_consola: int, columnas: int) -> Tuple[int, int]:
-    ancho_panel = max(34, (ancho_consola - _GUTTER_COLUMNAS_AYUDA * (columnas - 1)) // columnas - 1)
-    max_desc = max(_ANCHO_MIN_DESCRIPCION, ancho_panel - _SOBRECARGA_PANEL_AYUDA - _ANCHO_MIN_COMANDO)
-    return ancho_panel, max_desc
-
-
 def _panel_hero(
     nombre: str,
     version: str,
@@ -604,62 +588,104 @@ def mostrar_banner(
     console.print()
 
 
+def _normalizar(texto: str) -> str:
+    sin_acentos = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in sin_acentos if not unicodedata.combining(c)).lower()
+
+
+def _filtrar_comandos(
+    comandos: Dict[str, List[Tuple[str, str]]],
+    filtro: Optional[str],
+) -> Dict[str, List[Tuple[str, str]]]:
+    termino = _normalizar((filtro or "").strip())
+    if not termino:
+        return comandos
+
+    # 1) ¿coincide con el nombre de alguna categoría? ("red", "rf", "ataques"...)
+    por_categoria = {
+        cat: cmds for cat, cmds in comandos.items()
+        if termino in _normalizar(cat)
+    }
+    if por_categoria:
+        return por_categoria
+
+    # 2) si no, busca la palabra en nombres de comando y descripciones
+    resultado: Dict[str, List[Tuple[str, str]]] = {}
+    for cat, cmds in comandos.items():
+        coincidencias = [
+            (cmd, desc) for cmd, desc in cmds
+            if termino in _normalizar(cmd) or termino in _normalizar(desc)
+        ]
+        if coincidencias:
+            resultado[cat] = coincidencias
+    return resultado
+
+
+def _tabla_comandos(cmds: List[Tuple[str, str]]) -> Table:
+    tabla = Table.grid(padding=(0, 2), expand=True)
+    tabla.add_column(style="bold green", no_wrap=True)
+    tabla.add_column(style="dim green", overflow="fold", ratio=1)
+    for cmd, desc in cmds:
+        tabla.add_row(cmd, desc)
+    return tabla
+
+
 def mostrar_ayuda(
     console: Console,
     version: str,
     comandos: Optional[Dict[str, List[Tuple[str, str]]]] = None,
+    filtro: Optional[str] = None,
 ) -> None:
     if comandos is None:
         comandos = COMANDOS_HELP
-    compacto = _pantalla_compacta(console)
 
     console.print()
     console.print(
-        Panel(
-            Align.center(
-                f"[bold green]APEX SENTINEL  v{version}[/bold green]\n"
-                "[dim green]ANUBIS OS — Sistema Operativo Táctico[/dim green]"
-            ),
-            border_style="green",
-            box=_CAJA,
-            padding=(0, 2) if not compacto else (0, 1),
+        Align.center(
+            f"[bold green]APEX SENTINEL[/bold green] [dim green]v{version}[/dim green]   "
+            "[dim green]ANUBIS OS — Sistema Operativo Táctico[/dim green]"
         )
     )
-    console.print()
+    console.print(Rule(style="dim green"))
 
-    ancho_consola = console.size.width
-    columnas_por_fila = _columnas_ayuda(ancho_consola)
-    ancho_panel, ancho_max_desc = _dimensiones_panel_ayuda(ancho_consola, columnas_por_fila)
+    categorias = _filtrar_comandos(comandos, filtro)
 
-    cols: List[Panel] = []
-    for categoria, cmds in comandos.items():
-        tb = Table(
-            box=box.SIMPLE_HEAD,
-            header_style="bold green",
-            show_edge=False,
-            expand=True,
-            padding=(0, 1),
+    if not categorias:
+        console.print()
+        console.print(
+            f"[dim green]Sin coincidencias para[/dim green] [bold green]'{filtro}'[/bold green]"
         )
-        tb.add_column(f"▸  {categoria}", style="green", min_width=_ANCHO_MIN_COMANDO, no_wrap=True)
-        tb.add_column("Descripción", style="dim green", max_width=ancho_max_desc, overflow="fold")
-        for cmd, desc in cmds:
-            tb.add_row(f"[bold green]{cmd}[/bold green]", desc)
-        cols.append(
-            Panel(tb, border_style="dim green", box=_CAJA, padding=(0, 1), width=ancho_panel)
+        console.print(
+            "[dim green]Prueba[/dim green] [bold green]help[/bold green] "
+            "[dim green]a secas, o[/dim green] [bold green]help <categoría>[/bold green]"
         )
+        console.print()
+        console.print(Rule(style="dim green"))
+        console.print()
+        return
 
-    for i in range(0, len(cols), columnas_por_fila):
-        fila = cols[i: i + columnas_por_fila]
-        console.print(Columns(fila, equal=False, expand=False))
+    for categoria, cmds in categorias.items():
+        console.print()
+        console.print(Rule(f"[bold green]▸ {categoria}[/bold green]", style="dim green", align="left"))
+        console.print(_tabla_comandos(cmds))
 
     console.print()
     console.print(Rule(style="dim green"))
-    console.print(
-        Align.center(
-            "[dim green]Todos los módulos respetan [bold green]Ctrl+C[/bold green] "
-            "para cancelar  ·  [bold green]exit[/bold green] para cerrar[/dim green]"
+    if filtro:
+        console.print(
+            Align.center(
+                f"[dim green]Resultados para[/dim green] [bold green]'{filtro}'[/bold green]  ·  "
+                "[dim green]escribe[/dim green] [bold green]help[/bold green] "
+                "[dim green]para ver todo[/dim green]"
+            )
         )
-    )
+    else:
+        console.print(
+            Align.center(
+                "[bold green]help <categoría|palabra>[/bold green] [dim green]filtra[/dim green]  ·  "
+                "[bold green]exit[/bold green] [dim green]para salir[/dim green]"
+            )
+        )
     console.print(Rule(style="dim green"))
     console.print()
 

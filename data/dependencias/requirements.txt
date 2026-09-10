@@ -1,38 +1,37 @@
-# ══════════════════════════════════════════════════════════════════
+
 #  APEX SENTINEL — requirements.txt  v2.2
-# ══════════════════════════════════════════════════════════════════
-#
+
 #  Instalación estándar (Linux / uConsole):
 #    pip install -r requirements.txt
 #
 #  En Termux (Android):
 #    pip install -r requirements.txt --break-system-packages
 #
-# ══════════════════════════════════════════════════════════════════
 
-# ── Core ──────────────────────────────────────────────────────────
+
+#  Core 
 rich>=13.7.0
 python-dotenv>=1.0.1
 requests>=2.31.0
 toml>=0.10.2
 
-# ── Seguridad / Auth ──────────────────────────────────────────────
+#  Seguridad / Auth 
 bcrypt>=4.1.3
 cryptography>=42.0.0
 
-# ── Red ───────────────────────────────────────────────────────────
-scapy>=2.5.0               # no disponible en Termux/Android
+#  Red 
+scapy>=2.5.0              
 netifaces>=0.11.0
 
-# ── RF / SDR — núcleo ─────────────────────────────────────────────
-numpy>=1.26.0              # muestras IQ, FFT
+#  RF / SDR — núcleo 
+numpy>=1.26.0              
 
-# ── RF / SDR — hardware ───────────────────────────────────────────
+#  RF / SDR — hardware 
 # Descomenta según tu hardware:
 # pyrtlsdr>=0.3.0          # RTL-SDR (más común, recomendado)
 # SoapySDR                 # HackRF, LimeSDR (instalar desde paquete del sistema)
 
-# ── RF / SDR — demodulación y audio ──────────────────────────────
+# RF / SDR — demodulación y audio 
 scipy>=1.12.0              # decimación con antialiasing (opcional pero recomendado)
 sounddevice>=0.4.6         # audio en Linux/uConsole y macOS
 
@@ -44,13 +43,13 @@ sounddevice>=0.4.6         # audio en Linux/uConsole y macOS
 # pkg install termux-api
 # (no requiere pip — usa termux-media-player)
 
-# ── ADS-B — decodificación avanzada ──────────────────────────────
+#  ADS-B — decodificación avanzada 
 # pyModeS>=2.12            # decodificador Mode S completo (opcional)
 #   pip install pyModeS --break-system-packages
 
-# ── OSINT / Forense ───────────────────────────────────────────────
+#  OSINT / Forense 
 Pillow>=10.2.0             # análisis EXIF de imágenes
 python-whois>=0.9.4
 
-# ── Geolocalización ───────────────────────────────────────────────
+#  Geolocalización 
 # geoip2>=4.8.0            # base de datos GeoIP2 local (opcional)

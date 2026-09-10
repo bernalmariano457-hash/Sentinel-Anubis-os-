@@ -47,7 +47,8 @@ except ImportError:
         c.print(Rule(f"[bold green]{nombre} v{version}[/bold green]"))
 
     def mostrar_ayuda(c: Console, version: str,
-                      cmds: dict[str, Any] | None = None) -> None:
+                      cmds: dict[str, Any] | None = None,
+                      filtro: str | None = None) -> None:
         c.print(Panel("[dim]Sin ayuda.[/dim]", title="AYUDA"))
 
 try:
@@ -487,8 +488,12 @@ class ApexSentinel:
             (c.locate_p if "-p" in args else c.locate)()
 
         return {
-            "help":        lambda args: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
-            "?":           lambda args: mostrar_ayuda(self.console, self.version, COMANDOS_HELP),
+            "help":        lambda args: mostrar_ayuda(
+                               self.console, self.version, COMANDOS_HELP,
+                               " ".join(args) if args else None),
+            "?":           lambda args: mostrar_ayuda(
+                               self.console, self.version, COMANDOS_HELP,
+                               " ".join(args) if args else None),
             "status":      lambda args: c.status(),
             "hora":        lambda args: self.console.print(
                                f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
@@ -577,14 +582,19 @@ class ApexSentinel:
             return
 
         dependency_checker = getattr(self, "checker", None)
-        if dependency_checker is not None:
-            dependency_checker.verificar_dependencias()
-
-        self.log.verificar_y_limpiar()
-
         stealth_module = getattr(self, "stealth", None)
-        if stealth_module is not None:
-            stealth_module.verificar_identidad()
+
+        # Estas comprobaciones de arranque se siguen ejecutando con normalidad,
+        # pero su salida se captura (no se descarta la lógica, solo el print)
+        # para que no inunden la pantalla justo después del login.
+        with self.console.capture():
+            if dependency_checker is not None:
+                dependency_checker.verificar_dependencias()
+
+            self.log.verificar_y_limpiar()
+
+            if stealth_module is not None:
+                stealth_module.verificar_identidad()
 
         self.log.info("Sistema iniciado correctamente.", "ApexSentinel")
 

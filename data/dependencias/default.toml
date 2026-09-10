@@ -1,8 +1,7 @@
-# ══════════════════════════════════════════════════════════════════
+
 # RFScanner — Configuración principal
 # Edita este archivo y copia a config/local.toml para personalizar.
 # Los valores de local.toml sobreescriben este archivo.
-# ══════════════════════════════════════════════════════════════════
 
 [hardware]
 # Índice del dispositivo RTL-SDR (0 = primero detectado)

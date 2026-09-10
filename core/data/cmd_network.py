@@ -1,6 +1,3 @@
-"""
-core/commands/cmd_network.py — Comandos de red y auditoría
-"""
 from __future__ import annotations
 
 import socket
@@ -14,9 +11,8 @@ from rich.table import Table
 from core.commands._base import _DomainBase
 from core.validators import Validador
 
-class NetworkCommands(_DomainBase):
 
-    # ARP Scan
+class NetworkCommands(_DomainBase):
 
     def scan(self):
         s = self.s
@@ -41,22 +37,23 @@ class NetworkCommands(_DomainBase):
             for _, reci in resultado:
                 fab = s.obtener_fabricante(reci.hwsrc)
                 tabla.add_row(reci.psrc, reci.hwsrc, fab)
-                hosts.append({"ip": reci.psrc, "mac": reci.hwsrc, "fabricante": fab})
+                hosts.append(
+                    {"ip": reci.psrc, "mac": reci.hwsrc, "fabricante": fab})
             self.console.print(tabla)
             if s.gp:
                 s.gp.registrar_evidencia(
                     "arp_scan", f"Scan ARP en {rango}: {len(hosts)} hosts",
                     {"rango": rango, "hosts": hosts})
-            s.log.info(f"Scan ARP en {rango}: {len(resultado)} hosts", "NetworkScan")
+            s.log.info(
+                f"Scan ARP en {rango}: {len(resultado)} hosts", "NetworkScan")
         except Exception:
             self.console.print(
                 "[red][!] Error de permisos. Ejecuta como root/administrador.[/red]")
 
-    # Port Scan
-
     def portscan(self):
         s = self.s
-        objetivo = Validador.pedir_ip(self.console, f"\n{s.nombre} [TARGET IP]")
+        objetivo = Validador.pedir_ip(
+            self.console, f"\n{s.nombre} [TARGET IP]")
         if not objetivo:
             return
         s.animar_barra(f"AUDITANDO PUERTOS EN {objetivo}...")
@@ -66,7 +63,8 @@ class NetworkCommands(_DomainBase):
             445: "SMB",   3306: "MySQL",    5432: "PostgreSQL",
             8080: "HTTP-Alt",
         }
-        tabla = Table(header_style="bold red", box=box.SIMPLE_HEAD, show_edge=False)
+        tabla = Table(header_style="bold red",
+                      box=box.SIMPLE_HEAD, show_edge=False)
         tabla.add_column("Puerto",   style="cyan",   justify="center")
         tabla.add_column("Servicio", style="yellow")
         tabla.add_column("Estado",   justify="center")
@@ -76,7 +74,8 @@ class NetworkCommands(_DomainBase):
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(0.5)
                 if sock.connect_ex((objetivo, puerto)) == 0:
-                    tabla.add_row(str(puerto), servicio, "[green]ABIERTO[/green]")
+                    tabla.add_row(str(puerto), servicio,
+                                  "[green]ABIERTO[/green]")
                     abiertos.append({"puerto": puerto, "servicio": servicio})
                 sock.close()
             except socket.error:
@@ -87,13 +86,12 @@ class NetworkCommands(_DomainBase):
             s.gp.registrar_evidencia(
                 "portscan", f"PortScan en {objetivo}: {len(abiertos)} puertos",
                 {"ip": objetivo, "puertos": abiertos})
-        s.log.info(f"PortScan {objetivo}: {len(abiertos)} puertos abiertos", "PortScan")
+        s.log.info(
+            f"PortScan {objetivo}: {len(abiertos)} puertos abiertos", "PortScan")
         if abiertos and s.cve:
             if Prompt.ask("\n[?] ¿Cruzar con CVE?", choices=["s", "n"], default="s") == "s":
                 s.cve.analizar_resultado_scan(
                     [{"nombre": a["servicio"], "version": ""} for a in abiertos])
-
-    # Sweep / Sniff / AdvScan
 
     def sweep(self):
         if not self._modulo_ok("sweep"):
@@ -116,16 +114,12 @@ class NetworkCommands(_DomainBase):
         if ip:
             self.s.adv_scanner.escanear_objetivo(ip)
 
-    # Radar
-
     def radar(self):
         s = self.s
         if not self._modulo_ok("radar"):
             return
         s._limpiar()
 
-        # FIX: abrir_mapa() intenta lanzar un browser — inviable en CM4 headless.
-        # Solo lo llamamos si hay DISPLAY disponible (entorno gráfico detectado).
         _tiene_display = bool(
             __import__("os").environ.get("DISPLAY") or
             __import__("os").environ.get("WAYLAND_DISPLAY")
@@ -155,13 +149,12 @@ class NetworkCommands(_DomainBase):
         except KeyboardInterrupt:
             self.console.print("\n[yellow][!] Radar detenido.[/yellow]")
 
-    # Auditoría / Hydra
-
     def audit(self):
         s = self.s
         if not self._modulo_ok("hydra") or not self._modulo_ok("dict_manager"):
             return
-        self.console.print("\n[bold magenta]⚔  MÓDULO HYDRA INICIADO[/bold magenta]")
+        self.console.print(
+            "\n[bold magenta]⚔  MÓDULO HYDRA INICIADO[/bold magenta]")
         target = Validador.pedir_ip(self.console, "[?] IP del objetivo")
         if not target:
             return
@@ -177,11 +170,10 @@ class NetworkCommands(_DomainBase):
                 "Instala wordlists: sudo apt install wordlists[/red]")
             return
         if Prompt.ask(f"¿Iniciar ataque con {diccionario}?", choices=["s", "n"], default="n") == "s":
-            resultado = s.hydra.ejecutar_ataque(target, servicio, "root", diccionario)
+            resultado = s.hydra.ejecutar_ataque(
+                target, servicio, "root", diccionario)
             if resultado:
                 s.mostrar_dashboard_exito(target, servicio, resultado)
-
-    # Vuln Scan / SQL Check
 
     def vulnscan(self):
         s = self.s
@@ -192,7 +184,8 @@ class NetworkCommands(_DomainBase):
             return
         resultado = s.audit_engine.escaneo_vulnerabilidades(target)
         if resultado.error:
-            self.console.print(f"[red][!] Error en escaneo: {resultado.error}[/red]")
+            self.console.print(
+                f"[red][!] Error en escaneo: {resultado.error}[/red]")
             return
         contenido = resultado.stdout or "[dim]Sin resultados.[/dim]"
         self.console.print(
@@ -210,7 +203,8 @@ class NetworkCommands(_DomainBase):
             return
         resultado = s.audit_engine.auditoria_sql(url)
         if resultado.error:
-            self.console.print(f"[red][!] Error en SQLmap: {resultado.error}[/red]")
+            self.console.print(
+                f"[red][!] Error en SQLmap: {resultado.error}[/red]")
             return
         contenido = resultado.stdout or "[dim]Sin resultados.[/dim]"
         self.console.print(

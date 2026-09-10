@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -234,33 +235,42 @@ class ModuleRegistry:
         resultados: dict[str, bool] = {}
         _especiales = {"recovery", "motor_rep", "plugins", "checker"}
 
-        ok = self._cargar_checker()
-        resultados["checker"] = ok
-        self._resultados["checker"] = (ok, ModuleSpec(
-            "checker", "SystemChecker", "core.SystemChecker"))
+        # Todo lo de aqui adentro sigue ejecutandose exactamente igual
+        # (se intenta importar cada modulo, se guarda el resultado, se
+        # escribe en el log), solo que la salida a pantalla se captura
+        # en vez de imprimirse, para no llenar la consola con una linea
+        # por cada uno de los ~29 modulos al arrancar.
+        console = getattr(self._sentinel, "console", None)
+        silenciador = console.capture() if console is not None else nullcontext()
 
-        for spec in MODULOS:
-            if spec.attr in _especiales:
-                continue
-            ok = self._cargar_uno(spec)
-            resultados[spec.attr] = ok
-            self._resultados[spec.attr] = (ok, spec)
+        with silenciador:
+            ok = self._cargar_checker()
+            resultados["checker"] = ok
+            self._resultados["checker"] = (ok, ModuleSpec(
+                "checker", "SystemChecker", "core.SystemChecker"))
 
-        ok = self._cargar_recovery()
-        resultados["recovery"] = ok
-        self._resultados["recovery"] = (ok, ModuleSpec(
-            "recovery", "MediaRecoveryEngine", "modules.forensic.MediaRecovery",
-            display_name="Recovery"))
+            for spec in MODULOS:
+                if spec.attr in _especiales:
+                    continue
+                ok = self._cargar_uno(spec)
+                resultados[spec.attr] = ok
+                self._resultados[spec.attr] = (ok, spec)
 
-        ok = self._cargar_motor_rep()
-        resultados["motor_rep"] = ok
-        self._resultados["motor_rep"] = (ok, ModuleSpec(
-            "motor_rep", "MotorReportes", "modules.reporte.MotorReportes"))
+            ok = self._cargar_recovery()
+            resultados["recovery"] = ok
+            self._resultados["recovery"] = (ok, ModuleSpec(
+                "recovery", "MediaRecoveryEngine", "modules.forensic.MediaRecovery",
+                display_name="Recovery"))
 
-        ok = self._cargar_plugins()
-        resultados["plugins"] = ok
+            ok = self._cargar_motor_rep()
+            resultados["motor_rep"] = ok
+            self._resultados["motor_rep"] = (ok, ModuleSpec(
+                "motor_rep", "MotorReportes", "modules.reporte.MotorReportes"))
 
-        self._cargar_extras()
+            ok = self._cargar_plugins()
+            resultados["plugins"] = ok
+
+            self._cargar_extras()
 
         n_ok = sum(1 for v in resultados.values() if v)
         self._info(f"Módulos cargados: {n_ok}/{len(resultados)}")
