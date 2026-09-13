@@ -27,6 +27,7 @@
   Geo               GeoPrecise  ·  disponible
   Forense           disponible
   OSINT             disponible
+  Flipper Zero      bridge serie  ·  conectado
   Proyectos         sin proyecto activo
 
   AnubisOS@Sentinel~# (): rfscan
@@ -66,10 +67,11 @@ Main.py (ApexSentinel)
 ├── modules/
 │   ├── rf/                  ← RTL-SDR · FFT · waterfall · ADS-B · NOAA · MockSDR
 │   ├── network/             ← radar Wi-Fi · ARP scan · sniffer · Evil Twin · Bluetooth · triangulación
-│   ├── geo/                 ← GeoPrecise · GeomapSentinel · LocatorModule
+│   ├── geo/                 ← GeoPrecise · GeomapSentinel · LocatorModule · KML · GeoJSON
 │   ├── forense/             ← EXIF · triaje móvil · stealth · panic · db_extractor
 │   ├── osint/               ← CVE lookup · geolocalización · reconocimiento
 │   ├── audit/               ← Rubber Ducky HID · credenciales · diccionarios
+│   ├── hardware/            ← FlipperModule · flipper_bridge (puente serie Flipper Zero)
 │   └── reporte/             ← generación de reportes · exportación · timeline
 │
 └── plugins/                 ← módulos de terceros · hot-reload
@@ -109,6 +111,7 @@ Motor propio sobre `pyrtlsdr` con `MockSDR` como fallback para desarrollo sin ha
 - Escaneo BLE en tiempo real con `bleak` — descubrimiento de dispositivos y datos de publicidad
 - Monitor continuo con umbral de proximidad (cerca / medio / lejos) por RSSI
 - Resolución OUI de fabricantes para direcciones MAC BLE
+- **Mapa BLE en tiempo real** — visualización interactiva TUI de dispositivos BLE activos con intensidad de señal, fabricante y coordenadas relativas renderizadas en terminal Rich
 - Registro de evidencias por sesión
 
 ### Geo
@@ -116,7 +119,21 @@ Motor propio sobre `pyrtlsdr` con `MockSDR` como fallback para desarrollo sin ha
 - **GeoPrecise** — geolocalización por triangulación de redes Wi-Fi cercanas (API externa)
 - **GeomapSentinel** — generación de mapas HTML interactivos con `folium` coloreados por fabricante
 - **LocatorModule** — localización por IP con coordenadas y volcado a evidencias
+- **Triangulación híbrida Wi-Fi + BLE** — algoritmo de fusión de señales RSSI Wi-Fi y BLE para estimación de posición física con mayor precisión que cualquiera de las dos fuentes de forma independiente
+- **Exportación geo avanzada** — generación automática de evidencias espaciales en KML (Google Earth / Maps) y GeoJSON (estándar abierto) además de los mapas HTML existentes
 - Resultados guardados en `data/evidence/geo/`
+
+### Flipper Zero
+
+Integración táctica con Flipper Zero vía puerto serie. El módulo `flipper_bridge` establece el puente de comunicación y expone las capacidades del dispositivo directamente desde la interfaz de Sentinel.
+
+- **Bridge serie** — conexión automática por VID/PID (`0x0483 / 0x5740`) con descubrimiento de puerto y reconexión automática
+- **Telemetría del dispositivo** — batería, voltaje, temperatura y estado del almacenamiento externo
+- **Escaneo NFC (HF)** — lectura de tarjetas de alta frecuencia con extracción de UID y tipo
+- **Lectura RFID (LF 125 kHz)** — lectura de tarjetas de baja frecuencia
+- **Captura Sub-GHz** — grabación de señales a archivos `.sub` en el almacenamiento del Flipper
+- **Gestión de capturas** — listado y acceso a archivos `.sub` guardados en `/ext/subghz/`
+- Integrado en el ciclo de apagado coordinado de Sentinel — desconexión limpia al salir
 
 ### Forense
 
@@ -183,6 +200,16 @@ sudo apt install rtl-sdr librtlsdr-dev
 pkg install rtl-sdr
 ```
 
+### Soporte Flipper Zero
+
+El módulo Flipper Zero requiere `pyserial`. Se instala automáticamente con el grupo `hardware`:
+
+```bash
+pip install -e ".[hardware]"
+```
+
+Conecta el Flipper Zero por USB antes de arrancar Sentinel. El bridge detecta el dispositivo automáticamente por VID/PID. Si hay más de un puerto serie disponible, usa `--port /dev/ttyACM0` al lanzar el comando correspondiente desde la CLI del bridge.
+
 ---
 
 ## Comandos
@@ -213,6 +240,8 @@ pkg install rtl-sdr
 | `vulnscan` | Escaneo de vulnerabilidades |
 | `wifi` | Gestión de interfaces wireless |
 | `eviltwin` | Portal cautivo para auditoría wireless |
+| `wifitri` | Triangulación Wi-Fi por RSSI |
+| `btmapa` | Mapa radar BLE en tiempo real (TUI) |
 
 ### RF / SDR
 
@@ -232,6 +261,17 @@ pkg install rtl-sdr
 | `adsb` | Monitor ADS-B — aeronaves en 1090 MHz (pyModeS) |
 | `noaa` | NOAA APT — imágenes de satélite meteorológico a 137 MHz |
 
+### Flipper Zero
+
+| Comando | Descripción |
+|---------|-------------|
+| `flipper` | Menú interactivo del módulo Flipper Zero |
+| `flipper-status` | Telemetría del dispositivo: batería, temperatura, almacenamiento |
+| `flipper-nfc` | Escaneo NFC de alta frecuencia — extrae UID y tipo de tarjeta |
+| `flipper-rfid` | Lectura RFID de baja frecuencia (125 kHz) |
+| `flipper-capture` | Captura señal Sub-GHz y la guarda como archivo `.sub` en el Flipper |
+| `flipper-list` | Listar archivos `.sub` guardados en `/ext/subghz/` del dispositivo |
+
 ### Forense
 
 | Comando | Descripción |
@@ -242,6 +282,8 @@ pkg install rtl-sdr
 | `view` | Leer archivo forense |
 | `stealth` | Verificar identidad digital y exposición de red |
 | `panic` | Protocolo de emergencia — cifra todo y sale |
+| `recover` | File carving forense (.dd / .img o /dev/sdX) |
+| `recover ver <id>` | Tabla de resultados de un job de carving |
 
 ### OSINT
 
@@ -251,6 +293,7 @@ pkg install rtl-sdr
 | `cve` | Búsqueda de CVEs por servicio / versión |
 | `locate` | Geolocalización por IP |
 | `locate -p` | Geolocalización de IP pública del operador |
+| `geofoto` | Triangulación híbrida Wi-Fi + BLE con exportación geo |
 
 ### Proyectos
 
@@ -295,6 +338,8 @@ pkg install rtl-sdr
 **ClockworkPi uConsole + RTL-SDR V3**
 
 La uConsole es la razón por la que este proyecto tiene la forma que tiene. Terminal puro, teclado físico, cabe en una mochila. El puerto de expansión acepta el RTL-SDR directamente — sin adaptadores, sin hubs — lo que hace que el módulo RF corra en hardware real sin fricción.
+
+El Flipper Zero complementa el stack de hardware táctica: actúa como extensión de campo para Sub-GHz, NFC, RFID y BadUSB, controlado directamente desde Sentinel vía `flipper_bridge` sobre puerto serie.
 
 Desarrollo actual: Termux en Android con MockSDR para la parte RF y hardware real para todo lo demás.
 
@@ -382,17 +427,15 @@ Los plugins se cargan en caliente — no hace falta reiniciar Sentinel.
 - [x] pyproject.toml — dependencias por plataforma (uConsole / Kali / Termux)
 - [x] CI/CD con GitHub Actions — lint + types + tests
 - [x] Suite de tests — Auth, Security, ModuleRegistry, integración
+- [x] Mapa BLE en tiempo real — visualización de dispositivos en terminal Rich TUI
+- [x] Triangulación híbrida Wi-Fi + BLE para estimación de posición de alta precisión
+- [x] Exportación de mapas geo a formatos KML y GeoJSON
+- [x] Integración de puente con Flipper Zero (Flipper Bridge) — NFC · RFID · Sub-GHz · telemetría
 
 ### En progreso
 
 - [ ] Arranque nativo en uConsole (reemplazar el login shell)
 - [ ] Cobertura de tests al 80%
-
-### Próximo
-
-- [ ] Mapa BLE en tiempo real — visualización de dispositivos en terminal
-- [ ] Triangulación Wi-Fi combinada con BLE para mayor precisión
-- [ ] Exportación de mapas geo a formatos KML / GeoJSON
 
 ---
 

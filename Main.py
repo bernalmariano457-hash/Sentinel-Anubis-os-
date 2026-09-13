@@ -40,11 +40,11 @@ except ImportError:
 
     def mostrar_bootloader(c: Console, nombre: str, version: str,
                            iface: str, estados_modulos: Any = None) -> None:
-        c.print(Panel(f"[bold green]{nombre} v{version}[/bold green]"))
+        c.print(Panel(f"[bold steel_blue1]{nombre} v{version}[/bold steel_blue1]"))
 
     def mostrar_banner(c: Console, nombre: str, version: str,
                        iface: str, proyecto: str | None = None) -> None:
-        c.print(Rule(f"[bold green]{nombre} v{version}[/bold green]"))
+        c.print(Rule(f"[bold steel_blue1]{nombre} v{version}[/bold steel_blue1]"))
 
     def mostrar_ayuda(c: Console, version: str,
                       cmds: dict[str, Any] | None = None,
@@ -57,6 +57,12 @@ except ImportError:
     class GestorAuth:  # type: ignore[misc]
         def __init__(self, *a: Any, **kw: Any) -> None: pass
         def solicitar_acceso(self) -> bool: return True
+
+try:
+    from FlipperModule import FlipperModule
+    _FLIPPER_OK = True
+except ImportError:
+    _FLIPPER_OK = False
 
 ManejadorComando = Callable[[list[str]], None]
 
@@ -218,7 +224,12 @@ class ApexSentinel:
     def __init__(self) -> None:
         self._initialized: bool = False
 
-        self.console = Console()
+        # highlight=False: si no, Rich re-colorea automáticamente números,
+        # IPs, rutas y texto entre comillas con SU propia paleta por
+        # defecto (que usa verde/cian), pisando por encima los colores que
+        # definimos en core/bootscreen.py. Con esto, el único color que se
+        # ve es el que se pide explícitamente por markup.
+        self.console = Console(highlight=False)
         self.log = LogSistema(self.console)
 
         self._coordinator: _ShutdownCoordinator = _ShutdownCoordinator()
@@ -234,6 +245,12 @@ class ApexSentinel:
 
         self._registry = ModuleRegistry(self)
         self._registry.cargar_todos()
+
+        # ── Flipper Zero ──────────────────────────────────────────────────────
+        if _FLIPPER_OK:
+            self.flipper = FlipperModule(self)
+        else:
+            self.flipper = None  # type: ignore[assignment]
 
         self._cmd = CommandHandler(self)
         self._command_map: dict[str, ManejadorComando] = self._build_command_map()
@@ -270,8 +287,8 @@ class ApexSentinel:
         def _signal_handler(signum: int, frame: Any) -> None:
             nombre_senal = signal.Signals(signum).name
             self.console.print(
-                f"\n[yellow][!] Señal {nombre_senal} recibida. "
-                f"Iniciando apagado coordinado.[/yellow]"
+                f"\n[orange3][!] Señal {nombre_senal} recibida. "
+                f"Iniciando apagado coordinado.[/orange3]"
             )
             self._apagar()
             sys.exit(0)
@@ -336,6 +353,7 @@ class ApexSentinel:
             ("rf",      "cerrar"),
             ("wifitri", "cerrar"),
             ("adsb",    "cerrar"),
+            ("flipper", "_desconectar"),
         )
         for attr_name, method_name in closeable_attrs:
             module_instance = getattr(self, attr_name, None)
@@ -424,8 +442,8 @@ class ApexSentinel:
     def _modulo_ok(self, nombre_attr: str) -> bool:
         if getattr(self, nombre_attr, None) is None:
             self.console.print(
-                f"[red][!] Módulo '[bold]{nombre_attr}[/bold]' "
-                f"no disponible en este entorno.[/red]"
+                f"[orange3][!] Módulo '[bold]{nombre_attr}[/bold]' "
+                f"no disponible en este entorno.[/orange3]"
             )
             return False
         return True
@@ -470,13 +488,13 @@ class ApexSentinel:
                 from modules.network.bt_mapa import BLEMapaRadar
             except ImportError:
                 self.console.print(
-                    "[red][!] bt_mapa.py no encontrado en modules/network/[/red]"
+                    "[orange3][!] bt_mapa.py no encontrado en modules/network/[/orange3]"
                 )
                 return
             duracion = 120
             try:
                 raw_input = self.console.input(
-                    "\n[bold cyan]  [?] Duración en segundos (Enter = 120)[/bold cyan]: "
+                    "\n[bold steel_blue1]  [?] Duración en segundos (Enter = 120)[/bold steel_blue1]: "
                 ).strip()
                 if raw_input.isdigit():
                     duracion = int(raw_input)
@@ -496,7 +514,7 @@ class ApexSentinel:
                                " ".join(args) if args else None),
             "status":      lambda args: c.status(),
             "hora":        lambda args: self.console.print(
-                               f"[cyan]Hora:[/cyan] {time.strftime('%H:%M:%S')}"),
+                               f"[steel_blue1]Hora:[/steel_blue1] {time.strftime('%H:%M:%S')}"),
             "clear":       _banner,
             "cls":         _banner,
             "logs":        lambda args: self.log.mostrar_historial(),
@@ -550,6 +568,19 @@ class ApexSentinel:
             "plugins":     lambda args: c.plugins(args),
             "locate":      _locate,
             "recover":     lambda args: c.recover(args),
+            # ── Flipper Zero ───────────────────────────────────────────────
+            "flipper":         lambda args: (
+                                   self.flipper.menu() if self._modulo_ok("flipper") else None),
+            "flipper-status":  lambda args: (
+                                   self.flipper.status() if self._modulo_ok("flipper") else None),
+            "flipper-nfc":     lambda args: (
+                                   self.flipper.nfc_scan() if self._modulo_ok("flipper") else None),
+            "flipper-rfid":    lambda args: (
+                                   self.flipper.rfid_scan() if self._modulo_ok("flipper") else None),
+            "flipper-capture": lambda args: (
+                                   self.flipper.subghz_capture() if self._modulo_ok("flipper") else None),
+            "flipper-list":    lambda args: (
+                                   self.flipper.subghz_list() if self._modulo_ok("flipper") else None),
         }
 
     def _despachar(self, entrada: str) -> bool:
@@ -601,9 +632,9 @@ class ApexSentinel:
         rf_module = getattr(self, "rf", None)
         if rf_module is not None:
             rf_hardware_tag = (
-                f"[green]{rf_module.hw_nombre}[/green]"
+                f"[sea_green3]{rf_module.hw_nombre}[/sea_green3]"
                 if rf_module.hw_disponible
-                else f"[yellow]{rf_module.hw_nombre}[/yellow]"
+                else f"[orange3]{rf_module.hw_nombre}[/orange3]"
             )
             self.console.print(f"\n[dim][RF] Hardware: {rf_hardware_tag}[/dim]")
 
@@ -622,9 +653,9 @@ class ApexSentinel:
                     else ""
                 )
                 prompt_str = (
-                    f"[bold green]AnubisOS[/bold green]"
+                    f"[bold steel_blue1]AnubisOS[/bold steel_blue1]"
                     f"[dim white]@[/dim white]"
-                    f"[bold cyan]Sentinel[/bold cyan]"
+                    f"[bold white]Sentinel[/bold white]"
                     f"[dim]{proyecto_label}[/dim]"
                     f"[bold white]~#[/bold white]"
                 )
@@ -634,16 +665,16 @@ class ApexSentinel:
                     continue
 
                 if entrada.lower() == "exit":
-                    self.console.print("[yellow][!] Desconectando Sentinel...[/yellow]")
+                    self.console.print("[grey58][!] Desconectando Sentinel...[/grey58]")
                     self.log.info("Sesión cerrada por el operador.", "ApexSentinel")
                     time.sleep(0.5)
                     break
 
                 if not self._despachar(entrada):
                     self.console.print(
-                        f"[yellow][?] Comando '[bold]{entrada}[/bold]' no "
+                        f"[orange3][?] Comando '[bold]{entrada}[/bold]' no "
                         f"reconocido. Escribe [bold white]help[/bold white] "
-                        f"para ver opciones.[/yellow]"
+                        f"para ver opciones.[/orange3]"
                     )
 
             except EOFError:

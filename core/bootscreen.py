@@ -50,16 +50,37 @@ _RUTA_PROC_MEMINFO: str = "/proc/meminfo"
 
 _CAJA: box.Box = box.ROUNDED
 
+# ── Paleta "Grafito / Acero" ─────────────────────────────────────────────
+# Un único acento (azul acero) sobre grises fríos, en vez del verde neón
+# genérico de "terminal de hacker de película": pensado para leerse como
+# una consola de operaciones seria y discreta. Todo el color de la UI
+# sale de estas siete constantes — para retocar la paleta más adelante,
+# alcanza con cambiar los valores acá, no hay que tocar el resto del
+# archivo.
+C_TEXTO:   str = "white"        # texto de lectura principal (valores)
+C_DIM:     str = "grey58"       # texto secundario (etiquetas, timestamps)
+C_MUTED:   str = "grey42"       # texto terciario (debug, separadores)
+C_ACENTO:  str = "steel_blue1"  # títulos, énfasis, prompt, arte ASCII
+C_BORDE:   str = "steel_blue"   # bordes de panel (acento más apagado)
+C_OK:      str = "sea_green3"   # éxito / estado activo
+C_ALERTA:  str = "orange3"      # advertencia / estado degradado
+C_PELIGRO: str = "red"          # error / estado caído — se deja el rojo
+                                 # puro a propósito: es la única señal
+                                 # "dura" de la paleta y necesita seguir
+                                 # leyéndose como alarma, no como acento.
+
 _SIMBOLOS_ESTADO: Dict[str, str] = {"activo": "●", "degradado": "◐", "caido": "✖"}
-_ESTILOS_ESTADO: Dict[str, str] = {"activo": "green", "degradado": "red", "caido": "bold red"}
+_ESTILOS_ESTADO: Dict[str, str] = {
+    "activo": C_OK, "degradado": C_ALERTA, "caido": f"bold {C_PELIGRO}",
+}
 
 ESTILOS_LOG: Dict[str, Tuple[str, str]] = {
-    "INFO":    ("dim green",  "ℹ"),
-    "SUCCESS": ("green",      "✔"),
-    "WARNING": ("red",        "⚠"),
-    "ERROR":   ("bold red",   "✖"),
-    "AUDIT":   ("bold green", "⚑"),
-    "DEBUG":   ("dim green",  "·"),
+    "INFO":    (C_DIM,               "ℹ"),
+    "SUCCESS": (C_OK,                "✔"),
+    "WARNING": (C_ALERTA,            "⚠"),
+    "ERROR":   (f"bold {C_PELIGRO}", "✖"),
+    "AUDIT":   (f"bold {C_ACENTO}",  "⚑"),
+    "DEBUG":   (C_MUTED,             "·"),
 }
 
 ANUBIS_ART = "\n".join([
@@ -70,7 +91,7 @@ ANUBIS_ART = "\n".join([
     r"   █  ║   \  \_/  /   ║  █",
     r"   █  ║   /  ___  \   ║  █",
     r"   █  ║  / / | | \ \  ║  █",
-    r"   █  ║ /_/__|_|__\_\  ║  █",
+    r"   █  ║ /_/__|_|__\_\ ║  █",
     r"   █  ╚═══════════════╝  █",
     r"   ▀████████████████████▀",
 ])
@@ -94,6 +115,7 @@ MODULOS_BOOT: List[Tuple[str, str]] = [
     ("ColaTareas",       "Ejecución asíncrona"),
     ("GestorPlugins",    "Plugins en caliente"),
     ("Recovery",         "Carving forense de medios eliminados"),
+    ("FlipperZero",      "Bridge serial Flipper Zero"),
 ]
 
 _GRUPOS_MODULOS: Dict[str, List[str]] = {
@@ -104,6 +126,7 @@ _GRUPOS_MODULOS: Dict[str, List[str]] = {
     "OSINT":     ["OSINTEngine", "CVEMatcher", "GeoPrecise"],
     "Proyectos": ["GestorProyectos", "MotorReportes", "ColaTareas", "GestorPlugins"],
     "Seguridad": ["SecurityModule", "Recovery"],
+    "Hardware":  ["FlipperZero"],
 }
 
 COMANDOS_HELP: Dict[str, List[Tuple[str, str]]] = {
@@ -174,6 +197,14 @@ COMANDOS_HELP: Dict[str, List[Tuple[str, str]]] = {
         ("jobs",             "Ver cola de tareas asíncronas"),
         ("plugins",          "Listar plugins cargados"),
         ("plugins reload",   "Recargar plugins en caliente"),
+    ],
+    "FLIPPER ZERO": [
+        ("flipper",          "Menú interactivo Flipper Zero"),
+        ("flipper-status",   "Telemetría: batería, temperatura, storage"),
+        ("flipper-nfc",      "Escaneo NFC de alta frecuencia"),
+        ("flipper-rfid",     "Lectura RFID de baja frecuencia (125 kHz)"),
+        ("flipper-capture",  "Captura Sub-GHz → archivo .sub"),
+        ("flipper-list",     "Listar capturas Sub-GHz en el dispositivo"),
     ],
 }
 
@@ -351,14 +382,14 @@ def _pantalla_compacta(console: Console) -> bool:
 
 def _titulo_hud(compacto: bool) -> str:
     if compacto:
-        return "[bold green]◈ ANUBIS OS ◈[/bold green]"
-    return "[bold green]◈  A N U B I S   O S  ◈[/bold green]"
+        return "[bold steel_blue1]◈ ANUBIS OS ◈[/bold steel_blue1]"
+    return "[bold steel_blue1]◈  A N U B I S   O S  ◈[/bold steel_blue1]"
 
 
 def _tabla_base(compacto: bool) -> Table:
     tabla = Table.grid(padding=(0, 1) if compacto else (0, 2))
-    tabla.add_column(style="dim green", justify="right", min_width=10 if compacto else 14)
-    tabla.add_column(style="green")
+    tabla.add_column(style="grey58", justify="right", min_width=10 if compacto else 14)
+    tabla.add_column(style="white")
     return tabla
 
 
@@ -387,8 +418,8 @@ def _linea_barra(idx: int, total: int, ancho: int) -> str:
     barra = "█" * llenos + "░" * (ancho - llenos)
     pct = int(proporcion * 100)
     return (
-        f"[dim green][[/dim green][bold green]{barra}[/bold green]"
-        f"[dim green]][/dim green] [bold green]{pct:>3}%[/bold green]"
+        f"[grey58][[/grey58][bold steel_blue1]{barra}[/bold steel_blue1]"
+        f"[grey58]][/grey58] [bold steel_blue1]{pct:>3}%[/bold steel_blue1]"
     )
 
 
@@ -402,14 +433,14 @@ def _panel_hero(
     compacto: bool,
 ) -> Panel:
     tabla = _tabla_base(compacto)
-    tabla.add_row("SISTEMA", f"[bold green]APEX SENTINEL[/bold green] [dim green]v{version}[/dim green]")
-    tabla.add_row("OPERADOR", f"[bold green]{nombre}[/bold green]")
-    tabla.add_row("ESTADO", "[bold green]● EN LÍNEA[/bold green]")
-    tabla.add_row("INTERFAZ", f"[green]{iface}[/green]")
-    tabla.add_row("IP LOCAL", f"[green]{ip}[/green]")
+    tabla.add_row("SISTEMA", f"[bold steel_blue1]APEX SENTINEL[/bold steel_blue1] [grey58]v{version}[/grey58]")
+    tabla.add_row("OPERADOR", f"[bold steel_blue1]{nombre}[/bold steel_blue1]")
+    tabla.add_row("ESTADO", "[bold sea_green3]● EN LÍNEA[/bold sea_green3]")
+    tabla.add_row("INTERFAZ", f"[white]{iface}[/white]")
+    tabla.add_row("IP LOCAL", f"[white]{ip}[/white]")
     if not compacto:
-        tabla.add_row("PLATAFORMA", f"[dim green]{plataforma}[/dim green]")
-        tabla.add_row("ARRANQUE", f"[dim green]{hora_arranque}[/dim green]")
+        tabla.add_row("PLATAFORMA", f"[grey58]{plataforma}[/grey58]")
+        tabla.add_row("ARRANQUE", f"[grey58]{hora_arranque}[/grey58]")
     tabla.add_row("", "")
     if compacto:
         tabla.add_row("AVISO", "[bold red]⚠ AUTHORIZED USE ONLY[/bold red]")
@@ -426,7 +457,7 @@ def _panel_hero(
             Layout(name="arte", size=_ANCHO_ARTE),
             Layout(name="info", ratio=1),
         )
-        layout["arte"].update(Align.center(Text(ANUBIS_ART, style="bold green"), vertical="middle"))
+        layout["arte"].update(Align.center(Text(ANUBIS_ART, style="bold steel_blue1"), vertical="middle"))
         layout["info"].update(Align.left(tabla, vertical="middle"))
         alto = 14
         relleno = (1, 3)
@@ -434,8 +465,8 @@ def _panel_hero(
     return Panel(
         layout,
         title=_titulo_hud(compacto),
-        subtitle=None if compacto else "[dim green]APEX SENTINEL — SISTEMA OPERATIVO TÁCTICO[/dim green]",
-        border_style="green",
+        subtitle=None if compacto else "[grey58]APEX SENTINEL — SISTEMA OPERATIVO TÁCTICO[/grey58]",
+        border_style="steel_blue",
         box=_CAJA,
         padding=relleno,
         height=alto,
@@ -454,13 +485,13 @@ def _cuadro_boot(idx: int, total: int, nombre_mod: str, activo: bool, compacto: 
 
     contenido = (
         f"\n  {barra}\n\n"
-        f"  [dim green]{nombre_fmt}[/dim green]  {estado_txt}\n"
+        f"  [grey58]{nombre_fmt}[/grey58]  {estado_txt}\n"
     )
     return Panel(
         contenido,
         title=_titulo_hud(compacto),
-        subtitle=f"[dim green]Verificando módulos — {idx}/{total}[/dim green]",
-        border_style="green",
+        subtitle=f"[grey58]Verificando módulos — {idx}/{total}[/grey58]",
+        border_style="steel_blue",
         box=_CAJA,
         padding=(0, 2) if not compacto else (0, 1),
     )
@@ -482,15 +513,15 @@ def _panel_resumen_modulos(
     degradados = [nombre for nombre, activo in (estados_modulos or {}).items() if not activo]
     if degradados:
         limite = 4 if compacto else 6
-        listado = "  ".join(f"[dim green]{d}[/dim green]" for d in degradados[:limite])
+        listado = "  ".join(f"[grey58]{d}[/grey58]" for d in degradados[:limite])
         restante = len(degradados) - limite
-        extra = f"  [dim green]+{restante} más[/dim green]" if restante > 0 else ""
-        contenido += f"\n\n  [red]○ Sin cargar:[/red]  {listado}{extra}"
+        extra = f"  [grey58]+{restante} más[/grey58]" if restante > 0 else ""
+        contenido += f"\n\n  [orange3]○ Sin cargar:[/orange3]  {listado}{extra}"
 
     return Panel(
         contenido,
-        title=f"[dim green]{ok_count}/{total} módulos activos[/dim green]",
-        border_style="dim green",
+        title=f"[grey58]{ok_count}/{total} módulos activos[/grey58]",
+        border_style="steel_blue",
         box=_CAJA,
         padding=(0, 1),
     )
@@ -498,16 +529,16 @@ def _panel_resumen_modulos(
 
 def _panel_hud(compacto: bool, ip: str, hora: str) -> Panel:
     tabla = Table.grid(padding=(0, 2))
-    tabla.add_column(style="dim green", justify="right")
+    tabla.add_column(style="grey58", justify="right")
     tabla.add_column()
-    tabla.add_row("ESTADO", "[bold green]● EN LÍNEA[/bold green]")
-    tabla.add_row("IP", f"[green]{ip}[/green]")
-    tabla.add_row("HORA", f"[dim green]{hora}[/dim green]")
+    tabla.add_row("ESTADO", "[bold sea_green3]● EN LÍNEA[/bold sea_green3]")
+    tabla.add_row("IP", f"[white]{ip}[/white]")
+    tabla.add_row("HORA", f"[grey58]{hora}[/grey58]")
 
     return Panel(
         Align.center(tabla),
         title=_titulo_hud(compacto),
-        border_style="green",
+        border_style="steel_blue",
         box=_CAJA,
         padding=(1, 2),
     )
@@ -562,14 +593,14 @@ def mostrar_bootloader(
     ok_count = sum(1 for v in estados_modulos.values() if v) if estados_modulos else total
     console.print(_panel_resumen_modulos(estados_modulos, ok_count, total, compacto))
 
-    console.print(Rule(style="dim green"))
+    console.print(Rule(style="grey58"))
     console.print(
         Align.center(
-            "[dim green]Escribe [bold green]help[/bold green] para ver comandos  "
-            "·  [bold green]exit[/bold green] para salir[/dim green]"
+            "[grey58]Escribe [bold steel_blue1]help[/bold steel_blue1] para ver comandos  "
+            "·  [bold steel_blue1]exit[/bold steel_blue1] para salir[/grey58]"
         )
     )
-    console.print(Rule(style="dim green"))
+    console.print(Rule(style="grey58"))
     console.print()
 
 
@@ -584,7 +615,7 @@ def mostrar_banner(
     compacto = _pantalla_compacta(console)
     console.print()
     console.print(_panel_hud(compacto, ip=_get_ip(), hora=_ts()))
-    console.print(Rule(style="dim green"))
+    console.print(Rule(style="grey58"))
     console.print()
 
 
@@ -623,8 +654,8 @@ def _filtrar_comandos(
 
 def _tabla_comandos(cmds: List[Tuple[str, str]]) -> Table:
     tabla = Table.grid(padding=(0, 2), expand=True)
-    tabla.add_column(style="bold green", no_wrap=True)
-    tabla.add_column(style="dim green", overflow="fold", ratio=1)
+    tabla.add_column(style="bold steel_blue1", no_wrap=True)
+    tabla.add_column(style="grey58", overflow="fold", ratio=1)
     for cmd, desc in cmds:
         tabla.add_row(cmd, desc)
     return tabla
@@ -642,56 +673,56 @@ def mostrar_ayuda(
     console.print()
     console.print(
         Align.center(
-            f"[bold green]APEX SENTINEL[/bold green] [dim green]v{version}[/dim green]   "
-            "[dim green]ANUBIS OS — Sistema Operativo Táctico[/dim green]"
+            f"[bold steel_blue1]APEX SENTINEL[/bold steel_blue1] [grey58]v{version}[/grey58]   "
+            "[grey58]ANUBIS OS — Sistema Operativo Táctico[/grey58]"
         )
     )
-    console.print(Rule(style="dim green"))
+    console.print(Rule(style="grey58"))
 
     categorias = _filtrar_comandos(comandos, filtro)
 
     if not categorias:
         console.print()
         console.print(
-            f"[dim green]Sin coincidencias para[/dim green] [bold green]'{filtro}'[/bold green]"
+            f"[grey58]Sin coincidencias para[/grey58] [bold steel_blue1]'{filtro}'[/bold steel_blue1]"
         )
         console.print(
-            "[dim green]Prueba[/dim green] [bold green]help[/bold green] "
-            "[dim green]a secas, o[/dim green] [bold green]help <categoría>[/bold green]"
+            "[grey58]Prueba[/grey58] [bold steel_blue1]help[/bold steel_blue1] "
+            "[grey58]a secas, o[/grey58] [bold steel_blue1]help <categoría>[/bold steel_blue1]"
         )
         console.print()
-        console.print(Rule(style="dim green"))
+        console.print(Rule(style="grey58"))
         console.print()
         return
 
     for categoria, cmds in categorias.items():
         console.print()
-        console.print(Rule(f"[bold green]▸ {categoria}[/bold green]", style="dim green", align="left"))
+        console.print(Rule(f"[bold steel_blue1]▸ {categoria}[/bold steel_blue1]", style="grey58", align="left"))
         console.print(_tabla_comandos(cmds))
 
     console.print()
-    console.print(Rule(style="dim green"))
+    console.print(Rule(style="grey58"))
     if filtro:
         console.print(
             Align.center(
-                f"[dim green]Resultados para[/dim green] [bold green]'{filtro}'[/bold green]  ·  "
-                "[dim green]escribe[/dim green] [bold green]help[/bold green] "
-                "[dim green]para ver todo[/dim green]"
+                f"[grey58]Resultados para[/grey58] [bold steel_blue1]'{filtro}'[/bold steel_blue1]  ·  "
+                "[grey58]escribe[/grey58] [bold steel_blue1]help[/bold steel_blue1] "
+                "[grey58]para ver todo[/grey58]"
             )
         )
     else:
         console.print(
             Align.center(
-                "[bold green]help <categoría|palabra>[/bold green] [dim green]filtra[/dim green]  ·  "
-                "[bold green]exit[/bold green] [dim green]para salir[/dim green]"
+                "[bold steel_blue1]help <categoría|palabra>[/bold steel_blue1] [grey58]filtra[/grey58]  ·  "
+                "[bold steel_blue1]exit[/bold steel_blue1] [grey58]para salir[/grey58]"
             )
         )
-    console.print(Rule(style="dim green"))
+    console.print(Rule(style="grey58"))
     console.print()
 
 
 if __name__ == "__main__":
-    _con = Console()
+    _con = Console(highlight=False)
     estados_demo: Dict[str, bool] = {
         "RadarSentinel": True,  "TacticalSniffer": True,
         "RFModule": True,       "SpectrumAnalyzer": True,
@@ -709,4 +740,4 @@ if __name__ == "__main__":
         input("AnubisOS@Sentinel~# ")
         mostrar_ayuda(_con, "2.3")
     except KeyboardInterrupt:
-        _con.print("\n[dim green][!] Cancelado.[/dim green]")
+        _con.print("\n[grey58][!] Cancelado.[/grey58]")
