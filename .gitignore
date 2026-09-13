@@ -1,9 +1,3 @@
-# ══════════════════════════════════════════════════════════════════
-#  APEX SENTINEL — .gitignore
-#   seguridad pre-GitHub
-# ══════════════════════════════════════════════════════════════════
-
-# ── Claves y credenciales ─────────────────────────────────────────
 # CRÍTICO: cualquier ruta dentro del proyecto
 **/.credentials
 **/*.key
@@ -17,12 +11,12 @@
 # Directorio de seguridad completo (en cualquier nivel)
 **/data/security/
 
-# ── Variables de entorno ──────────────────────────────────────────
+#  Variables de entorno 
 .env
 .env.*
 !.env.example
 
-# ── Logs y datos de sesión ────────────────────────────────────────
+#  Logs y datos de sesión 
 # CRÍTICO: contienen IPs reales, UUIDs de sesión, actividad
 **/data/logs/
 **/core/data/logs/
@@ -33,7 +27,7 @@ sentinel_activity.log
 sentinel_auth.log
 audit.log
 
-# ── Evidencias y capturas ─────────────────────────────────────────
+#  Evidencias y capturas 
 # Contienen datos de operaciones reales
 data/evidence/
 data/proyectos/
@@ -49,7 +43,7 @@ data/proyectos/
 data/evidence/rf/
 modules/rf/data/
 
-# ── Python ────────────────────────────────────────────────────────
+#  Python 
 __pycache__/
 *.pyc
 *.pyo
@@ -67,7 +61,7 @@ venv/
 env/
 .env_dir/
 
-# ── Base de datos local ───────────────────────────────────────────
+#  Base de datos local 
 *.db
 *.sqlite
 *.sqlite3
@@ -76,7 +70,7 @@ data/rf/*.db
 # GeoLite2 — archivo grande de geolocalización local
 *.mmdb
 
-# ── Archivos temporales del sistema ──────────────────────────────
+#  Archivos temporales del sistema 
 .DS_Store
 .DS_Store?
 ._*
@@ -85,13 +79,13 @@ data/rf/*.db
 Thumbs.db
 desktop.ini
 
-# ── Binarios compilados ───────────────────────────────────────────
+#  Binarios compilados 
 *.dll
 *.so
 *.dylib
 *.exe
 
-# ── Herramientas de desarrollo ────────────────────────────────────
+#  Herramientas de desarrollo 
 .vscode/
 .idea/
 *.swp
@@ -102,13 +96,13 @@ desktop.ini
 .ruff_cache/
 pyrightconfig.json
 
-# ── Configuraciones con secretos ─────────────────────────────────
+#  Configuraciones con secretos 
 # El config.json puede contener credenciales de API en el futuro
 # Por seguridad, usar config.example.json y copiar manualmente
 config.local.json
 config.local.toml
 
-# ── Lo que SÍ debe subirse (excepciones explícitas) ───────────────
+#  Lo que SÍ debe subirse (excepciones explícitas) 
 # Templates y ejemplos sin datos reales
 !.env.example
 !config.example.json
@@ -121,13 +115,13 @@ config.local.toml
 !plugins/ejemplo_plugin.py
 !plugins/README.md
 
-# ── Cobertura de tests ────────────────────────────────────────────
+#  Cobertura de tests 
 htmlcov/
 .coverage
 coverage.xml
 .pytest_cache/
 
-# ── Archivos de operación sensibles ──────────────────────────────
+#  Archivos de operación sensibles 
 # El EvilTwinServer antiguo guardaba aquí capturas en texto plano
 capturas_anubis.txt
 capturas_*.txt
@@ -141,6 +135,6 @@ tools/payloads/
 # zphisher — herramienta externa grande, instalar con git clone
 tools/zphisher/
 
-# ── Corrección: pyrightconfig.json SÍ debe versionarse ───────────
+#  Corrección: pyrightconfig.json SÍ debe versionarse 
 # (estaba ignorado por error — lo quitamos de la lista)
 !pyrightconfig.json

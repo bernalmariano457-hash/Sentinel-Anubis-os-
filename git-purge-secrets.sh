@@ -1,22 +1,5 @@
-#!/usr/bin/env bash
-# ══════════════════════════════════════════════════════════════════
-#  SENTINEL — git-purge-secrets.sh
-#  Elimina PERMANENTEMENTE del historial de git los archivos
-#  sensibles que se comprometieron por error.
-#
-#  ⚠ LEER ANTES DE EJECUTAR:
-#    1. Hacer backup del repo: cp -r . ../sentinel-backup
-#    2. Este script reescribe el historial — todos los colaboradores
-#       deberán hacer `git clone` de nuevo tras ejecutarlo
-#    3. Si el repo ya está en GitHub: contactar soporte para borrar
-#       el cache de GitHub tras el push forzado
-#
-#  Uso: bash git-purge-secrets.sh
-# ══════════════════════════════════════════════════════════════════
-
 set -euo pipefail
 
-# ── Colores ───────────────────────────────────────────────────────
 RED='\033[0;31m'
 YEL='\033[1;33m'
 GRN='\033[0;32m'
@@ -29,13 +12,11 @@ echo "║     SENTINEL — PURGA DE SECRETOS EN GIT           ║"
 echo "╚═══════════════════════════════════════════════════╝"
 echo -e "${RST}"
 
-# ── Verificar que estamos en un repo git ─────────────────────────
 if ! git rev-parse --git-dir > /dev/null 2>&1; then
   echo -e "${RED}[!] No estás dentro de un repositorio git.${RST}"
   exit 1
 fi
 
-# ── Verificar git-filter-repo instalado ──────────────────────────
 if ! command -v git-filter-repo &> /dev/null; then
   echo -e "${RED}[!] git-filter-repo no está instalado.${RST}"
   echo -e "${DIM}    Instalar con: pip install git-filter-repo${RST}"
@@ -50,7 +31,6 @@ read -rp "¿Continuar? [s/N]: " CONFIRM
 echo ""
 echo -e "${GRN}[*] Paso 1: Eliminando archivos sensibles del historial...${RST}"
 
-# Archivos a purgar del historial completo
 ARCHIVOS_A_PURGAR=(
   "core/data/security/.credentials"
   "core/data/logs/sentinel.log"

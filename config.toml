@@ -1,7 +1,5 @@
-# ═══════════════════════════════════════════════════════════
 # RFScanner — Configuración persistente
 # uConsole (Kali Linux ARM) + RTL-SDR / HackRF
-# ═══════════════════════════════════════════════════════════
 
 [hardware]
 # Índice del dispositivo SDR (0 = primero detectado)
