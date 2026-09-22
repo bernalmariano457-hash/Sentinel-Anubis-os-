@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  lint:
+    name: Lint & formato
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependencias de desarrollo
+        run: pip install -e ".[dev]" --quiet
+
+      - name: Ruff — lint
+        run: ruff check . --output-format=github
+
+      - name: Ruff — formato
+        run: ruff format --check .
+
+
+  typecheck:
+    name: Pyright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependencias (core + RF + dev)
+        run: |
+          pip install -e ".[dev]" --quiet
+          pip install numpy scipy sounddevice --quiet
+
+      - name: Pyright
+        run: pyright --warnings
+
+  
+  test:
+    name: Tests (sin hardware)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          pip install -e ".[dev]" --quiet
+          pip install numpy scipy sounddevice --quiet
+
+    
+      - name: Crear directorios necesarios para los tests
+        run: |
+          mkdir -p data/logs data/evidence/rf core/data/logs core/data/security
+
+      - name: Pytest — tests de CI
+        run: |
+          pytest \
+            test_sentinel.py tools/test_sentinel.py tools/test_rfscanner.py \
+            -m "not hardware and not root" \
+            -k "not RealHardware" \
+            --tb=short \
+            --cov=core --cov=modules \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            -q
+
+      - name: Subir reporte de cobertura a Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false   # no bloquea el CI si Codecov está caído
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck — install.sh
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: "."
+          pattern: "*.sh"
+          severity: warning

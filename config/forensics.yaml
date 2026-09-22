@@ -1,0 +1,72 @@
+# ==============================================================================
+# Anubis OS - Apex Sentinel :: Configuración del Subsistema Forense
+# ==============================================================================
+# Todas las rutas relativas dentro de 'storage' se resuelven contra
+# 'storage.base_path'. Las claves marcadas como obligatorias son validadas
+# estrictamente por main.py al arrancar; si faltan, el sistema no inicia.
+# ==============================================================================
+
+network:
+  # [OBLIGATORIA] Interfaz de red a monitorear. Usa 'ip link show' para
+  # listar las interfaces disponibles (ej. eth0, wlan0, eth1).
+  interface: "eth0"
+
+  # Habilita el modo promiscuo para capturar tráfico no destinado a esta máquina.
+  promiscuous_mode: true
+
+  # Máximo de bytes capturados y almacenados por paquete (snaplen). Los
+  # paquetes más grandes se truncan a este tamaño dentro del PCAP.
+  snapshot_length: 65535
+
+  # Filtro BPF opcional (sintaxis tcpdump). Vacío ("") captura todo el tráfico.
+  bpf_filter: ""
+
+capture:
+  # [OBLIGATORIA] Tamaño máximo (bytes) de un archivo PCAP antes de rotarlo.
+  # 104857600 = 100 MiB.
+  max_file_size_bytes: 104857600
+
+  # [OBLIGATORIA] Tiempo máximo (segundos) que un PCAP permanece abierto
+  # antes de rotarse, incluso si no alcanzó el tamaño máximo.
+  max_file_duration_seconds: 300
+
+  # Prefijo de nombre de archivo para la evidencia generada.
+  file_prefix: "apex_sentinel"
+
+  # Si se sincronizan las escrituras a disco inmediatamente (recomendado
+  # para integridad forense; puede reducir rendimiento en enlaces saturados).
+  sync_writes: true
+
+storage:
+  # [OBLIGATORIA] Directorio raíz de todo el almacenamiento forense.
+  base_path: "/var/lib/anubis/forensics"
+
+  # [OBLIGATORIA] Subdirectorio (relativo a base_path) para los PCAP.
+  pcap_dir: "evidence/pcap"
+
+  # [OBLIGATORIA] Subdirectorio (relativo a base_path) para logs de aplicación.
+  logs_dir: "logs"
+
+  # [OBLIGATORIA] Ruta (relativa a base_path) del registro inmutable de la
+  # cadena de hashes.
+  audit_chain_file: "logs/audit_chain.json"
+
+integrity:
+  # Algoritmo de hash usado para sellar evidencia y encadenar bloques.
+  hash_algorithm: "sha256"
+
+  # Si se audita automáticamente toda la cadena existente al arrancar.
+  auto_verify_on_start: true
+
+system:
+  # Ruta del archivo PID, útil para supervisión por systemd/init.
+  pid_file: "/var/run/apex_sentinel.pid"
+
+  # Nivel de log: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+  log_level: "INFO"
+
+  # Usuario recomendado para ejecutar el servicio con privilegios mínimos.
+  # No es leído por el código Python: aplícalo vía systemd (User=,
+  # AmbientCapabilities=CAP_NET_RAW,CAP_NET_ADMIN) en lugar de bajar
+  # privilegios dentro del propio proceso.
+  daemon_user: "anubis-forensics"

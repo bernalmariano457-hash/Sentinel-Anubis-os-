@@ -1,0 +1,70 @@
+{
+  "signatures": {
+    "JPEG": {
+      "name": "JPEG",
+      "extension": ".jpg",
+      "header": "ffd8ff",
+      "footer": "ffd9",
+      "max_size_bytes": 52428800,
+      "start_offset_adjustment": 0,
+      "secondary_marker_offset": null,
+      "secondary_marker_bytes": null,
+      "length_strategy": "footer"
+    },
+    "PNG": {
+      "name": "PNG",
+      "extension": ".png",
+      "header": "89504e470d0a1a0a",
+      "footer": "0000000049454e44ae426082",
+      "max_size_bytes": 83886080,
+      "start_offset_adjustment": 0,
+      "secondary_marker_offset": null,
+      "secondary_marker_bytes": null,
+      "length_strategy": "footer"
+    },
+    "GIF87A": {
+      "name": "GIF87A",
+      "extension": ".gif",
+      "header": "474946383761",
+      "footer": "003b",
+      "max_size_bytes": 41943040,
+      "start_offset_adjustment": 0,
+      "secondary_marker_offset": null,
+      "secondary_marker_bytes": null,
+      "length_strategy": "footer"
+    },
+    "GIF89A": {
+      "name": "GIF89A",
+      "extension": ".gif",
+      "header": "474946383961",
+      "footer": "003b",
+      "max_size_bytes": 41943040,
+      "start_offset_adjustment": 0,
+      "secondary_marker_offset": null,
+      "secondary_marker_bytes": null,
+      "length_strategy": "footer"
+    },
+    "MP4": {
+      "name": "MP4",
+      "extension": ".mp4",
+      "header": "66747970",
+      "footer": null,
+      "max_size_bytes": 4294967296,
+      "start_offset_adjustment": -4,
+      "secondary_marker_offset": null,
+      "secondary_marker_bytes": null,
+      "length_strategy": "iso_bmff_boxwalk"
+    },
+    "AVI": {
+      "name": "AVI",
+      "extension": ".avi",
+      "header": "52494646",
+      "footer": null,
+      "max_size_bytes": 2147483648,
+      "start_offset_adjustment": 0,
+      "secondary_marker_offset": 8,
+      "secondary_marker_bytes": "41564920",
+      "length_strategy": "riff_declared_size"
+    }
+  }
+}

@@ -1,0 +1,231 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ══════════════════════════════════════════════════════════════════════
+#  APEX SENTINEL — pyproject.toml
+#  Auditado y actualizado tras refactorización rf_source / AircraftMonitor
+#  / WiFiTriangulation (mayo 2025).
+#  Criterio de clasificación:
+#    base      → import duro en cualquier ruta de arranque
+#    optional  → dentro de try/except o detrás de importlib.import_module
+#    extra     → solo en submódulos no cargados hasta que el usuario los pida
+# ══════════════════════════════════════════════════════════════════════
+
+[project]
+name        = "sentinel-anubis-os"
+version     = "2.3.0"
+description = "Tactical terminal OS for field security operations — uConsole / Kali / Termux"
+readme      = "README.md"
+license     = { file = "LICENSE" }
+authors     = [{ name = "AnubisOS", url = "https://github.com/bernalmariano457-hash/Sentinel-Anubis-os" }]
+requires-python = ">=3.11"   # 3.11 mínimo: tomllib stdlib, Self/LiteralString en typing
+
+# ── Dependencias base (import duro — siempre necesarias) ──────────────
+dependencies = [
+    "rich>=13.7,<15",             # UI de terminal — pin de major porque cambia API
+    "requests>=2.31,<3",          # HTTP (OUI lookup, OSINT)
+    "urllib3>=2.2,<3",            # Pool HTTP para CVEMatcher (requests ya la incluye,
+                                  # pero CVEMatcher importa urllib3.util.retry directo)
+    "bcrypt>=4.1,<5",             # Hashing de contraseñas (auth.py)
+    "cryptography>=42,<44",       # Fernet — cifrado de evidencias (Security.py)
+    "Pillow>=10.2,<12",           # EXIF + NOAADecoder image output
+    "piexif>=1.1,<2",             # EXIF writer — ExifAnalyzer.py (import duro)
+    "python-whois>=0.9,<1",       # WHOIS lookups (OSINTEngine)
+    "python-dotenv>=1.0,<2",      # Variables de entorno
+    "fpdf2>=2.7,<3",              # Reportes PDF (ReportGenerator, import duro)
+                                  # ⚠ paquete: fpdf2  →  módulo: fpdf  (drop-in de fpdf1)
+]
+
+# ── Extras opcionales por plataforma / hardware ────────────────────────
+[project.optional-dependencies]
+
+# ── Red activa (scapy requiere root o CAP_NET_RAW) ─────────────────────
+network = [
+    "scapy>=2.5,<3",
+    "netifaces>=0.11,<1",
+    "flask>=3.0,<4",              # EvilTwinServer + MapSentinel (import duro en esos módulos)
+    "geoip2>=4.8,<5",             # RadarSentinel — geolocalización IP (try/except)
+]
+
+# ── Bluetooth BLE ──────────────────────────────────────────────────────
+bluetooth = [
+    "bleak>=0.21,<1",             # bt_module.py (try/except)
+]
+
+# ── RF / SDR — RTL-SDR ────────────────────────────────────────────────
+rtlsdr = [
+    "pyrtlsdr>=0.3,<1",
+    "numpy>=1.26,<3",
+    "scipy>=1.12,<2",
+    "sounddevice>=0.4,<1",
+]
+
+# ── RF / SDR — HackRF, LimeSDR (SoapySDR desde el SO, no PyPI) ─────────
+hackrf = [
+    "numpy>=1.26,<3",
+    "scipy>=1.12,<2",
+    "sounddevice>=0.4,<1",
+    # SoapySDR no está en PyPI — instalar: sudo apt install python3-soapysdr
+]
+
+# ── RF / SDR — aceleración JIT y audio legacy ──────────────────────────
+rf-extra = [
+    "numba>=0.59,<1",             # rf_demod.py — JIT con @njit (try/except)
+    "pyaudio>=0.2.14,<1",         # rf_demod.py — backend audio alternativo (try/except)
+]
+
+# ── ADS-B ──────────────────────────────────────────────────────────────
+adsb = [
+    "pyModeS>=2.12,<3",           # adsb_pymodes.py + adsb_decoder.py (try/except)
+]
+
+# ── NOAA APT — satélites meteorológicos ───────────────────────────────
+noaa = [
+    "scipy>=1.12,<2",             # filtros FIR / demodulación AM
+    "numpy>=1.26,<3",
+    "Pillow>=10.2,<12",           # ya en base, aquí por claridad
+    "apt3>=0.1",                  # decodificador APT puro-Python (try/except)
+    "sgp4>=2.23,<3",              # propagación orbital TLE (try/except)
+]
+
+# ── Geo / Mapas ────────────────────────────────────────────────────────
+geo = [
+    "folium>=0.17,<1",            # GeomapSentinel (try/except)
+    "flask>=3.0,<4",              # MapSentinel — ya en network, aquí por independencia
+]
+
+# ── OSINT avanzado ─────────────────────────────────────────────────────
+osint = [
+    "dnspython>=2.6,<3",          # OSINTEngine dns.resolver (try/except dentro de método)
+]
+
+# ── Forense / Mobile ───────────────────────────────────────────────────
+forense = [
+    "pycryptodome>=3.20,<4",      # WADecryptor — descifrado WhatsApp (try/except)
+]
+
+# ── Auditoría ofensiva ─────────────────────────────────────────────────
+audit = [
+    "pymetasploit3>=1.0",         # AuditEngine — importación diferida (try/except)
+]
+
+# ── uConsole ClockworkPi — perfil completo de campo ───────────────────
+uconsole = [
+    "sentinel-anubis-os[network,bluetooth,rtlsdr,adsb,noaa,geo,osint,forense]",
+]
+
+# ── Termux / Android — solo lo que funciona sin root ──────────────────
+termux = [
+    "sentinel-anubis-os[rtlsdr,adsb]",
+    # scapy, netifaces, flask → requieren root o no están disponibles en Termux
+]
+
+# ── Kali Linux / Debian full ───────────────────────────────────────────
+kali = [
+    "sentinel-anubis-os[network,bluetooth,rtlsdr,hackrf,adsb,noaa,geo,osint,forense,audit,rf-extra]",
+]
+
+# ── Desarrollo ─────────────────────────────────────────────────────────
+dev = [
+    "pytest>=8,<9",
+    "pytest-cov>=5,<6",
+    "pytest-mock>=3.14,<4",
+    "pyright>=1.1.390,<2",
+    "ruff>=0.4,<1",
+]
+
+# ── Todo (CI / desarrollo local completo) ─────────────────────────────
+all = [
+    "sentinel-anubis-os[network,bluetooth,rtlsdr,adsb,noaa,geo,osint,forense,audit,rf-extra,dev]",
+]
+
+# ── Entry point ────────────────────────────────────────────────────────
+[project.scripts]
+sentinel = "Main:main"
+
+# ══════════════════════════════════════════════════════════════════════
+#  HATCH — build config
+# ══════════════════════════════════════════════════════════════════════
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "modules", "plugins", "tools"]
+exclude = [
+    "__pycache__",
+    "**/__pycache__",
+    "**/*.pyc",
+    "data/",
+    "*.key",
+    "*.bak",
+]
+
+# ══════════════════════════════════════════════════════════════════════
+#  RUFF — linter y formatter
+# ══════════════════════════════════════════════════════════════════════
+
+[tool.ruff]
+target-version = "py311"    # bajado de 313 → mínimo real del proyecto
+line-length    = 100
+src            = ["."]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade — moderniza sintaxis automáticamente
+    "B",    # flake8-bugbear — bugs comunes
+    "SIM",  # flake8-simplify
+    "RUF",  # reglas propias de Ruff
+]
+ignore = [
+    "E501",   # líneas largas — manejado por el formatter
+    "B008",   # llamadas en defaults de función — necesario en algunos patrones
+    "SIM108", # ternary operator — a veces reduce legibilidad
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "modules", "plugins", "tools"]
+
+[tool.ruff.format]
+quote-style  = "double"
+indent-style = "space"
+
+# ══════════════════════════════════════════════════════════════════════
+#  PYTEST
+# ══════════════════════════════════════════════════════════════════════
+
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+python_files = ["test_*.py"]
+python_classes  = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--tb=short",
+    "--strict-markers",
+    "-q",
+]
+markers = [
+    "slow: tests que tardan más de 1s (requieren hardware o red)",
+    "hardware: requieren RTL-SDR físico",
+    "root: requieren privilegios de root",
+]
+
+[tool.coverage.run]
+source = ["core", "modules"]
+omit = [
+    "**/__pycache__/**",
+    "**/test_*.py",
+    "tools/**",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under   = 60
+
+# ══════════════════════════════════════════════════════════════════════
+#  PYRIGHT — type checker
+#  Nota: pyrightconfig.json tiene precedencia; mantenido aquí para CI.
+# ══════════════════════════════════════════════════════════════════════
