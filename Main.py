@@ -248,6 +248,7 @@ _FORENSICS_REQUIRED_CONFIG_KEYS: dict[str, tuple[str, ...]] = {
 
 
 class ForensicsConfigError(Exception):
+    pass
 
 
 def load_forensics_config(config_path: str | os.PathLike[str]) -> dict[str, Any]:

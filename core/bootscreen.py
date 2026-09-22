@@ -50,26 +50,17 @@ _RUTA_PROC_MEMINFO: str = "/proc/meminfo"
 
 _CAJA: box.Box = box.ROUNDED
 
-# ── Paleta "Grafito / Acero" ─────────────────────────────────────────────
-# Un único acento (azul acero) sobre grises fríos, en vez del verde neón
-# genérico de "terminal de hacker de película": pensado para leerse como
-# una consola de operaciones seria y discreta. Todo el color de la UI
-# sale de estas siete constantes — para retocar la paleta más adelante,
-# alcanza con cambiar los valores acá, no hay que tocar el resto del
-# archivo.
-C_TEXTO:   str = "white"        # texto de lectura principal (valores)
-C_DIM:     str = "grey58"       # texto secundario (etiquetas, timestamps)
-C_MUTED:   str = "grey42"       # texto terciario (debug, separadores)
-C_ACENTO:  str = "steel_blue1"  # títulos, énfasis, prompt, arte ASCII
-C_BORDE:   str = "steel_blue"   # bordes de panel (acento más apagado)
-C_OK:      str = "sea_green3"   # éxito / estado activo
-C_ALERTA:  str = "orange3"      # advertencia / estado degradado
-C_PELIGRO: str = "red"          # error / estado caído — se deja el rojo
-                                 # puro a propósito: es la única señal
-                                 # "dura" de la paleta y necesita seguir
-                                 # leyéndose como alarma, no como acento.
 
-_SIMBOLOS_ESTADO: Dict[str, str] = {"activo": "●", "degradado": "◐", "caido": "✖"}
+C_TEXTO:   str = "white"
+C_DIM:     str = "grey58"
+C_MUTED:   str = "grey42"
+C_ACENTO:  str = "steel_blue1"
+C_BORDE:   str = "steel_blue"
+C_OK:      str = "sea_green3"
+C_ALERTA:  str = "orange3"
+C_PELIGRO: str = "red"
+_SIMBOLOS_ESTADO: Dict[str, str] = {
+    "activo": "●", "degradado": "◐", "caido": "✖"}
 _ESTILOS_ESTADO: Dict[str, str] = {
     "activo": C_OK, "degradado": C_ALERTA, "caido": f"bold {C_PELIGRO}",
 }
@@ -181,6 +172,8 @@ COMANDOS_HELP: Dict[str, List[Tuple[str, str]]] = {
         ("mobile-deep",          "Análisis profundo de móvil"),
         ("recover",              "File carving forense (.dd/.img o /dev/sdX)"),
         ("recover ver <id>",     "Tabla de resultados de un job de carving"),
+        ("forense <start|stop|status>",
+         "Captura de red + cadena de custodia (hash-chain)"),
         ("stealth",              "Verificar identidad digital"),
         ("panic",                "Borrado de emergencia"),
     ],
@@ -388,7 +381,8 @@ def _titulo_hud(compacto: bool) -> str:
 
 def _tabla_base(compacto: bool) -> Table:
     tabla = Table.grid(padding=(0, 1) if compacto else (0, 2))
-    tabla.add_column(style="grey58", justify="right", min_width=10 if compacto else 14)
+    tabla.add_column(style="grey58", justify="right",
+                     min_width=10 if compacto else 14)
     tabla.add_column(style="white")
     return tabla
 
@@ -433,7 +427,8 @@ def _panel_hero(
     compacto: bool,
 ) -> Panel:
     tabla = _tabla_base(compacto)
-    tabla.add_row("SISTEMA", f"[bold steel_blue1]APEX SENTINEL[/bold steel_blue1] [grey58]v{version}[/grey58]")
+    tabla.add_row(
+        "SISTEMA", f"[bold steel_blue1]APEX SENTINEL[/bold steel_blue1] [grey58]v{version}[/grey58]")
     tabla.add_row("OPERADOR", f"[bold steel_blue1]{nombre}[/bold steel_blue1]")
     tabla.add_row("ESTADO", "[bold sea_green3]● EN LÍNEA[/bold sea_green3]")
     tabla.add_row("INTERFAZ", f"[white]{iface}[/white]")
@@ -445,7 +440,8 @@ def _panel_hero(
     if compacto:
         tabla.add_row("AVISO", "[bold red]⚠ AUTHORIZED USE ONLY[/bold red]")
     else:
-        tabla.add_row("AVISO", "[bold red]⚠  AUTHORIZED USE ONLY — ACCESO RESTRINGIDO[/bold red]")
+        tabla.add_row(
+            "AVISO", "[bold red]⚠  AUTHORIZED USE ONLY — ACCESO RESTRINGIDO[/bold red]")
 
     layout = Layout()
     if compacto:
@@ -457,7 +453,8 @@ def _panel_hero(
             Layout(name="arte", size=_ANCHO_ARTE),
             Layout(name="info", ratio=1),
         )
-        layout["arte"].update(Align.center(Text(ANUBIS_ART, style="bold steel_blue1"), vertical="middle"))
+        layout["arte"].update(Align.center(
+            Text(ANUBIS_ART, style="bold steel_blue1"), vertical="middle"))
         layout["info"].update(Align.left(tabla, vertical="middle"))
         alto = 14
         relleno = (1, 3)
@@ -510,10 +507,12 @@ def _panel_resumen_modulos(
         partes.append(f"[{color}]{simbolo} {grupo}[/{color}]")
     contenido = "  ".join(partes)
 
-    degradados = [nombre for nombre, activo in (estados_modulos or {}).items() if not activo]
+    degradados = [nombre for nombre, activo in (
+        estados_modulos or {}).items() if not activo]
     if degradados:
         limite = 4 if compacto else 6
-        listado = "  ".join(f"[grey58]{d}[/grey58]" for d in degradados[:limite])
+        listado = "  ".join(
+            f"[grey58]{d}[/grey58]" for d in degradados[:limite])
         restante = len(degradados) - limite
         extra = f"  [grey58]+{restante} más[/grey58]" if restante > 0 else ""
         contenido += f"\n\n  [orange3]○ Sin cargar:[/orange3]  {listado}{extra}"
@@ -560,7 +559,8 @@ async def _ejecutar_boot(
     total = len(modulos)
     with Live(console=console, refresh_per_second=24, screen=False) as live:
         for idx, nombre_mod in enumerate(modulos, 1):
-            activo = estados_modulos is None or estados_modulos.get(nombre_mod, True)
+            activo = estados_modulos is None or estados_modulos.get(
+                nombre_mod, True)
             live.update(_cuadro_boot(idx, total, nombre_mod, activo, compacto))
             await asyncio.sleep(0.035)
 
@@ -574,7 +574,8 @@ def mostrar_bootloader(
 ) -> None:
     _limpiar()
     compacto = _pantalla_compacta(console)
-    modulos = list(estados_modulos.keys()) if estados_modulos else [m for m, _ in MODULOS_BOOT]
+    modulos = list(estados_modulos.keys()) if estados_modulos else [
+        m for m, _ in MODULOS_BOOT]
     total = len(modulos)
 
     asyncio.run(_ejecutar_boot(console, modulos, estados_modulos, compacto))
@@ -590,8 +591,10 @@ def mostrar_bootloader(
         compacto=compacto,
     ))
 
-    ok_count = sum(1 for v in estados_modulos.values() if v) if estados_modulos else total
-    console.print(_panel_resumen_modulos(estados_modulos, ok_count, total, compacto))
+    ok_count = sum(1 for v in estados_modulos.values()
+                   if v) if estados_modulos else total
+    console.print(_panel_resumen_modulos(
+        estados_modulos, ok_count, total, compacto))
 
     console.print(Rule(style="grey58"))
     console.print(
@@ -632,7 +635,6 @@ def _filtrar_comandos(
     if not termino:
         return comandos
 
-    # 1) ¿coincide con el nombre de alguna categoría? ("red", "rf", "ataques"...)
     por_categoria = {
         cat: cmds for cat, cmds in comandos.items()
         if termino in _normalizar(cat)
@@ -640,7 +642,6 @@ def _filtrar_comandos(
     if por_categoria:
         return por_categoria
 
-    # 2) si no, busca la palabra en nombres de comando y descripciones
     resultado: Dict[str, List[Tuple[str, str]]] = {}
     for cat, cmds in comandos.items():
         coincidencias = [
@@ -697,7 +698,8 @@ def mostrar_ayuda(
 
     for categoria, cmds in categorias.items():
         console.print()
-        console.print(Rule(f"[bold steel_blue1]▸ {categoria}[/bold steel_blue1]", style="grey58", align="left"))
+        console.print(Rule(
+            f"[bold steel_blue1]▸ {categoria}[/bold steel_blue1]", style="grey58", align="left"))
         console.print(_tabla_comandos(cmds))
 
     console.print()
@@ -736,7 +738,8 @@ if __name__ == "__main__":
     try:
         mostrar_bootloader(_con, "Sentinel", "2.3", "wlan0mon", estados_demo)
         input("AnubisOS@Sentinel~# ")
-        mostrar_banner(_con, "Sentinel", "2.3", "wlan0mon", proyecto="Operacion-Alpha")
+        mostrar_banner(_con, "Sentinel", "2.3", "wlan0mon",
+                       proyecto="Operacion-Alpha")
         input("AnubisOS@Sentinel~# ")
         mostrar_ayuda(_con, "2.3")
     except KeyboardInterrupt:
