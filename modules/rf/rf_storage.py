@@ -201,7 +201,8 @@ class SignalDB:
         try:
             yield conn
             conn.commit()
-        except Exception:
+        except Exception as exc:
+            log.debug("Transacción SQLite revertida por excepción: %s", exc)
             conn.rollback()
             raise
         finally:

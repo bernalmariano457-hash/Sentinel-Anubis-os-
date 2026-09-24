@@ -13,12 +13,12 @@ try:
     )
     _MEDIA_RECOVERY_OK = True
 except ImportError:
-    MediaRecoveryEngine = None  # type: ignore[assignment,misc]
-    _WorkspaceInterface = object  # type: ignore[assignment,misc]
+    MediaRecoveryEngine = None  
+    _WorkspaceInterface = object  
     _MEDIA_RECOVERY_OK = False
 
 
-class _SentinelWorkspaceAdapter(_WorkspaceInterface):  # type: ignore[misc]
+class _SentinelWorkspaceAdapter(_WorkspaceInterface):  
 
     def __init__(self, sentinel: Any) -> None:
         self._sentinel = sentinel
@@ -63,7 +63,7 @@ MODULOS: list[ModuleSpec] = [
                "modules.network.AdvancedScanner"),
     ModuleSpec("sweep",        "SweepModule",
                "modules.network.SweepModule"),
-    ModuleSpec("wifi_attack",  "WifiAtack",
+    ModuleSpec("wifi_attack",  "WifiAttack",
                "modules.network.WifiAtack"),
     ModuleSpec("bt",           "bt_module",         "modules.network.bt_module",
                display_name="BluetoothModule"),

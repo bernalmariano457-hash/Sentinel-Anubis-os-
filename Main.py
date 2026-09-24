@@ -5,11 +5,7 @@ from core.command_handler import CommandHandler
 from core.vendor_resolver import VendorResolver
 from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
 
-import asyncio
-import functools
 import json
-import logging
-import logging.handlers
 import os
 import signal
 import stat
@@ -60,7 +56,7 @@ except ImportError:
 try:
     from core.auth import GestorAuth
 except ImportError:
-    class GestorAuth:
+    class GestorAuth:  # type: ignore[misc]
         def __init__(self, *a: Any, **kw: Any) -> None: pass
         def solicitar_acceso(self) -> bool: return True
 
@@ -69,18 +65,6 @@ try:
     _FLIPPER_OK = True
 except ImportError:
     _FLIPPER_OK = False
-
-try:
-    import yaml
-
-    from core.event_bus import Event, EventBus, EventType
-    from modules.forensics.integrity.hash_chain import ChainIntegrityError, HashChainLogger
-    from modules.forensics.network.sniffer import NetworkSniffer, RotationPolicy, SnifferError
-    _FORENSICS_OK = True
-    _FORENSICS_IMPORT_ERROR: str | None = None
-except ImportError as _forensics_import_error:
-    _FORENSICS_OK = False
-    _FORENSICS_IMPORT_ERROR = str(_forensics_import_error)
 
 ManejadorComando = Callable[[list[str]], None]
 
@@ -236,397 +220,6 @@ class _ShutdownCoordinator:
         return self._shutdown_event.is_set()
 
 
-FORENSICS_APP_NAME = "apex_sentinel_forensics"
-_forensics_logger = logging.getLogger(FORENSICS_APP_NAME)
-
-_FORENSICS_REQUIRED_CONFIG_KEYS: dict[str, tuple[str, ...]] = {
-    "network": ("interface",),
-    "capture": ("max_file_size_bytes", "max_file_duration_seconds"),
-    "storage": ("base_path", "pcap_dir", "logs_dir", "audit_chain_file"),
-    "integrity": (),
-}
-
-
-class ForensicsConfigError(Exception):
-    pass
-
-
-def load_forensics_config(config_path: str | os.PathLike[str]) -> dict[str, Any]:
-    path = Path(config_path)
-    if not path.is_file():
-        raise ForensicsConfigError(
-            f"Archivo de configuración no encontrado: '{path}'.")
-
-    try:
-        with path.open("r", encoding="utf-8") as fh:
-            data = yaml.safe_load(fh)
-    except yaml.YAMLError as exc:
-        raise ForensicsConfigError(
-            f"Error de sintaxis YAML en '{path}': {exc}") from exc
-    except OSError as exc:
-        raise ForensicsConfigError(
-            f"No fue posible leer '{path}': {exc}") from exc
-
-    if not isinstance(data, dict):
-        raise ForensicsConfigError(
-            f"'{path}' debe contener un mapeo YAML en su raíz.")
-
-    problems: list[str] = []
-    for section, required_keys in _FORENSICS_REQUIRED_CONFIG_KEYS.items():
-        section_data = data.get(section)
-        if not isinstance(section_data, dict):
-            problems.append(f"Falta la sección obligatoria '{section}'.")
-            continue
-        for key in required_keys:
-            if key not in section_data:
-                problems.append(
-                    f"Falta la clave obligatoria '{section}.{key}'.")
-
-    if problems:
-        raise ForensicsConfigError(
-            f"Configuración inválida en '{path}':\n  - " + "\n  - ".join(problems))
-
-    return data
-
-
-def configure_forensics_logging(log_level: str, log_dir: Path) -> None:
-    level = getattr(logging, str(log_level).upper(), logging.INFO)
-
-    file_handler: logging.Handler | None
-    try:
-        log_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.handlers.RotatingFileHandler(
-            filename=str(log_dir / f"{FORENSICS_APP_NAME}.log"),
-            maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8",
-        )
-    except OSError as exc:
-        file_handler = None
-        sys.stderr.write(
-            f"ADVERTENCIA: no fue posible preparar el log forense en '{log_dir}': {exc}\n"
-        )
-
-    formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S%z",
-    )
-
-    _forensics_logger.setLevel(level)
-    _forensics_logger.propagate = False
-    _forensics_logger.handlers.clear()
-
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-    _forensics_logger.addHandler(console_handler)
-
-    if file_handler is not None:
-        file_handler.setFormatter(formatter)
-        _forensics_logger.addHandler(file_handler)
-
-
-class ApexSentinelOrchestrator:
-
-    def __init__(self, config: dict[str, Any]) -> None:
-        self._config = config
-        self._loop = asyncio.get_running_loop()
-        self._event_bus = EventBus()
-        self._sniffer: NetworkSniffer | None = None
-        self._hash_chain: HashChainLogger | None = None
-        self._pid_file: Path | None = None
-
-    def _resolve_paths(self) -> dict[str, Path]:
-        storage_cfg = self._config["storage"]
-        base_path = Path(storage_cfg["base_path"])
-        return {
-            "base": base_path,
-            "pcap_dir": base_path / storage_cfg["pcap_dir"],
-            "logs_dir": base_path / storage_cfg["logs_dir"],
-            "audit_chain_file": base_path / storage_cfg["audit_chain_file"],
-        }
-
-    def _write_pid_file(self) -> None:
-        system_cfg = self._config.get("system", {})
-        self._pid_file = Path(system_cfg.get(
-            "pid_file", "/var/run/apex_sentinel_forensics.pid"))
-        try:
-            self._pid_file.parent.mkdir(parents=True, exist_ok=True)
-            self._pid_file.write_text(str(os.getpid()), encoding="utf-8")
-            _forensics_logger.debug(
-                "Archivo PID escrito en '%s' (PID=%d).", self._pid_file, os.getpid())
-        except OSError as exc:
-            _forensics_logger.warning(
-                "No fue posible escribir el archivo PID '%s': %s", self._pid_file, exc)
-
-    def _remove_pid_file(self) -> None:
-        if self._pid_file is None:
-            return
-        try:
-            self._pid_file.unlink(missing_ok=True)
-        except OSError as exc:
-            _forensics_logger.warning(
-                "No fue posible eliminar el archivo PID '%s': %s", self._pid_file, exc)
-
-    async def _on_evidence_created(self, event: "Event") -> None:
-        file_path = event.payload.get("file_path")
-        if not file_path:
-            _forensics_logger.error(
-                "Evento EVIDENCE_CREATED sin 'file_path': %s", event.payload)
-            return
-        if self._hash_chain is None:
-            _forensics_logger.error(
-                "EVIDENCE_CREATED antes de inicializar HashChainLogger: %s", file_path)
-            return
-
-        seal_fn = functools.partial(
-            self._hash_chain.seal_evidence,
-            file_path,
-            metadata={
-                "packet_count": event.payload.get("packet_count"),
-                "bytes_written": event.payload.get("bytes_written"),
-                "interface": event.payload.get("interface"),
-                "capture_opened_at": event.payload.get("opened_at"),
-                "capture_closed_at": event.payload.get("closed_at"),
-            },
-        )
-        try:
-            block = await self._loop.run_in_executor(None, seal_fn)
-        except FileNotFoundError:
-            _forensics_logger.error(
-                "El archivo de evidencia '%s' no existe; no pudo sellarse.", file_path)
-            await self._event_bus.publish(EventType.CAPTURE_ERROR, payload={"file_path": file_path, "reason": "file_not_found"}, source="ApexSentinelOrchestrator")
-            return
-        except ChainIntegrityError as exc:
-            _forensics_logger.exception(
-                "Error de integridad al sellar '%s'.", file_path)
-            await self._event_bus.publish(EventType.CAPTURE_ERROR, payload={"file_path": file_path, "reason": str(exc)}, source="ApexSentinelOrchestrator")
-            return
-        except Exception as exc:
-            _forensics_logger.exception(
-                "Error inesperado al sellar '%s'.", file_path)
-            await self._event_bus.publish(EventType.CAPTURE_ERROR, payload={"file_path": file_path, "reason": str(exc)}, source="ApexSentinelOrchestrator")
-            return
-
-        _forensics_logger.info(
-            "Evidencia sellada: bloque #%d para '%s'.", block.index, file_path)
-        await self._event_bus.publish(
-            EventType.EVIDENCE_SEALED,
-            payload={"file_path": file_path, "block_index": block.index,
-                     "block_hash": block.block_hash},
-            source="ApexSentinelOrchestrator",
-        )
-
-    async def _log_all_events(self, event: "Event") -> None:
-        _forensics_logger.debug("Evento: type=%s source=%s id=%s payload=%s",
-                                event.type, event.source, event.event_id, event.payload)
-
-    async def startup(self) -> None:
-        paths = self._resolve_paths()
-        for directory in (paths["pcap_dir"], paths["logs_dir"]):
-            directory.mkdir(parents=True, exist_ok=True)
-
-        await self._event_bus.start()
-
-        integrity_cfg = self._config.get("integrity", {})
-        self._hash_chain = HashChainLogger(
-            chain_file_path=paths["audit_chain_file"], hash_algorithm=integrity_cfg.get(
-                "hash_algorithm", "sha256"),
-        )
-
-        if integrity_cfg.get("auto_verify_on_start", True):
-            _forensics_logger.info(
-                "Verificando integridad de la cadena de custodia en '%s'...", paths["audit_chain_file"])
-            result = await self._loop.run_in_executor(None, self._hash_chain.verify_chain)
-            if result.is_valid:
-                _forensics_logger.info(
-                    "Cadena de custodia íntegra: %d bloque(s) verificado(s).", result.verified_blocks)
-                await self._event_bus.publish(EventType.CHAIN_VERIFIED, payload=result.to_dict(), source=FORENSICS_APP_NAME)
-            else:
-                _forensics_logger.critical(
-                    "¡ALERTA DE INTEGRIDAD! %d bloque(s) comprometido(s). Primer bloque afectado: #%s.",
-                    len(result.failures), result.first_failure_index,
-                )
-                await self._event_bus.publish(EventType.CHAIN_COMPROMISED, payload=result.to_dict(), source=FORENSICS_APP_NAME)
-
-        self._event_bus.subscribe(
-            EventType.EVIDENCE_CREATED, self._on_evidence_created)
-        self._event_bus.subscribe("*", self._log_all_events)
-
-        network_cfg = self._config["network"]
-        capture_cfg = self._config["capture"]
-        rotation_policy = RotationPolicy(
-            max_size_bytes=int(capture_cfg["max_file_size_bytes"]),
-            max_duration_seconds=float(
-                capture_cfg["max_file_duration_seconds"]),
-        )
-        self._sniffer = NetworkSniffer(
-            interface=network_cfg["interface"],
-            output_dir=paths["pcap_dir"],
-            rotation_policy=rotation_policy,
-            event_bus=self._event_bus,
-            event_loop=self._loop,
-            file_prefix=capture_cfg.get("file_prefix", FORENSICS_APP_NAME),
-            bpf_filter=network_cfg.get("bpf_filter", ""),
-            snapshot_length=int(network_cfg.get("snapshot_length", 65535)),
-            promiscuous=bool(network_cfg.get("promiscuous_mode", True)),
-            sync_writes=bool(capture_cfg.get("sync_writes", True)),
-        )
-        await self._loop.run_in_executor(None, self._sniffer.start)
-        await self._event_bus.publish(EventType.CAPTURE_STARTED, payload={"interface": network_cfg["interface"]}, source=FORENSICS_APP_NAME)
-
-        self._write_pid_file()
-        _forensics_logger.info(
-            "Subsistema forense operativo. Capturando tráfico en '%s'.", network_cfg["interface"])
-
-    async def shutdown(self) -> None:
-        _forensics_logger.info(
-            "Iniciando apagado controlado del subsistema forense...")
-        if self._sniffer is not None:
-            await self._loop.run_in_executor(None, self._sniffer.stop)
-            await self._event_bus.publish(EventType.CAPTURE_STOPPED, source=FORENSICS_APP_NAME)
-        await asyncio.sleep(0.5)
-        await self._event_bus.publish(EventType.SYSTEM_SHUTDOWN, source=FORENSICS_APP_NAME)
-        await self._event_bus.stop(drain=True)
-        self._remove_pid_file()
-        _forensics_logger.info(
-            "Subsistema forense detenido de forma segura. Evidencia sellada correctamente.")
-
-
-class ForensicsManager:
-
-    def __init__(self, sentinel: "ApexSentinel", config_path: str | os.PathLike[str] | None = None) -> None:
-        self._sentinel = sentinel
-        self._config_path_default = Path(config_path) if config_path else (
-            _HERE / "config" / "forensics.yaml")
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._thread: threading.Thread | None = None
-        self._orchestrator: ApexSentinelOrchestrator | None = None
-        self._lock = threading.Lock()
-        self._error: str | None = None
-        self._config_path_actual: Path | None = None
-
-    @property
-    def activo(self) -> bool:
-        with self._lock:
-            return self._thread is not None and self._thread.is_alive()
-
-    def iniciar(self, config_path: str | os.PathLike[str] | None = None) -> bool:
-        c = self._sentinel.console
-        with self._lock:
-            if self._thread is not None and self._thread.is_alive():
-                c.print(
-                    "[orange3][!] El subsistema forense ya está en ejecución.[/orange3]")
-                return False
-
-            ruta = Path(
-                config_path) if config_path else self._config_path_default
-            self._config_path_actual = ruta
-            self._error = None
-            listo = threading.Event()
-
-            self._thread = threading.Thread(
-                target=self._run_loop, args=(ruta, listo),
-                name="ForensicsOrchestrator", daemon=True,
-            )
-            self._thread.start()
-
-        listo.wait(timeout=15.0)
-
-        if self._error:
-            c.print(
-                f"[red][!] No se pudo iniciar el subsistema forense: {self._error}[/red]")
-            self._sentinel.log.error(self._error, "ForensicsManager")
-            with self._lock:
-                self._thread = None
-            return False
-
-        c.print(
-            "[sea_green3][+] Subsistema forense activo[/sea_green3] "
-            f"(config: [dim]{ruta}[/dim]). Captura y cadena de custodia en marcha."
-        )
-        self._sentinel.log.info(
-            "Subsistema forense iniciado.", "ForensicsManager")
-        return True
-
-    def _run_loop(self, config_path: Path, listo: threading.Event) -> None:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        self._loop = loop
-        try:
-            config = load_forensics_config(config_path)
-            system_cfg = config.get("system", {})
-            storage_cfg = config["storage"]
-            configure_forensics_logging(
-                log_level=system_cfg.get("log_level", "INFO"),
-                log_dir=Path(storage_cfg["base_path"]) /
-                storage_cfg["logs_dir"],
-            )
-            self._orchestrator = loop.run_until_complete(
-                self._crear_orquestador(config))
-        except Exception as error_arranque:
-            self._error = str(error_arranque)
-            listo.set()
-            loop.close()
-            return
-
-        listo.set()
-        try:
-            loop.run_forever()
-        finally:
-            loop.close()
-
-    async def _crear_orquestador(self, config: dict[str, Any]) -> "ApexSentinelOrchestrator":
-        orquestador = ApexSentinelOrchestrator(config)
-        await orquestador.startup()
-        return orquestador
-
-    def detener(self, timeout: float = 15.0) -> bool:
-        c = self._sentinel.console
-        with self._lock:
-            hilo = self._thread
-            loop = self._loop
-            orquestador = self._orchestrator
-
-        if hilo is None or not hilo.is_alive() or loop is None or orquestador is None:
-            c.print(
-                "[orange3][!] El subsistema forense no está en ejecución.[/orange3]")
-            return False
-
-        futuro = asyncio.run_coroutine_threadsafe(orquestador.shutdown(), loop)
-        try:
-            futuro.result(timeout=timeout)
-        except Exception as error_apagado:
-            self._sentinel.log.error(
-                f"Fallo al apagar el subsistema forense: {error_apagado}", "ForensicsManager")
-            c.print(
-                f"[red][!] Error al detener el subsistema forense: {error_apagado}[/red]")
-
-        loop.call_soon_threadsafe(loop.stop)
-        hilo.join(timeout=timeout)
-
-        with self._lock:
-            self._thread = None
-            self._loop = None
-            self._orchestrator = None
-
-        c.print(
-            "[grey58][+] Subsistema forense detenido. Evidencia sellada.[/grey58]")
-        self._sentinel.log.info(
-            "Subsistema forense detenido.", "ForensicsManager")
-        return True
-
-    def estado(self) -> None:
-        c = self._sentinel.console
-        if not self.activo or self._orchestrator is None:
-            c.print(
-                "[dim][forense] Inactivo. Usa [bold white]forense start[/bold white] para iniciarlo.[/dim]")
-            return
-        sniffer = self._orchestrator._sniffer
-        interfaz = getattr(sniffer, "interface", "?") if sniffer else "?"
-        c.print(
-            f"[sea_green3][forense] Activo[/sea_green3] — interfaz: [bold]{interfaz}[/bold] — "
-            f"config: [dim]{self._config_path_actual}[/dim]"
-        )
-
-
 class ApexSentinel:
 
     VERSION = "2.3"
@@ -657,11 +250,6 @@ class ApexSentinel:
             self.flipper = FlipperModule(self)
         else:
             self.flipper = None
-
-        if _FORENSICS_OK:
-            self.forense = ForensicsManager(self)
-        else:
-            self.forense = None
 
         self._cmd = CommandHandler(self)
         self._command_map: dict[str,
@@ -750,19 +338,12 @@ class ApexSentinel:
     def _registrar_apagado_nucleo(self) -> None:
         self.registrar_apagado(self._detener_tareas_activas,
                                "ColaTareas", prioridad=100)
-        self.registrar_apagado(self._detener_forense,
-                               "SubsistemaForense", prioridad=90)
         self.registrar_apagado(self._cerrar_modulos_hardware,
                                "ModulosHardware", prioridad=80)
         self.registrar_apagado(self._cerrar_proyecto_activo,
                                "GestorProyectos", prioridad=60)
         self.registrar_apagado(
             self._registrar_cierre_sesion, "LogSistema", prioridad=0)
-
-    def _detener_forense(self) -> None:
-        forense = getattr(self, "forense", None)
-        if forense is not None and forense.activo:
-            forense.detener()
 
     def _detener_tareas_activas(self) -> None:
         cola = getattr(self, "cola", None)
@@ -841,9 +422,11 @@ class ApexSentinel:
             )
             raise
 
+    _CONFIG_FILE: Path = _HERE / "config.json"
+
     def _cargar_config(self) -> dict[str, Any]:
         try:
-            with open("config.json", encoding="utf-8") as config_file:
+            with self._CONFIG_FILE.open(encoding="utf-8") as config_file:
                 return json.load(config_file)
         except FileNotFoundError:
             return {
@@ -858,7 +441,7 @@ class ApexSentinel:
 
     def _guardar_config(self) -> None:
         try:
-            with open("config.json", "w", encoding="utf-8") as config_file:
+            with self._CONFIG_FILE.open("w", encoding="utf-8") as config_file:
                 json.dump(self.config, config_file,
                           ensure_ascii=False, indent=2)
         except OSError as write_error:
@@ -935,22 +518,6 @@ class ApexSentinel:
         def _locate(args: list[str]) -> None:
             (c.locate_p if "-p" in args else c.locate)()
 
-        def _forense(args: list[str]) -> None:
-            if not self._modulo_ok("forense"):
-                return
-            sub = args[0] if args else "status"
-            if sub in ("start", "iniciar", "on"):
-                ruta_config = args[1] if len(args) > 1 else None
-                self.forense.iniciar(ruta_config)
-            elif sub in ("stop", "detener", "off"):
-                self.forense.detener()
-            elif sub in ("status", "estado"):
-                self.forense.estado()
-            else:
-                self.console.print(
-                    "[orange3][?] Uso: forense <start|stop|status> [ruta_config][/orange3]"
-                )
-
         return {
             "help": lambda args: mostrar_ayuda(
                 self.console, self.version, COMANDOS_HELP,
@@ -1014,6 +581,7 @@ class ApexSentinel:
             "plugins": lambda args: c.plugins(args),
             "locate":      _locate,
             "recover": lambda args: c.recover(args),
+
             "flipper": lambda args: (
                 self.flipper.menu() if self._modulo_ok("flipper") else None),
             "flipper-status": lambda args: (
@@ -1026,7 +594,6 @@ class ApexSentinel:
                 self.flipper.subghz_capture() if self._modulo_ok("flipper") else None),
             "flipper-list": lambda args: (
                 self.flipper.subghz_list() if self._modulo_ok("flipper") else None),
-            "forense":     _forense,
         }
 
     def _despachar(self, entrada: str) -> bool:

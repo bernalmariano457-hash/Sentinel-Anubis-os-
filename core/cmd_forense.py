@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
     from Main import ApexSentinel
 
 _recovery_results: dict[str, list] = {}
+_recovery_lock: threading.Lock = threading.Lock()
 
 
 class ForenseCommands:
@@ -121,7 +123,8 @@ class ForenseCommands:
             _job_carving,
             prioridad=2,
         )
-        _recovery_results[tarea.id] = results_holder
+        with _recovery_lock:
+            _recovery_results[tarea.id] = results_holder
 
         s.console.print(
             f"\n[dim]Job [bold cyan]#{tarea.id}[/bold cyan] encolado. "
@@ -149,7 +152,8 @@ class ForenseCommands:
         )
 
     def _recovery_mostrar_por_job(self, job_id: str) -> None:
-        holder = _recovery_results.get(job_id)
+        with _recovery_lock:
+            holder = _recovery_results.get(job_id)
         if holder is None:
             self.s.console.print(
                 f"[yellow][!] No hay resultados registrados para job #{job_id}. "

@@ -46,7 +46,7 @@ class GeneralCommands(_DomainBase):
                         "DIR" if entry.is_dir() else "FILE",
                     )
                 except OSError:
-                    tabla.add_row(f, "N/A", "?")
+                    tabla.add_row(entry.name, "N/A", "?")
             self.console.print(tabla)
         except Exception as e:
             s.log.error(f"files: {e}", "Sistema")

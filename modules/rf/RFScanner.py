@@ -1385,8 +1385,8 @@ class RFScanner:
         if self._demod:
             try:
                 self._demod.stop_audio()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("Error deteniendo audio demod (ignorado): %s", exc)
 
         if self._backend is not None:
             try:
@@ -1402,8 +1402,8 @@ class RFScanner:
             try:
                 getattr(storage_obj, "close_session", lambda: None)()
                 getattr(storage_obj, "cerrar", lambda: None)()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("Error cerrando storage RF (ignorado): %s", exc)
 
     def __enter__(self) -> RFScanner:
         return self

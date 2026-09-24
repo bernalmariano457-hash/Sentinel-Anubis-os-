@@ -190,7 +190,6 @@ class Session:
                         "[yellow][!] Desconectando Sentinel...[/yellow]")
                     s.log.info("Sesión cerrada por el operador.",
                                "ApexSentinel")
-                    s._signals.cleanup()
                     time.sleep(0.5)
                     break
 
@@ -202,7 +201,6 @@ class Session:
                     )
 
             except EOFError:
-                s._signals.cleanup()
                 break
             except Exception as exc:
                 s.console.print(f"[red][!] Error inesperado: {exc}[/red]")

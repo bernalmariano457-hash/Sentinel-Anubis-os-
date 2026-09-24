@@ -70,13 +70,12 @@ class NetworkCommands(_DomainBase):
         abiertos = []
         for puerto, servicio in puertos.items():
             try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(0.5)
-                if sock.connect_ex((objetivo, puerto)) == 0:
-                    tabla.add_row(str(puerto), servicio,
-                                  "[green]ABIERTO[/green]")
-                    abiertos.append({"puerto": puerto, "servicio": servicio})
-                sock.close()
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(0.5)
+                    if sock.connect_ex((objetivo, puerto)) == 0:
+                        tabla.add_row(str(puerto), servicio,
+                                      "[green]ABIERTO[/green]")
+                        abiertos.append({"puerto": puerto, "servicio": servicio})
             except socket.error:
                 pass
         self.console.print(tabla)

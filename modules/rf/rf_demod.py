@@ -216,8 +216,8 @@ class _SounddeviceBackend:
         try:
             import sounddevice as sd
             sd.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("sounddevice stop falló (ignorado): %s", exc)
 
 
 class _PyAudioBackend:
@@ -249,14 +249,14 @@ class _PyAudioBackend:
             try:
                 self._stream.stop_stream()
                 self._stream.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("Error cerrando stream PyAudio (ignorado): %s", exc)
             self._stream = None
         if self._pa is not None:
             try:
                 self._pa.terminate()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("Error terminando PyAudio (ignorado): %s", exc)
             self._pa = None
 
 
@@ -422,5 +422,5 @@ class Demodulator:
     def __del__(self) -> None:
         try:
             self.stop_audio()
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Error en __del__ stop_audio (ignorado): %s", exc)
