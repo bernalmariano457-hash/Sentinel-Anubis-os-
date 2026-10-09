@@ -54,7 +54,7 @@ def _sdr_worker(
     stop_event: Any,
     ready_event: Any,
 ) -> None:
-    """Proceso hijo: lee el SDR y publica frames al publisher_q."""
+    
     config = SDRConfig(**config_dict)
     sdr = None
     opened = False
