@@ -94,13 +94,22 @@ class RFCommands(_DomainBase):
             from modules.rf.rf_demod import Demodulator
             from modules.rf.rf_config import DemodConfig
 
+            # Usar el sample_rate real del scanner RF (no hardcodear)
+            sample_rate = getattr(self.s.rf, "sample_rate", 2_048_000)
             cfg = DemodConfig(mode=modo, audio_rate=48000, volume=0.85)
-            demod = Demodulator(cfg, sample_rate=2_048_000)
+            demod = Demodulator(cfg, sample_rate=sample_rate)
             audio_total = []
             inicio = time.time()
 
+            # Corrección: el método real es _capture_iq() en el RFScanner.
+            scanner = getattr(self.s.rf, "_scanner", None)
+            if scanner is None:
+                self.console.print(
+                    "[red][!] RFScanner no disponible en el módulo RF.[/red]")
+                return
+
             while (time.time() - inicio) < duracion:
-                muestras = self.s.rf._capturar(freq * 1e6)
+                muestras = scanner._capture_iq(freq * 1e6)
                 if muestras is None:
                     break
                 audio = demod.demodulate(muestras)

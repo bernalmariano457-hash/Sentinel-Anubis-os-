@@ -28,14 +28,9 @@ from adsb_decoder import (
     is_emergency_squawk,
 )
 
-log: logging.Logger = logging.getLogger("sentinel.rf.adsb")
+from core.sdr_broker import SDRBroker, SDRMode, SDRFrame
 
-try:
-    from rtlsdr import RtlSdr
-    _RTLSDR_OK: bool = True
-except ImportError:
-    RtlSdr = None
-    _RTLSDR_OK = False
+log: logging.Logger = logging.getLogger("sentinel.rf.adsb")
 
 
 ADSB_CENTER_FREQ_HZ: Final[int] = 1_090_000_000
@@ -46,6 +41,8 @@ RENDER_REFRESH_HZ: Final[int] = 4
 DEMO_FRAME_INTERVAL_S: Final[float] = 0.3
 CONSUMER_POLL_TIMEOUT_S: Final[float] = 0.2
 THREAD_JOIN_TIMEOUT_S: Final[float] = 2.0
+
+_U8_OFFSET: Final[float] = 127.5
 
 ChunkKind = Literal["iq", "frame"]
 
@@ -94,59 +91,100 @@ def _put_drop_oldest(target_queue: "queue.Queue[Chunk]", item: Chunk) -> None:
         pass
 
 
-def open_rtlsdr(
-    center_freq_hz: int,
-    sample_rate_hz: int,
-    gain_db: float,
-    ppm_correction: int,
-    device_index: int,
-) -> "RtlSdr":
-    if not _RTLSDR_OK:
-        raise RuntimeError("pyrtlsdr no esta instalado. Ejecuta: pip install pyrtlsdr")
-    sdr = RtlSdr(device_index=device_index)
-    try:
-        sdr.sample_rate = sample_rate_hz
-        sdr.center_freq = center_freq_hz
-        sdr.gain = gain_db
-        if ppm_correction:
-            sdr.freq_correction = ppm_correction
-    except Exception:
-        sdr.close()
-        raise
-    return sdr
+def _cf32_to_u8(iq: np.ndarray) -> bytes:
+    """Convertir IQ complex64 [-1, 1] → uint8 interleaved [0, 255]."""
+    real_u8 = (np.real(iq) * _U8_OFFSET +
+               _U8_OFFSET).clip(0, 255).astype(np.uint8)
+    imag_u8 = (np.imag(iq) * _U8_OFFSET +
+               _U8_OFFSET).clip(0, 255).astype(np.uint8)
+    return np.stack((real_u8, imag_u8), axis=1).ravel().tobytes()
 
 
-class RtlSdrProducer(threading.Thread):
+class BrokerProducer(threading.Thread):
+    """
+    Sustituye a RtlSdrProducer. En vez de abrir el RTL-SDR, se suscribe
+    al SDRBroker y convierte el IQ complex64 a uint8 antes de publicarlo
+    en la cola interna del pipeline.
+    """
+
     def __init__(
         self,
-        sdr: "RtlSdr",
         output_queue: "queue.Queue[Chunk]",
         stop_event: threading.Event,
+        center_freq_hz: int = ADSB_CENTER_FREQ_HZ,
+        sample_rate_hz: int = DEFAULT_SAMPLE_RATE_HZ,
+        gain_db: float = DEFAULT_GAIN_DB,
+        ppm_correction: int = 0,
+        device_index: int = 0,
         chunk_samples: int = DEFAULT_CHUNK_SAMPLES,
     ) -> None:
-        super().__init__(name="adsb-sdr-producer", daemon=True)
-        self._sdr = sdr
+        super().__init__(name="adsb-broker-producer", daemon=True)
         self._queue = output_queue
         self._stop_event = stop_event
-        self._chunk_bytes = chunk_samples * 2
+        self._chunk_samples = chunk_samples
+        self._broker = SDRBroker.get()
+        self._sub = None
         self.error: Optional[BaseException] = None
+
+        if not self._broker.hardware_ok:
+            raise RuntimeError(
+                "RTL-SDR library no disponible (pyrtlsdr no instalado)"
+            )
+
+        if not self._broker.started:
+            self._broker.start(
+                center_hz=center_freq_hz,
+                sample_rate=sample_rate_hz,
+                gain=gain_db,
+                ppm=ppm_correction,
+                fft_size=2048,
+                mode=SDRMode.IQ,
+                frame_interval=0.02,
+            )
+        else:
+            self._broker.tune(center_freq_hz)
+            self._broker.set_sample_rate(sample_rate_hz)
+            self._broker.set_gain(gain_db)
+            self._broker.set_ppm(ppm_correction)
+            self._broker.set_mode(SDRMode.IQ)
 
     def run(self) -> None:
         try:
+            self._sub = self._broker.subscribe("ADSBMonitor", maxsize=8)
+            buffer: list[np.ndarray] = []
+            buffer_len = 0
+
             while not self._stop_event.is_set():
-                try:
-                    raw = self._sdr.read_bytes(self._chunk_bytes)
-                except Exception as exc:
-                    log.error("Fallo de lectura RTL-SDR: %s", exc)
-                    self.error = exc
-                    self._stop_event.set()
-                    break
-                _put_drop_oldest(self._queue, Chunk(kind="iq", payload=bytes(raw)))
+                frame: SDRFrame | None = self._sub.get(timeout=0.5)
+                if frame is None or frame.iq is None:
+                    continue
+
+                buffer.append(frame.iq)
+                buffer_len += len(frame.iq)
+
+                if buffer_len >= self._chunk_samples:
+                    merged = (
+                        np.concatenate(buffer) if len(
+                            buffer) > 1 else buffer[0]
+                    )
+                    iq_u8 = _cf32_to_u8(merged[: self._chunk_samples])
+                    _put_drop_oldest(
+                        self._queue,
+                        Chunk(kind="iq", payload=iq_u8),
+                    )
+                    rest = merged[self._chunk_samples:]
+                    buffer = [rest] if rest.size else []
+                    buffer_len = int(rest.size)
+
+        except Exception as exc:
+            log.exception("Broker producer error")
+            self.error = exc
         finally:
-            try:
-                self._sdr.close()
-            except Exception:
-                pass
+            if self._sub is not None:
+                try:
+                    self._sub.close()
+                except Exception:
+                    pass
 
 
 class DemoFrameProducer(threading.Thread):
@@ -167,7 +205,8 @@ class DemoFrameProducer(threading.Thread):
         n_frames = len(DEMO_HEX_FRAMES)
         while not self._stop_event.is_set():
             raw_frame = bytes.fromhex(DEMO_HEX_FRAMES[idx % n_frames])
-            _put_drop_oldest(self._queue, Chunk(kind="frame", payload=raw_frame))
+            _put_drop_oldest(self._queue, Chunk(
+                kind="frame", payload=raw_frame))
             idx += 1
             self._stop_event.wait(self._interval_s)
 
@@ -199,14 +238,20 @@ class ConsumerThread(threading.Thread):
             try:
                 if chunk.kind == "iq":
                     raw_samples = np.frombuffer(chunk.payload, dtype=np.uint8)
-                    raw_frames = demodulate_iq_to_mode_s_frames(raw_samples, self._sample_rate_hz)
+                    raw_frames = demodulate_iq_to_mode_s_frames(
+                        raw_samples, self._sample_rate_hz
+                    )
                     if raw_frames:
                         with self._lock:
                             for raw_frame in raw_frames:
-                                self._registry.ingest_raw_frame(raw_frame, timestamp_s)
+                                self._registry.ingest_raw_frame(
+                                    raw_frame, timestamp_s
+                                )
                 else:
                     with self._lock:
-                        self._registry.ingest_raw_frame(chunk.payload, timestamp_s)
+                        self._registry.ingest_raw_frame(
+                            chunk.payload, timestamp_s
+                        )
             except Exception as exc:
                 log.exception("Error procesando bloque ADS-B")
                 self.error = exc
@@ -282,7 +327,8 @@ def _build_aircraft_table(registry: FlightStateRegistry) -> Table:
 
     for ac in registry.active_aircraft():
         alt_color = _altitude_color(ac.altitude_ft)
-        row_style = "on dark_red" if ac.tcas_ra_active else ("dim" if ac.age_s > 30 else "")
+        row_style = "on dark_red" if ac.tcas_ra_active else (
+            "dim" if ac.age_s > 30 else "")
         dist_km = registry.distance_to_aircraft_km(ac)
         brg_deg = registry.bearing_to_aircraft_deg(ac)
         country_cc = icao_country_code(ac.icao)
@@ -295,8 +341,10 @@ def _build_aircraft_table(registry: FlightStateRegistry) -> Table:
             country_cc,
             ac.icao,
             ac.callsign or "[dim]\u00b7[/dim]",
-            _format_optional(ac.latitude, "+.4f") if ac.latitude is not None else "[dim]\u00b7[/dim]",
-            _format_optional(ac.longitude, "+.4f") if ac.longitude is not None else "[dim]\u00b7[/dim]",
+            _format_optional(
+                ac.latitude, "+.4f") if ac.latitude is not None else "[dim]\u00b7[/dim]",
+            _format_optional(
+                ac.longitude, "+.4f") if ac.longitude is not None else "[dim]\u00b7[/dim]",
             f"[{alt_color}]{_format_optional(ac.altitude_ft)}[/{alt_color}]",
             _format_optional(ac.groundspeed_kt),
             hdg_str,
@@ -317,10 +365,14 @@ def _build_stats_panel(registry: FlightStateRegistry) -> Panel:
     body = Text.assemble(
         ("Aviones   ", "dim"), (f"{n_active:>4}\n", "bold bright_white"),
         ("Msgs      ", "dim"), (f"{registry.total_messages:>4}\n", "white"),
-        ("Pos.      ", "dim"), (f"{registry.total_position_fixes:>4}\n", "bright_green"),
-        ("Sin verif.", "dim"), (f"{registry.total_unverified_frames:>4}\n", "bright_red"),
-        ("msg/s     ", "dim"), (f"{registry.messages_per_second():>4.1f}\n", "bright_yellow"),
-        ("Uptime    ", "dim"), (f"{registry.session_uptime_s():>4.0f}s\n\n", "dim"),
+        ("Pos.      ",
+         "dim"), (f"{registry.total_position_fixes:>4}\n", "bright_green"),
+        ("Sin verif.",
+         "dim"), (f"{registry.total_unverified_frames:>4}\n", "bright_red"),
+        ("msg/s     ",
+         "dim"), (f"{registry.messages_per_second():>4.1f}\n", "bright_yellow"),
+        ("Uptime    ",
+         "dim"), (f"{registry.session_uptime_s():>4.0f}s\n\n", "dim"),
         (spark, "bright_blue"),
     )
     return Panel(body, title="[dim]Stats[/dim]", border_style="grey27", padding=(0, 1))
@@ -371,8 +423,16 @@ class ADSBMonitorPipeline:
         device_index: int = 0,
         chunk_samples: int = DEFAULT_CHUNK_SAMPLES,
     ) -> None:
-        sdr = open_rtlsdr(center_freq_hz, sample_rate_hz, gain_db, ppm_correction, device_index)
-        producer = RtlSdrProducer(sdr, self._queue, self._stop_event, chunk_samples)
+        producer = BrokerProducer(
+            output_queue=self._queue,
+            stop_event=self._stop_event,
+            center_freq_hz=center_freq_hz,
+            sample_rate_hz=sample_rate_hz,
+            gain_db=gain_db,
+            ppm_correction=ppm_correction,
+            device_index=device_index,
+            chunk_samples=chunk_samples,
+        )
         self._run_pipeline(producer, sample_rate_hz)
         if producer.error is not None:
             raise producer.error
@@ -382,7 +442,13 @@ class ADSBMonitorPipeline:
         self._run_pipeline(producer, DEFAULT_SAMPLE_RATE_HZ)
 
     def _run_pipeline(self, producer: threading.Thread, sample_rate_hz: int) -> None:
-        consumer = ConsumerThread(self._queue, self.registry, self._registry_lock, self._stop_event, sample_rate_hz)
+        consumer = ConsumerThread(
+            self._queue,
+            self.registry,
+            self._registry_lock,
+            self._stop_event,
+            sample_rate_hz,
+        )
         self._producer = producer
         self._consumer = consumer
         producer.start()
@@ -431,8 +497,10 @@ class AircraftMonitor:
 
         rf_cfg = getattr(getattr(sentinel, "rf", None), "cfg", None)
         hw_cfg = getattr(rf_cfg, "hardware", None)
-        self._gain_db: float = float(getattr(hw_cfg, "gain_db", DEFAULT_GAIN_DB))
-        self._sample_rate: int = int(getattr(hw_cfg, "sample_rate", DEFAULT_SAMPLE_RATE_HZ))
+        self._gain_db: float = float(
+            getattr(hw_cfg, "gain_db", DEFAULT_GAIN_DB))
+        self._sample_rate: int = int(
+            getattr(hw_cfg, "sample_rate", DEFAULT_SAMPLE_RATE_HZ))
         self._ppm_corr: int = int(getattr(hw_cfg, "ppm_correction", 0))
         self._device_index: int = int(getattr(hw_cfg, "device_index", 0))
 
@@ -441,18 +509,23 @@ class AircraftMonitor:
         self._rx_lat: float = float(getattr(pos_ref, "lat", 0.0))
         self._rx_lon: float = float(getattr(pos_ref, "lon", 0.0))
 
+        # Pipeline activo (para poder detenerlo desde cerrar())
+        self._pipeline: Optional[ADSBMonitorPipeline] = None
+
     def _log_info(self, msg: str) -> None:
         self._console.print(f"[cyan][{self._MODULE_LABEL}][/cyan] {msg}")
         if self._sentinel_log:
             self._sentinel_log.info(msg, self._MODULE_LABEL)
 
     def _log_warn(self, msg: str) -> None:
-        self._console.print(f"[yellow][!][{self._MODULE_LABEL}] {msg}[/yellow]")
+        self._console.print(
+            f"[yellow][!][{self._MODULE_LABEL}] {msg}[/yellow]")
         if self._sentinel_log:
             self._sentinel_log.warning(msg, self._MODULE_LABEL)
 
     def _log_error(self, msg: str) -> None:
-        self._console.print(f"[bold red][x][{self._MODULE_LABEL}] {msg}[/bold red]")
+        self._console.print(
+            f"[bold red][x][{self._MODULE_LABEL}] {msg}[/bold red]")
         if self._sentinel_log:
             self._sentinel_log.error(msg, self._MODULE_LABEL)
 
@@ -461,7 +534,7 @@ class AircraftMonitor:
 
         while True:
             self._console.print(Panel(
-                "[1] Monitor en vivo (RTL-SDR)\n"
+                "[1] Monitor en vivo (vía SDRBroker)\n"
                 "[2] Demo sin hardware\n"
                 "[3] Configurar receptor (lat/lon/gain)\n"
                 "[0] Volver",
@@ -485,45 +558,8 @@ class AircraftMonitor:
 
     def _start_rtlsdr(self) -> None:
         self._log_info(
-            f"Iniciando captura RTL-SDR  "
+            f"Iniciando captura vía broker  "
             f"1090 MHz  gain={self._gain_db} dB  sr={self._sample_rate / 1e6:.1f} MSPS"
         )
         registry = FlightStateRegistry(self._rx_lat, self._rx_lon)
-        pipeline = ADSBMonitorPipeline(registry, console=self._console)
-        try:
-            pipeline.run_live_sdr(
-                center_freq_hz=ADSB_CENTER_FREQ_HZ,
-                sample_rate_hz=self._sample_rate,
-                gain_db=self._gain_db,
-                ppm_correction=self._ppm_corr,
-                device_index=self._device_index,
-            )
-        except Exception as exc:
-            self._log_error(f"RTL-SDR no disponible: {exc}")
-            self._log_warn("Iniciando modo demo como alternativa.")
-            self._start_demo()
-
-    def _start_demo(self) -> None:
-        self._log_info("Modo demo ADS-B (sin hardware SDR)")
-        registry = FlightStateRegistry(self._rx_lat, self._rx_lon)
-        pipeline = ADSBMonitorPipeline(registry, console=self._console)
-        pipeline.run_demo()
-
-    def _configure_receiver(self) -> None:
-        from rich.prompt import Prompt
-        try:
-            self._rx_lat = float(Prompt.ask(
-                "Latitud del receptor", default=str(self._rx_lat), console=self._console
-            ))
-            self._rx_lon = float(Prompt.ask(
-                "Longitud del receptor", default=str(self._rx_lon), console=self._console
-            ))
-            self._gain_db = float(Prompt.ask(
-                "Ganancia RTL-SDR (dB)", default=str(self._gain_db), console=self._console
-            ))
-            self._log_info(
-                f"Receptor configurado  "
-                f"lat={self._rx_lat:.4f}  lon={self._rx_lon:.4f}  gain={self._gain_db} dB"
-            )
-        except ValueError as exc:
-            self._log_error(f"Valor invalido: {exc}")
+        pipeline = ADSBMonitorPipeline(registry, co

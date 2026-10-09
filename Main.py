@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core.sdr_broker import SDRBroker
 from core.log_sistema import LogSistema
 from core.ModuleRegistry import ModuleRegistry
 from core.command_handler import CommandHandler
@@ -266,7 +267,15 @@ class ApexSentinel:
             iface=self._iface(),
             estados_modulos=self._registry.estados(),
         )
+        if self.power is not None:
+            self.power.start_thermal_monitor()
 
+        if getattr(self, "rf", None) is not None:
+            try:
+                SDRBroker.get().start()
+            except Exception as exc:
+                self.log.warning(
+                    f"SDRBroker no arranco: {exc}", "ApexSentinel")
         self._initialized = True
 
     def __enter__(self) -> "ApexSentinel":
@@ -338,12 +347,33 @@ class ApexSentinel:
     def _registrar_apagado_nucleo(self) -> None:
         self.registrar_apagado(self._detener_tareas_activas,
                                "ColaTareas", prioridad=100)
+        self.registrar_apagado(self._cleanup_power,
+                               "PowerManager", prioridad=90)
+        self.registrar_apagado(self._cleanup_sdr_broker,
+                               "SDRBroker", prioridad=85)
+        self.registrar_apagado(self._cleanup_sdr_broker,
+                               "SDRBroker", prioridad=85)
         self.registrar_apagado(self._cerrar_modulos_hardware,
                                "ModulosHardware", prioridad=80)
         self.registrar_apagado(self._cerrar_proyecto_activo,
                                "GestorProyectos", prioridad=60)
         self.registrar_apagado(
             self._registrar_cierre_sesion, "LogSistema", prioridad=0)
+
+    def _cleanup_pawer(self) -> None:
+        power = getattr(self, "power", None)
+        if power is not None:
+            power.cleanup()
+
+    def _cleanup_sdr_broker(self) -> None:
+        try:
+            from core.sdr_broker import SDRBroker
+        SDRBroker.get().stop()
+        except Exception as exc:
+        try:
+            self.log.warning(f"SDRBroker cleanup: {exc}", "ApexSentinel")
+        except Exception:
+            pass
 
     def _detener_tareas_activas(self) -> None:
         cola = getattr(self, "cola", None)
@@ -579,6 +609,14 @@ class ApexSentinel:
             "jobs": lambda args: c.jobs(args),
             "plugin": lambda args: c.plugins(args),
             "plugins": lambda args: c.plugins(args),
+            "power": lambda args: (
+                self.power.status() if self._modulo_ok("power") else None),
+            "temp": lambda args: (
+                self.power.mostrar_temperatura() if self._modulo_ok("power") else None),
+            "bat": lambda args: (
+                self.power.mostrar_bateria() if self._modulo_ok("power") else None),
+            "throttle": lambda args: (
+                self.power.toggle_throttle(args) if self._modulo_ok("power") else None),
             "locate":      _locate,
             "recover": lambda args: c.recover(args),
 

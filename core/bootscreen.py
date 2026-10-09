@@ -1,3 +1,4 @@
+# core/bootscreen.py
 from __future__ import annotations
 
 import asyncio
@@ -106,7 +107,8 @@ MODULOS_BOOT: List[Tuple[str, str]] = [
     ("ColaTareas",       "Ejecución asíncrona"),
     ("GestorPlugins",    "Plugins en caliente"),
     ("Recovery",         "Carving forense de medios eliminados"),
-    ("FlipperZero",      "Bridge serial Flipper Zero"),
+    ("PowerManager",     "Gestión térmica, batería y throttling"),
+    ("SDRBroker",        "Proceso único dueño del RTL-SDR"),
 ]
 
 _GRUPOS_MODULOS: Dict[str, List[str]] = {
@@ -117,7 +119,7 @@ _GRUPOS_MODULOS: Dict[str, List[str]] = {
     "OSINT":     ["OSINTEngine", "CVEMatcher", "GeoPrecise"],
     "Proyectos": ["GestorProyectos", "MotorReportes", "ColaTareas", "GestorPlugins"],
     "Seguridad": ["SecurityModule", "Recovery"],
-    "Hardware":  ["FlipperZero"],
+    "Hardware":  ["PowerManager", "SDRBroker"],
 }
 
 COMANDOS_HELP: Dict[str, List[Tuple[str, str]]] = {
@@ -191,13 +193,11 @@ COMANDOS_HELP: Dict[str, List[Tuple[str, str]]] = {
         ("plugins",          "Listar plugins cargados"),
         ("plugins reload",   "Recargar plugins en caliente"),
     ],
-    "FLIPPER ZERO": [
-        ("flipper",          "Menú interactivo Flipper Zero"),
-        ("flipper-status",   "Telemetría: batería, temperatura, storage"),
-        ("flipper-nfc",      "Escaneo NFC de alta frecuencia"),
-        ("flipper-rfid",     "Lectura RFID de baja frecuencia (125 kHz)"),
-        ("flipper-capture",  "Captura Sub-GHz → archivo .sub"),
-        ("flipper-list",     "Listar capturas Sub-GHz en el dispositivo"),
+    "POWER / SDR": [
+        ("power",            "Estado de energía, temperatura y SDR"),
+        ("temp",             "Temperatura actual del SoC"),
+        ("bat",              "Nivel de batería"),
+        ("throttle on|off",  "Forzar / liberar throttling térmico"),
     ],
 }
 
@@ -734,6 +734,7 @@ if __name__ == "__main__":
         "GestorProyectos": True, "MotorReportes": True,
         "HydraModule": True,    "GestorPlugins": True,
         "Recovery": False,
+        "PowerManager": True,   "SDRBroker": True,
     }
     try:
         mostrar_bootloader(_con, "Sentinel", "2.3", "wlan0mon", estados_demo)

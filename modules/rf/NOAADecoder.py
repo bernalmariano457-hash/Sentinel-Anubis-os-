@@ -13,7 +13,7 @@ import numpy as np
 from rich.console import Console
 from rich.prompt import Prompt
 
-from modules.rf.rf_source import Source, SourceFactory, rtlsdr_source, null_source
+from modules.rf.rf_source import Source, SourceFactory
 
 log = logging.getLogger("sentinel.rf.noaa")
 
@@ -544,13 +544,34 @@ class NOAADecoder:
         ppm = getattr(hw, "ppm_correction",  0)
         idx = getattr(hw, "device_index",    0)
 
-        def _factory(freq_hz: float, sample_rate: int) -> Source:
-            try:
-                return rtlsdr_source(freq_hz, sample_rate, gain, ppm, idx)
-            except Exception as exc:
-                log.warning(
-                    "NOAADecoder: RTL-SDR no disponible (%s) — null source", exc)
-                return null_source()
+    def _factory(freq_hz: float, sample_rate: int) -> Source:
+    try:
+        from modules.rf.rf_broker_backend import open_broker_backend
+        backend = open_broker_backend(
+            freq_hz=freq_hz,
+            sample_rate=sample_rate,
+            gain=gain,
+            ppm=ppm,
+            device_index=idx,
+        )
+        from modules.rf.rf_source import _cf32_to_u8
+
+        def _read() -> bytes | None:
+            iq = backend.read_raw(sample_rate // 10)
+            if iq is None:
+                return None
+            return _cf32_to_u8(iq)
+
+        return _read
+    except Exception as exc:
+        log.warning(
+            "NOAADecoder: broker no disponible (%s) — null source", exc)
+
+        def _null() -> None:
+            import time as _t
+            _t.sleep(0.1)
+            return None
+        return _null
 
         self._rf_factory: SourceFactory = _factory
 

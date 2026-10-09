@@ -376,6 +376,9 @@ class Demodulator:
     def stop_audio(self) -> None:
         self._audio_backend.stop()
 
+    def close(self) -> None:
+        self.stop_audio()
+
     def _demod_wfm(self, iq: np.ndarray) -> np.ndarray:
         instantaneous_freq, self._prev_phase = _fm_phase_discriminator(
             iq, self._prev_phase)

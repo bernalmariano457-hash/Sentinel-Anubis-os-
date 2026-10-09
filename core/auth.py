@@ -192,6 +192,20 @@ class GestorAuth:
     def generar_hash(password: str) -> str:
         return _hash(password)
 
+    def _modo_auth(self) -> str:
+
+        modo = os.getenv("SENTINEL_AUTH_MODE", "").strip().lower()
+        if modo in ("interactive", "systemd", "disabled"):
+            return modo
+
+        try:
+            if not sys.stdin.isatty():
+                return "systemd"
+        except Exception:
+            return "systemd"
+
+        return "interactive"
+
     def configurar_primera_vez(self) -> str:
         self.console.print(Panel(
             "[bold cyan]ANUBIS OS — SETUP DE SEGURIDAD[/bold cyan]\n"
@@ -230,6 +244,38 @@ class GestorAuth:
             return h
 
     def solicitar_acceso(self) -> bool:
+        modo = self._modo_auth()
+
+        if modo == "disabled":
+            log.warning(
+                "Autenticación DESACTIVADA (SENTINEL_AUTH_MODE=disabled)")
+            self.log.warning(
+                "Auth desactivada por variable de entorno.", "GestorAuth"
+            )
+            return True
+
+        if modo == "systemd":
+            if self._creds.existe():
+                log.info("Auth systemd: credencial presente, acceso automático.")
+                self.log.info(
+                    "Auth systemd: acceso automático (credencial detectada).",
+                    "GestorAuth",
+                )
+                return True
+
+            self.console.print(
+                "[red][!] No hay credencial configurada y no hay TTY.[/red]\n"
+                "[yellow]Ejecuta el sistema una vez de forma interactiva "
+                "para configurar la contraseña, o define "
+                "[bold]SENTINEL_PASSWORD_HASH[/bold] o "
+                "[bold]SENTINEL_AUTH_MODE=disabled[/bold] en el entorno.[/yellow]"
+            )
+            log.error("Auth systemd: sin credencial y sin TTY.")
+            self.log.error(
+                "Auth systemd: sin credencial y sin TTY.", "GestorAuth"
+            )
+            return False
+
         primer_arranque = self.config.get(
             "sistema", {}).get("primer_arranque", True)
         if primer_arranque or not self._creds.existe():

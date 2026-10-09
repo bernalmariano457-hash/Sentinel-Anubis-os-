@@ -57,7 +57,8 @@ class FrequencyTrack:
     absences: int = 0
     first_seen: float = field(default_factory=time.monotonic)
     last_seen: float = field(default_factory=time.monotonic)
-    power_history: deque[float] = field(default_factory=lambda: deque(maxlen=20))
+    power_history: deque[float] = field(
+        default_factory=lambda: deque(maxlen=20))
 
     def is_active(self) -> bool:
         return self.detections > 0
@@ -130,7 +131,8 @@ class SignalTracker:
 
         for signal in peaks:
             freq_bin = self._to_bin(signal.freq_mhz)
-            track = self._tracks.setdefault(freq_bin, FrequencyTrack(first_seen=time.monotonic()))
+            track = self._tracks.setdefault(
+                freq_bin, FrequencyTrack(first_seen=time.monotonic()))
             track.detections += 1
             track.absences = 0
             track.last_seen = time.monotonic()
@@ -186,10 +188,12 @@ class AGCController:
         peak_dbm = float(np.percentile(psd_dbm, self.PEAK_PERCENTILE))
 
         if peak_dbm > self.SAT_THRESHOLD_DBM:
-            candidate = max(self.GAIN_MIN_DB, self.current_gain_db - self.GAIN_STEP_DOWN_DB)
+            candidate = max(self.GAIN_MIN_DB,
+                            self.current_gain_db - self.GAIN_STEP_DOWN_DB)
             reason = f"saturation ({peak_dbm:.0f} dBm) gain -{self.GAIN_STEP_DOWN_DB:.0f} dB"
         elif peak_dbm < self.WEAK_THRESHOLD_DBM:
-            candidate = min(self.GAIN_MAX_DB, self.current_gain_db + self.GAIN_STEP_UP_DB)
+            candidate = min(self.GAIN_MAX_DB,
+                            self.current_gain_db + self.GAIN_STEP_UP_DB)
             reason = f"weak signal ({peak_dbm:.0f} dBm) gain +{self.GAIN_STEP_UP_DB:.0f} dB"
         else:
             return None
@@ -252,13 +256,16 @@ class SpectrumRenderer:
         ph_cols = peak_hold[col_indices] if peak_hold is not None and peak_hold.shape == psd_dbm.shape else None
         av_cols = avg_psd[col_indices] if avg_psd is not None and avg_psd.shape == psd_dbm.shape else None
 
-        bar_heights = np.vectorize(lambda v: self._normalize_y(v, height, db_min, db_max))(psd_cols)
+        bar_heights = np.vectorize(lambda v: self._normalize_y(
+            v, height, db_min, db_max))(psd_cols)
         ph_heights = (
-            np.vectorize(lambda v: self._normalize_y(v, height, db_min, db_max))(ph_cols)
+            np.vectorize(lambda v: self._normalize_y(
+                v, height, db_min, db_max))(ph_cols)
             if ph_cols is not None else None
         )
         av_heights = (
-            np.vectorize(lambda v: self._normalize_y(v, height, db_min, db_max))(av_cols)
+            np.vectorize(lambda v: self._normalize_y(
+                v, height, db_min, db_max))(av_cols)
             if av_cols is not None else None
         )
 
@@ -276,7 +283,8 @@ class SpectrumRenderer:
                 ph_h = int(ph_heights[col]) if ph_heights is not None else None
                 av_h = int(av_heights[col]) if av_heights is not None else None
                 if bar_h >= row:
-                    canvas.append("█", style=self._power_bar_style(bar_h / height))
+                    canvas.append(
+                        "█", style=self._power_bar_style(bar_h / height))
                 elif ph_h is not None and ph_h == row:
                     canvas.append("▔", style="cyan")
                 elif av_h is not None and av_h == row:
@@ -384,7 +392,8 @@ class SpectrumRenderer:
             show_edge=False,
             expand=True,
         )
-        table.add_column("Frecuencia", style="cyan", min_width=15, no_wrap=True)
+        table.add_column("Frecuencia", style="cyan",
+                         min_width=15, no_wrap=True)
         table.add_column("Potencia", justify="right", min_width=11)
         table.add_column("SNR", justify="right", min_width=8)
         table.add_column("BW", justify="right", min_width=10)
@@ -452,7 +461,8 @@ class SpectrumRenderer:
         grid.add_column(style="white", min_width=14)
 
         grid.add_row("Frecuencia", f"{freq_mhz:.4f} MHz")
-        grid.add_row("Progreso", f"[green][{bar}][/green] {progress_pct * 100:.0f}%")
+        grid.add_row(
+            "Progreso", f"[green][{bar}][/green] {progress_pct * 100:.0f}%")
         grid.add_row("Tiempo", f"{elapsed_s:.1f}s / {duration_s}s")
         grid.add_row("Iteración", str(iteration))
         grid.add_row("Capturas", str(n_captures))
@@ -473,7 +483,8 @@ class SpectrumRenderer:
             show_edge=False,
             expand=True,
         )
-        table.add_column("Frecuencia", style="cyan", min_width=14, no_wrap=True)
+        table.add_column("Frecuencia", style="cyan",
+                         min_width=14, no_wrap=True)
         table.add_column("Actividad", min_width=22)
         table.add_column("Pot. máx", justify="right", min_width=10)
         table.add_column("SNR", justify="right", min_width=8)
@@ -482,7 +493,8 @@ class SpectrumRenderer:
         table.add_column("Banda", min_width=18)
 
         bar_max_chars = 22
-        sorted_results = sorted(results, key=lambda x: x["snr"], reverse=True)[:35]
+        sorted_results = sorted(
+            results, key=lambda x: x["snr"], reverse=True)[:35]
         for r in sorted_results:
             snr = r["snr"]
             bar_len = int(np.clip(snr / 35 * bar_max_chars, 0, bar_max_chars))
@@ -529,7 +541,8 @@ class SpectrumRenderer:
         pot_max = max((s.potencia for s in peaks), default=-999.0)
         bw_mean = sum(s.bw_khz for s in peaks) / len(peaks) if peaks else 0.0
         band_names = {s.banda["nombre"] for s in peaks if s.banda}
-        duty_max = max((tracker.duty_cycle(s.freq_mhz) for s in peaks), default=0.0) if tracker and peaks else 0.0
+        duty_max = max((tracker.duty_cycle(s.freq_mhz)
+                       for s in peaks), default=0.0) if tracker and peaks else 0.0
 
         grid = Table.grid(padding=(0, 3))
         grid.add_column(style="dim green", justify="right", min_width=22)
@@ -591,7 +604,8 @@ class RFScanner:
         self._backend: HardwareBackend | None = None
         self._backend_lock = threading.Lock()
 
-        self._waterfall_history: deque[PsdArray] = deque(maxlen=self._cfg.display.waterfall_rows)
+        self._waterfall_history: deque[PsdArray] = deque(
+            maxlen=self._cfg.display.waterfall_rows)
         self._session_signals: deque[Signal] = deque(maxlen=5_000)
         self._session_capture_count: int = 0
 
@@ -606,9 +620,8 @@ class RFScanner:
         self._connect_hardware()
 
     def _connect_hardware(self) -> None:
-        from modules.rf.rf_source import open_backend
-        hw_cfg = self._cfg.hardware
-        self._backend = open_backend(
+        from modules.rf.rf_broker_backend
+        import open_broker_backend as open_backend(
             freq_hz=hw_cfg.sample_rate,
             sample_rate=hw_cfg.sample_rate,
             gain=hw_cfg.gain_db,
@@ -619,19 +632,19 @@ class RFScanner:
         self._agc.current_gain_db = hw_cfg.gain_db
 
         if hw_cfg.bias_tee:
-            try:
-                self._backend._sdr.set_bias_tee(True)
-            except Exception:
-                log.debug("bias_tee not supported by this backend")
+                try:
+                    self._backend._sdr.set_bias_tee(True)
+                except Exception:
+                    log.debug("bias_tee not supported by this backend")
 
-        is_mock = "Mock" in self.hw_name
-        self._emit(
-            f"[yellow][!] No physical SDR hardware — {self.hw_name}[/yellow]\n"
-            "[dim]    pip install pyrtlsdr  |  https://www.rtl-sdr.com/[/dim]"
-            if is_mock
-            else f"[green][+] RF backend: {self.hw_name}[/green]"
-        )
-        log.info("RF backend connected: %s", self.hw_name)
+            is_mock = "Mock" in self.hw_name
+            self._emit(
+                f"[yellow][!] No physical SDR hardware — {self.hw_name}[/yellow]\n"
+                "[dim]    pip install pyrtlsdr  |  https://www.rtl-sdr.com/[/dim]"
+                if is_mock
+                else f"[green][+] RF backend: {self.hw_name}[/green]"
+            )
+            log.info("RF backend connected: %s", self.hw_name)
 
     @property
     def sample_rate(self) -> int:
@@ -677,7 +690,8 @@ class RFScanner:
                 gain=gain,
             )
             self.hw_name = self._backend.hw_name
-            self._emit(f"[green][+] rtl_tcp connected — {self.hw_name}[/green]")
+            self._emit(
+                f"[green][+] rtl_tcp connected — {self.hw_name}[/green]")
         except Exception as exc:
             self._emit(f"[red][!] TCP connection error: {exc}[/red]")
 
@@ -694,7 +708,8 @@ class RFScanner:
             self._backend = mock_backend(self._cfg.hardware.sample_rate)
             self.hw_name = self._backend.hw_name
         self._backend._mock.add_signal(
-            SyntheticSignal(freq_offset=freq_offset_hz, power_dbm=power_dbm, mode=mode, bw_hz=bw_hz)
+            SyntheticSignal(freq_offset=freq_offset_hz,
+                            power_dbm=power_dbm, mode=mode, bw_hz=bw_hz)
         )
 
     def _capture_iq(self, freq_hz: float) -> IqArray | None:
@@ -704,20 +719,24 @@ class RFScanner:
         with self._backend_lock:
             try:
                 self._backend.tune(freq_hz)
-                samples = self._backend.read_raw(self._cfg.dsp.samples_per_read)
+                samples = self._backend.read_raw(
+                    self._cfg.dsp.samples_per_read)
                 if samples is not None:
                     self._session_capture_count += 1
                 return samples
             except Exception as exc:
-                self._emit(f"[red][!] Capture @ {freq_hz / 1e6:.3f} MHz: {exc}[/red]")
+                self._emit(
+                    f"[red][!] Capture @ {freq_hz / 1e6:.3f} MHz: {exc}[/red]")
                 log.error("IQ capture @ %.3f MHz: %s", freq_hz / 1e6, exc)
                 return None
 
     def _is_rtlsdr_freq_valid(self, freq_mhz: float) -> bool:
+        from modules.rf.rf_broker_backend import BrokerBackend
         from modules.rf.rf_source import _RTLSDRBackend
-        if isinstance(self._backend, _RTLSDRBackend):
+        if isinstance(self._backend, (BrokerBackend, _RTLSDRBackend)):
             if not (_RTL_FREQ_MIN_MHZ <= freq_mhz <= _RTL_FREQ_MAX_MHZ):
-                self._emit(f"[yellow][!] {freq_mhz:.3f} MHz out of RTL-SDR range. Skipped.[/yellow]")
+                self._emit(
+                    f"[yellow][!] {freq_mhz:.3f} MHz out of RTL-SDR range. Skipped.[/yellow]")
                 return False
         return True
 
@@ -747,14 +766,16 @@ class RFScanner:
 
     def _export_csv_peaks(self, peaks: list[Signal], freq_mhz: float) -> None:
         try:
-            filename = self._csv_exporter.export_signals(peaks, freq_mhz, self.hw_name)
+            filename = self._csv_exporter.export_signals(
+                peaks, freq_mhz, self.hw_name)
             self._emit(f"[green][+] CSV exported → {filename}[/green]")
         except OSError as exc:
             self._emit(f"[red][!] CSV export error: {exc}[/red]")
 
     def _export_csv_sweep(self, results: list[dict], freq_lo: float, freq_hi: float) -> None:
         try:
-            filename = self._csv_exporter.export_sweep(results, freq_lo, freq_hi)
+            filename = self._csv_exporter.export_sweep(
+                results, freq_lo, freq_hi)
             self._emit(f"[green][+] CSV sweep → {filename}[/green]")
         except OSError as exc:
             self._emit(f"[red][!] CSV sweep export error: {exc}[/red]")
@@ -809,7 +830,8 @@ class RFScanner:
                 f"[dim]{band['desc']}[/dim][/bold green]"
             )
         else:
-            self._emit(f"[bold green][RF] {freq_mhz:.4f} MHz — Unclassified[/bold green]")
+            self._emit(
+                f"[bold green][RF] {freq_mhz:.4f} MHz — Unclassified[/bold green]")
 
         self._emit(
             f"[dim]  HW: {self.hw_name}  BW: {self.sample_rate / 1e6:.3f} MHz  "
@@ -846,7 +868,8 @@ class RFScanner:
                     avg_psd=self._peak_hold_buf.average(),
                 ),
                 self._renderer.waterfall(self._waterfall_history, freq_mhz),
-                self._renderer.signal_table(current_peaks, self._signal_tracker),
+                self._renderer.signal_table(
+                    current_peaks, self._signal_tracker),
                 self._renderer.scan_stats_panel(
                     freq_mhz, iteration, duration_s,
                     time.monotonic() - t_start,
@@ -878,7 +901,8 @@ class RFScanner:
 
                     if demod:
                         try:
-                            audio = demod.demodulate(self._capture_iq(freq_hz) or np.empty(0))
+                            audio = demod.demodulate(
+                                self._capture_iq(freq_hz) or np.empty(0))
                             if audio is not None and len(audio) > 0:
                                 squelch_open = (
                                     not current_peaks
@@ -887,10 +911,12 @@ class RFScanner:
                                 if squelch_open:
                                     demod.play(audio)
                                 if self._cfg.demod.save_audio:
-                                    ts_str = datetime.now(timezone.utc).strftime("%H%M%S")
+                                    ts_str = datetime.now(
+                                        timezone.utc).strftime("%H%M%S")
                                     demod.save_wav(
                                         audio,
-                                        str(self._cfg.storage.iq_path / f"audio_{freq_mhz:.3f}MHz_{ts_str}.wav"),
+                                        str(self._cfg.storage.iq_path /
+                                            f"audio_{freq_mhz:.3f}MHz_{ts_str}.wav"),
                                     )
                         except Exception as exc:
                             log.debug("Demodulator error: %s", exc)
@@ -918,7 +944,8 @@ class RFScanner:
             self._register_evidence(freq_mhz, all_peaks, elapsed)
 
             if self._cfg.storage.db_retention_days > 0:
-                self._rf_db.limpiar_antiguas(self._cfg.storage.db_retention_days)
+                self._rf_db.limpiar_antiguas(
+                    self._cfg.storage.db_retention_days)
                 self._signal_db.purge_old(self._cfg.storage.db_retention_days)
 
             log.info(
@@ -936,7 +963,8 @@ class RFScanner:
             self._emit("[red][!] No SDR hardware available.[/red]")
             return
 
-        freq_points = np.arange(freq_lo_mhz, freq_hi_mhz + step_mhz * 0.5, step_mhz)
+        freq_points = np.arange(
+            freq_lo_mhz, freq_hi_mhz + step_mhz * 0.5, step_mhz)
         self._emit(
             f"\n[bold green][RF] Sweep: "
             f"{freq_lo_mhz:.1f} to {freq_hi_mhz:.1f} MHz  "
@@ -979,11 +1007,13 @@ class RFScanner:
                         occupancy_result = self._run_dsp_pipeline(freq_f * 1e6)
                         if occupancy_result:
                             _, occ_psd, _, _ = occupancy_result
-                            occupancy_samples[freq_key].append(float(np.max(occ_psd)) - noise_floor)
+                            occupancy_samples[freq_key].append(
+                                float(np.max(occ_psd)) - noise_floor)
 
                     occ_window = occupancy_samples.get(freq_key, [])
                     occupancy_pct = (
-                        sum(1 for v in occ_window if v >= self._cfg.dsp.snr_threshold)
+                        sum(1 for v in occ_window if v >=
+                            self._cfg.dsp.snr_threshold)
                         / len(occ_window) * 100
                         if occ_window else 0.0
                     )
@@ -1014,7 +1044,8 @@ class RFScanner:
                 paso_mhz=step_mhz, hardware=self.hw_name,
                 resultados=results,
             )
-            active_count = sum(1 for r in results if r["snr"] >= self._cfg.dsp.snr_threshold)
+            active_count = sum(
+                1 for r in results if r["snr"] >= self._cfg.dsp.snr_threshold)
             self._signal_db.insert_sweep(
                 freq_ini=freq_lo_mhz, freq_fin=freq_hi_mhz,
                 paso=step_mhz, puntos=len(results), activas=active_count,
@@ -1052,7 +1083,8 @@ class RFScanner:
             for fmin, fmax, name, band_type, desc, _ in BANDAS_RF
         ]
 
-        self._emit(f"\n[bold green][RF] Scanning {len(band_list)} known bands...[/bold green]\n")
+        self._emit(
+            f"\n[bold green][RF] Scanning {len(band_list)} known bands...[/bold green]\n")
         results: list[dict[str, Any]] = []
 
         with Progress(
@@ -1110,7 +1142,8 @@ class RFScanner:
                 except Exception as exc:
                     log.warning("gp bands scan evidence failed: %s", exc)
 
-        log.info("Band scan: %d measurements hw=%s", len(results), self.hw_name)
+        log.info("Band scan: %d measurements hw=%s",
+                 len(results), self.hw_name)
 
     def show_db_statistics(self) -> None:
         rf_stats = self._rf_db.estadisticas()
@@ -1120,16 +1153,20 @@ class RFScanner:
         grid.add_column(style="white")
         grid.add_row("[bold]RFDatabase[/bold]", "")
         for k, v in rf_stats.items():
-            grid.add_row(k.replace("_", " ").title(), str(v) if v is not None else "—")
+            grid.add_row(k.replace("_", " ").title(),
+                         str(v) if v is not None else "—")
         grid.add_row("", "")
         grid.add_row("[bold]SignalDB[/bold]", "")
         for k, v in sig_stats.items():
-            grid.add_row(k.replace("_", " ").title(), str(v) if v is not None else "—")
-        self._console.print(Panel(grid, title="[bold green]DB STATISTICS[/bold green]", border_style="green"))
+            grid.add_row(k.replace("_", " ").title(),
+                         str(v) if v is not None else "—")
+        self._console.print(Panel(
+            grid, title="[bold green]DB STATISTICS[/bold green]", border_style="green"))
 
     def show_top_signals(self, n: int = 10) -> None:
         rows = self._rf_db.top_senales(n)
-        table = Table(box=box.SIMPLE_HEAD, header_style="bold green", show_edge=False, expand=True)
+        table = Table(box=box.SIMPLE_HEAD, header_style="bold green",
+                      show_edge=False, expand=True)
         table.add_column("Frecuencia", style="cyan", min_width=14)
         table.add_column("Potencia", justify="right", min_width=11)
         table.add_column("SNR", justify="right", min_width=8)
@@ -1147,14 +1184,17 @@ class RFScanner:
                 r.get("banda") or "—",
                 r.get("timestamp", "")[:19],
             )
-        self._console.print(Panel(table, title=f"[bold green]TOP {n} SIGNALS[/bold green]", border_style="green"))
+        self._console.print(Panel(
+            table, title=f"[bold green]TOP {n} SIGNALS[/bold green]", border_style="green"))
 
     def show_active_frequencies(self, snr_min: float = 10.0, hours: int = 24) -> None:
         rows = self._rf_db.frecuencias_activas(snr_min=snr_min, horas=hours)
         if not rows:
-            self._emit(f"[dim]No active frequencies in the last {hours}h with SNR >= {snr_min} dB.[/dim]")
+            self._emit(
+                f"[dim]No active frequencies in the last {hours}h with SNR >= {snr_min} dB.[/dim]")
             return
-        table = Table(box=box.SIMPLE_HEAD, header_style="bold green", show_edge=False, expand=True)
+        table = Table(box=box.SIMPLE_HEAD, header_style="bold green",
+                      show_edge=False, expand=True)
         table.add_column("Frecuencia", style="cyan", min_width=14)
         table.add_column("Detecciones", justify="right", min_width=12)
         table.add_column("SNR máx", justify="right", min_width=9)
@@ -1212,7 +1252,8 @@ class RFScanner:
             console=self._console,
             transient=True,
         ) as progress:
-            task = progress.add_task(f"Recording {freq_mhz:.3f} MHz", total=duration_s)
+            task = progress.add_task(
+                f"Recording {freq_mhz:.3f} MHz", total=duration_s)
             with recording:
                 while time.monotonic() - t_start < duration_s:
                     block = self._capture_iq(freq_hz)
@@ -1246,10 +1287,12 @@ class RFScanner:
             f"[green][+] IQ saved → {recording.data_path.name}  "
             f"({actual_duration:.1f}s  {size_mb:.1f} MB)[/green]"
         )
-        log.info("IQ recorded: %s  %.1fs  %.1fMB", recording.data_path.name, actual_duration, size_mb)
+        log.info("IQ recorded: %s  %.1fs  %.1fMB",
+                 recording.data_path.name, actual_duration, size_mb)
 
     def replay_iq(self, filepath: str, mode: str = "wfm") -> None:
-        self._recorder.reproducir(filepath, modo=mode, sample_rate=self.sample_rate)
+        self._recorder.reproducir(
+            filepath, modo=mode, sample_rate=self.sample_rate)
 
     def show_hardware_status(self) -> None:
         rf_stats = self._rf_db.estadisticas()
@@ -1258,16 +1301,20 @@ class RFScanner:
         grid.add_column(style="dim green", justify="right", min_width=24)
         grid.add_column(style="white")
         grid.add_row("Hardware", self.hw_name)
-        grid.add_row("Backend type", type(self._backend).__name__ if self._backend else "N/A")
+        grid.add_row("Backend type", type(
+            self._backend).__name__ if self._backend else "N/A")
         grid.add_row("Sample rate", f"{self.sample_rate / 1e6:.3f} MHz")
         grid.add_row("Gain", f"{self._agc.current_gain_db:.1f} dB")
-        grid.add_row("AGC", "[green]ON[/green]" if self._agc_enabled else "[dim]OFF[/dim]")
+        grid.add_row(
+            "AGC", "[green]ON[/green]" if self._agc_enabled else "[dim]OFF[/dim]")
         grid.add_row("PPM correction", str(self._cfg.hardware.ppm_correction))
         grid.add_row("FFT size", str(self._cfg.dsp.fft_size))
         grid.add_row("DSP window", self._cfg.dsp.window)
         grid.add_row("SNR threshold", f"{self._cfg.dsp.snr_threshold} dB")
-        grid.add_row("Resolution", f"{self._dsp.freq_resolution_khz:.2f} kHz/bin")
-        grid.add_row("Min. persistence", f"{SignalTracker.MIN_CONSECUTIVE_FRAMES} frames")
+        grid.add_row(
+            "Resolution", f"{self._dsp.freq_resolution_khz:.2f} kHz/bin")
+        grid.add_row("Min. persistence",
+                     f"{SignalTracker.MIN_CONSECUTIVE_FRAMES} frames")
         grid.add_row("Demod mode", self._cfg.demod.mode)
         grid.add_row("DB path", str(self._cfg.storage.db_path))
         grid.add_row("Session captures", str(self._session_capture_count))
@@ -1278,7 +1325,8 @@ class RFScanner:
         grid.add_row("SignalDB sessions", str(sig_stats.get("sessions", 0)))
         grid.add_row("IQ recordings", str(sig_stats.get("iq_files", 0)))
         grid.add_row("DB size", f"{sig_stats.get('db_size_mb', 0):.2f} MB")
-        self._console.print(Panel(grid, title="[bold green]RF SCANNER STATUS[/bold green]", border_style="green"))
+        self._console.print(Panel(
+            grid, title="[bold green]RF SCANNER STATUS[/bold green]", border_style="green"))
 
     def interactive_menu(self) -> None:
         self._console.print()
@@ -1299,7 +1347,8 @@ class RFScanner:
             title="[bold green]RF SCANNER[/bold green]",
         ))
 
-        option = self._console.input("[bold green][?] Option: [/bold green]").strip()
+        option = self._console.input(
+            "[bold green][?] Option: [/bold green]").strip()
 
         menu_handlers: dict[str, Any] = {
             "1": self._handle_menu_scan_frequency,
@@ -1308,7 +1357,8 @@ class RFScanner:
             "4": self._handle_menu_set_gain,
             "5": lambda: self.set_agc_enabled(not self._agc_enabled),
             "6": lambda: self._console.print(
-                self._renderer.signal_table(list(self._session_signals)[-50:], self._signal_tracker)
+                self._renderer.signal_table(
+                    list(self._session_signals)[-50:], self._signal_tracker)
             ),
             "7": self.show_hardware_status,
             "8": self._handle_menu_record_iq,
@@ -1324,19 +1374,26 @@ class RFScanner:
             self._emit("[yellow][!] Unrecognized option.[/yellow]")
 
     def _handle_menu_scan_frequency(self) -> None:
-        freq_str = self._console.input("[bold cyan][?] Frequency (MHz): [/bold cyan]").strip()
-        dur_str = self._console.input("[bold cyan][?] Duration seconds [10]: [/bold cyan]").strip()
+        freq_str = self._console.input(
+            "[bold cyan][?] Frequency (MHz): [/bold cyan]").strip()
+        dur_str = self._console.input(
+            "[bold cyan][?] Duration seconds [10]: [/bold cyan]").strip()
         try:
-            self.scan_frequency(float(freq_str), int(dur_str) if dur_str else 10)
+            self.scan_frequency(float(freq_str), int(
+                dur_str) if dur_str else 10)
         except ValueError:
             self._emit("[red][!] Invalid value.[/red]")
 
     def _handle_menu_sweep(self) -> None:
-        lo_str = self._console.input("[bold cyan][?] Start freq. (MHz): [/bold cyan]").strip()
-        hi_str = self._console.input("[bold cyan][?] End freq. (MHz): [/bold cyan]").strip()
-        step_str = self._console.input("[bold cyan][?] Step MHz [1.0]: [/bold cyan]").strip()
+        lo_str = self._console.input(
+            "[bold cyan][?] Start freq. (MHz): [/bold cyan]").strip()
+        hi_str = self._console.input(
+            "[bold cyan][?] End freq. (MHz): [/bold cyan]").strip()
+        step_str = self._console.input(
+            "[bold cyan][?] Step MHz [1.0]: [/bold cyan]").strip()
         try:
-            self.sweep_spectrum(float(lo_str), float(hi_str), float(step_str) if step_str else 1.0)
+            self.sweep_spectrum(float(lo_str), float(
+                hi_str), float(step_str) if step_str else 1.0)
         except ValueError:
             self._emit("[red][!] Invalid values.[/red]")
 
@@ -1345,27 +1402,36 @@ class RFScanner:
             "[bold cyan][?] Gain dB (0-49.6, 'auto'): [/bold cyan]"
         ).strip()
         try:
-            self.set_gain("auto" if gain_str.lower() == "auto" else float(gain_str))
+            self.set_gain("auto" if gain_str.lower() ==
+                          "auto" else float(gain_str))
         except ValueError:
             self._emit("[red][!] Invalid value.[/red]")
 
     def _handle_menu_record_iq(self) -> None:
-        freq_str = self._console.input("[bold cyan][?] Frequency to record (MHz): [/bold cyan]").strip()
-        dur_str = self._console.input("[bold cyan][?] Duration seconds [10]: [/bold cyan]").strip()
-        fmt_str = self._console.input("[bold cyan][?] Format (sigmf/raw) [sigmf]: [/bold cyan]").strip() or "sigmf"
+        freq_str = self._console.input(
+            "[bold cyan][?] Frequency to record (MHz): [/bold cyan]").strip()
+        dur_str = self._console.input(
+            "[bold cyan][?] Duration seconds [10]: [/bold cyan]").strip()
+        fmt_str = self._console.input(
+            "[bold cyan][?] Format (sigmf/raw) [sigmf]: [/bold cyan]").strip() or "sigmf"
         try:
-            self.record_iq(float(freq_str), int(dur_str) if dur_str else 10, fmt_str)
+            self.record_iq(float(freq_str), int(dur_str)
+                           if dur_str else 10, fmt_str)
         except ValueError:
             self._emit("[red][!] Invalid value.[/red]")
 
     def _handle_menu_replay_iq(self) -> None:
-        filepath = self._console.input("[bold cyan][?] IQ file (path): [/bold cyan]").strip()
-        mode = self._console.input("[bold cyan][?] Demod mode (wfm/nfm/am/usb/lsb) [wfm]: [/bold cyan]").strip() or "wfm"
+        filepath = self._console.input(
+            "[bold cyan][?] IQ file (path): [/bold cyan]").strip()
+        mode = self._console.input(
+            "[bold cyan][?] Demod mode (wfm/nfm/am/usb/lsb) [wfm]: [/bold cyan]").strip() or "wfm"
         self.replay_iq(filepath, mode)
 
     def _handle_menu_active_frequencies(self) -> None:
-        snr_str = self._console.input("[bold cyan][?] Min SNR dB [10]: [/bold cyan]").strip()
-        hrs_str = self._console.input("[bold cyan][?] Hours back [24]: [/bold cyan]").strip()
+        snr_str = self._console.input(
+            "[bold cyan][?] Min SNR dB [10]: [/bold cyan]").strip()
+        hrs_str = self._console.input(
+            "[bold cyan][?] Hours back [24]: [/bold cyan]").strip()
         try:
             self.show_active_frequencies(
                 snr_min=float(snr_str) if snr_str else 10.0,
@@ -1375,7 +1441,8 @@ class RFScanner:
             self._emit("[red][!] Invalid value.[/red]")
 
     def _handle_menu_top_signals(self) -> None:
-        n_str = self._console.input("[bold cyan][?] How many signals [10]: [/bold cyan]").strip()
+        n_str = self._console.input(
+            "[bold cyan][?] How many signals [10]: [/bold cyan]").strip()
         try:
             self.show_top_signals(int(n_str) if n_str else 10)
         except ValueError:
@@ -1390,12 +1457,13 @@ class RFScanner:
 
         if self._backend is not None:
             try:
-                self._backend.close()
-                self._emit("[green][+] SDR disconnected.[/green]")
-                log.info("RF backend closed")
+              self._backend.close()   
+              self._emit("[green][+] SDR detach (broker activo).[/green]")
+            log.info("RF backend closed")
             except Exception as exc:
-                self._emit(f"[yellow][!] Error closing RF backend: {exc}[/yellow]")
-            finally:
+               self._emit(
+                    f"[yellow][!] Error closing RF backend: {exc}[/yellow]")
+             finally:
                 self._backend = None
 
         for storage_obj in (self._signal_db, self._rf_db):

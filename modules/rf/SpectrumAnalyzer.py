@@ -309,40 +309,59 @@ class _KeyReader(threading.Thread):
 
 class _SDRAdapter:
     def __init__(self, cfg: SAConfig) -> None:
+        from core.sdr_broker import SDRBroker, SDRMode
         self._cfg = cfg
-        from modules.rf.rf_source import open_backend
-        self._backend = open_backend(
-            freq_hz=int(cfg.center_mhz * 1e6),
-            sample_rate=cfg.sample_rate,
-            gain=float(cfg.gain) if str(cfg.gain).lower() != "auto" else 49.6,
-        )
-        log.info("SA backend: %s", self._backend.hw_name)
+        self._mode = SDRMode
+        self._broker = SDRBroker.get()
+
+        if not self._broker.started:
+            self._broker.start(
+                center_hz=int(cfg.center_mhz * 1e6),
+                sample_rate=cfg.sample_rate,
+                gain=(49.6 if str(cfg.gain).lower() == "auto"
+                      else float(cfg.gain)),
+                fft_size=cfg.fft_size(),
+                mode=SDRMode.BOTH,
+                frame_interval=0.1,
+            )
+        else:
+            self._broker.tune(int(cfg.center_mhz * 1e6))
+            self._broker.set_sample_rate(cfg.sample_rate)
+            self._broker.set_mode(SDRMode.BOTH)
+
+        self._sub = self._broker.subscribe("SpectrumAnalyzer", maxsize=3)
 
     @property
     def hw_name(self) -> str:
-        return self._backend.hw_name
+        return "RTL-SDR (vía broker)"
 
     def tune(self, mhz: float) -> None:
-        self._backend.tune(mhz * 1e6)
+        self._broker.tune(mhz * 1e6)
         self._cfg.center_mhz = mhz
 
     def set_gain(self, gain: "str | float") -> None:
-        self._backend.set_gain(gain)
+        value = "auto" if str(gain).lower() == "auto" else float(gain)
+        self._broker.set_gain(value)
         self._cfg.gain = str(gain)
 
-    def read_iq(self, n: int) -> np.ndarray:
-        iq = self._backend.read_raw(n)
-        if iq is None or len(iq) == 0:
-            return np.zeros(n, dtype=np.complex64)
-        return iq.astype(np.complex64)
+    def read_psd(self) -> "np.ndarray | None":
+        frame = self._sub.get_latest()
+        if frame is None or frame.psd_dbm is None:
+            return None
+        return frame.psd_dbm
 
     def close(self) -> None:
-        self._backend.close()
 
-    def swap_backend(self, backend: "SDRBackend") -> None:
-        self._backend.close()
-        self._backend = backend
-        log.info("SA backend cambiado → %s", backend.hw_name)
+        try:
+            self._sub.close()
+        except Exception as exc:
+            log.debug("BrokerBackend close error (ignored): %s", exc)
+
+    def swap_backend(self, backend: Any) -> None:
+        raise NotImplementedError(
+            "Los backends alternos (tcp, file) requieren abrir el broker "
+            "con un SDRConfig distinto."
+        )
 
 
 @dataclass
@@ -871,63 +890,46 @@ class SpectrumAnalyzer:
 
     def _acq_loop(self) -> None:
         cfg = self._cfg
-        n_fft = cfg.fft_size()
-        window = np.hanning(n_fft).astype(np.float32)
-        wgain = float(np.sum(window ** 2))
+        self._sdr._broker.set_mode(self._sdr._mode.PSD)
 
         while not self._stop.is_set():
-            t0 = time.perf_counter()
-            try:
-                iq = self._sdr.read_iq(n_fft)
-                if len(iq) < n_fft:
-                    continue
-                iq_w = iq[:n_fft].astype(np.complex64) * window
-                spec = np.fft.fftshift(np.fft.fft(iq_w))
-                psd = (np.abs(spec) ** 2) / (cfg.sample_rate * wgain)
-                pdb = 10 * np.log10(psd + 1e-20) + 30
+            pdb = self._sdr.read_psd()
+            if pdb is None:
+                time.sleep(0.03)
+                continue
 
-                if len(pdb) > cfg.display_width * 2:
-                    step = len(pdb) // cfg.display_width
-                    n_steps = len(pdb) // step
-                    pdb = pdb[:n_steps *
-                              step].reshape(n_steps, step).max(axis=1)
+            if len(pdb) > cfg.display_width * 2:
+                step = len(pdb) // cfg.display_width
+                n_steps = len(pdb) // step
+                pdb = pdb[:n_steps * step].reshape(n_steps, step).max(axis=1)
 
-                self._buf.push(pdb)
-                if cfg.avg_frames > 1:
-                    avg = self._buf.average(cfg.avg_frames)
-                    if avg is not None:
-                        pdb = avg
+            self._buf.push(pdb)
+            if cfg.avg_frames > 1:
+                avg = self._buf.average(cfg.avg_frames)
+                if avg is not None:
+                    pdb = avg
 
-                freqs = np.linspace(cfg.freq_start_mhz(),
-                                    cfg.freq_end_mhz(), len(pdb))
-                noise = float(np.percentile(pdb, 15))
-                pidx = int(np.argmax(pdb))
+            freqs = np.linspace(cfg.freq_start_mhz(),
+                                cfg.freq_end_mhz(), len(pdb))
+            noise = float(np.percentile(pdb, 15))
+            pidx = int(np.argmax(pdb))
 
-                detected = _SignalDetector.detect(
-                    pdb, freqs, noise, cfg.threshold_dbm)
+            detected = _SignalDetector.detect(
+                pdb, freqs, noise, cfg.threshold_dbm)
 
-                elapsed = time.perf_counter() - t0
-                self._fps_buf.append(elapsed)
-                if len(self._fps_buf) > 20:
-                    self._fps_buf.pop(0)
-
-                now_ts = time.time()
-                frame = _SpectrumFrame(
-                    freqs_mhz=freqs,
-                    powers_dbm=pdb,
-                    noise_floor=noise,
-                    peak_freq=float(freqs[pidx]),
-                    peak_power=float(pdb[pidx]),
-                    fps=1.0 / (sum(self._fps_buf) / len(self._fps_buf)),
-                    ts=datetime.now(UTC).strftime("%H:%M:%S"),
-                    detected=detected,
-                )
-                self._double_buf.write(frame)
-                self._wf_buf.push(pdb, now_ts)
-
-            except Exception as exc:
-                log.debug("Adquisición: %s", exc)
-                time.sleep(0.1)
+            now_ts = time.time()
+            frame = _SpectrumFrame(
+                freqs_mhz=freqs,
+                powers_dbm=pdb,
+                noise_floor=noise,
+                peak_freq=float(freqs[pidx]),
+                peak_power=float(pdb[pidx]),
+                fps=0.0,
+                ts=datetime.now(UTC).strftime("%H:%M:%S"),
+                detected=detected,
+            )
+            self._double_buf.write(frame)
+            self._wf_buf.push(pdb, now_ts)
 
     def _display_loop(self) -> None:
         with Live(console=self._console, refresh_per_second=15, screen=True) as live:

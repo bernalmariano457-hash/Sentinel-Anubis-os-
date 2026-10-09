@@ -13,12 +13,12 @@ try:
     )
     _MEDIA_RECOVERY_OK = True
 except ImportError:
-    MediaRecoveryEngine = None  
-    _WorkspaceInterface = object  
+    MediaRecoveryEngine = None
+    _WorkspaceInterface = object
     _MEDIA_RECOVERY_OK = False
 
 
-class _SentinelWorkspaceAdapter(_WorkspaceInterface):  
+class _SentinelWorkspaceAdapter(_WorkspaceInterface):
 
     def __init__(self, sentinel: Any) -> None:
         self._sentinel = sentinel
@@ -53,7 +53,7 @@ MODULOS: list[ModuleSpec] = [
                critico=True,  display_name="SecurityModule"),
     ModuleSpec("cola",         "ColaTareas",        "core.ColaTareas"),
     ModuleSpec("gp",           "GestorProyectos",   "core.GestorProyectos"),
-
+    ModuleSpec("power",        "PowerManager",       "core.power_manager")
     ModuleSpec("sniffer",      "TacticalSniffer",
                "modules.network.TacticalSniffer"),
     ModuleSpec("radar",        "RadarSentinel",
@@ -153,7 +153,8 @@ class ModuleRegistry:
 
     def _cargar_recovery(self) -> bool:
         if not _MEDIA_RECOVERY_OK:
-            self._warn("MediaRecoveryEngine — modulo no disponible en el entorno")
+            self._warn(
+                "MediaRecoveryEngine — modulo no disponible en el entorno")
             setattr(self._sentinel, "recovery", None)
             return False
         try:
@@ -235,11 +236,6 @@ class ModuleRegistry:
         resultados: dict[str, bool] = {}
         _especiales = {"recovery", "motor_rep", "plugins", "checker"}
 
-        # Todo lo de aqui adentro sigue ejecutandose exactamente igual
-        # (se intenta importar cada modulo, se guarda el resultado, se
-        # escribe en el log), solo que la salida a pantalla se captura
-        # en vez de imprimirse, para no llenar la consola con una linea
-        # por cada uno de los ~29 modulos al arrancar.
         console = getattr(self._sentinel, "console", None)
         silenciador = console.capture() if console is not None else nullcontext()
 
