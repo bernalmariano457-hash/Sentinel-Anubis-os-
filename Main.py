@@ -61,12 +61,6 @@ except ImportError:
         def __init__(self, *a: Any, **kw: Any) -> None: pass
         def solicitar_acceso(self) -> bool: return True
 
-try:
-    from FlipperModule import FlipperModule
-    _FLIPPER_OK = True
-except ImportError:
-    _FLIPPER_OK = False
-
 ManejadorComando = Callable[[list[str]], None]
 
 
@@ -247,11 +241,6 @@ class ApexSentinel:
         self._registry = ModuleRegistry(self)
         self._registry.cargar_todos()
 
-        if _FLIPPER_OK:
-            self.flipper = FlipperModule(self)
-        else:
-            self.flipper = None
-
         self._cmd = CommandHandler(self)
         self._command_map: dict[str,
                                 ManejadorComando] = self._build_command_map()
@@ -267,8 +256,16 @@ class ApexSentinel:
             iface=self._iface(),
             estados_modulos=self._registry.estados(),
         )
-        if self.power is not None:
-            self.power.start_thermal_monitor()
+
+        power = getattr(self, "power", None)
+        if power is not None:
+            try:
+                power.start_thermal_monitor()
+            except Exception as exc:
+                self.log.warning(
+                    f"PowerManager no pudo iniciar monitor termico: {exc}",
+                    "ApexSentinel",
+                )
 
         if getattr(self, "rf", None) is not None:
             try:
@@ -276,6 +273,7 @@ class ApexSentinel:
             except Exception as exc:
                 self.log.warning(
                     f"SDRBroker no arranco: {exc}", "ApexSentinel")
+
         self._initialized = True
 
     def __enter__(self) -> "ApexSentinel":
@@ -351,8 +349,6 @@ class ApexSentinel:
                                "PowerManager", prioridad=90)
         self.registrar_apagado(self._cleanup_sdr_broker,
                                "SDRBroker", prioridad=85)
-        self.registrar_apagado(self._cleanup_sdr_broker,
-                               "SDRBroker", prioridad=85)
         self.registrar_apagado(self._cerrar_modulos_hardware,
                                "ModulosHardware", prioridad=80)
         self.registrar_apagado(self._cerrar_proyecto_activo,
@@ -360,20 +356,24 @@ class ApexSentinel:
         self.registrar_apagado(
             self._registrar_cierre_sesion, "LogSistema", prioridad=0)
 
-    def _cleanup_pawer(self) -> None:
+    def _cleanup_power(self) -> None:
         power = getattr(self, "power", None)
-        if power is not None:
+        if power is None:
+            return
+        try:
             power.cleanup()
+        except Exception as exc:
+            self._registrar_fallo_apagado("PowerManager", exc)
 
     def _cleanup_sdr_broker(self) -> None:
         try:
-            from core.sdr_broker import SDRBroker
-        SDRBroker.get().stop()
+            SDRBroker.get().stop()
         except Exception as exc:
-        try:
-            self.log.warning(f"SDRBroker cleanup: {exc}", "ApexSentinel")
-        except Exception:
-            pass
+            try:
+                self.log.warning(
+                    f"SDRBroker cleanup: {exc}", "ApexSentinel")
+            except Exception:
+                pass
 
     def _detener_tareas_activas(self) -> None:
         cola = getattr(self, "cola", None)
@@ -389,7 +389,6 @@ class ApexSentinel:
             ("rf",      "cerrar"),
             ("wifitri", "cerrar"),
             ("adsb",    "cerrar"),
-            ("flipper", "_desconectar"),
         )
         for attr_name, method_name in closeable_attrs:
             module_instance = getattr(self, attr_name, None)
@@ -397,7 +396,10 @@ class ApexSentinel:
                 continue
             closer = getattr(module_instance, method_name, None)
             if callable(closer):
-                closer()
+                try:
+                    closer()
+                except Exception as exc:
+                    self._registrar_fallo_apagado(attr_name, exc)
 
     def _cerrar_proyecto_activo(self) -> None:
         gp = getattr(self, "gp", None)
@@ -609,6 +611,7 @@ class ApexSentinel:
             "jobs": lambda args: c.jobs(args),
             "plugin": lambda args: c.plugins(args),
             "plugins": lambda args: c.plugins(args),
+
             "power": lambda args: (
                 self.power.status() if self._modulo_ok("power") else None),
             "temp": lambda args: (
@@ -617,21 +620,9 @@ class ApexSentinel:
                 self.power.mostrar_bateria() if self._modulo_ok("power") else None),
             "throttle": lambda args: (
                 self.power.toggle_throttle(args) if self._modulo_ok("power") else None),
+
             "locate":      _locate,
             "recover": lambda args: c.recover(args),
-
-            "flipper": lambda args: (
-                self.flipper.menu() if self._modulo_ok("flipper") else None),
-            "flipper-status": lambda args: (
-                self.flipper.status() if self._modulo_ok("flipper") else None),
-            "flipper-nfc": lambda args: (
-                self.flipper.nfc_scan() if self._modulo_ok("flipper") else None),
-            "flipper-rfid": lambda args: (
-                self.flipper.rfid_scan() if self._modulo_ok("flipper") else None),
-            "flipper-capture": lambda args: (
-                self.flipper.subghz_capture() if self._modulo_ok("flipper") else None),
-            "flipper-list": lambda args: (
-                self.flipper.subghz_list() if self._modulo_ok("flipper") else None),
         }
 
     def _despachar(self, entrada: str) -> bool:
