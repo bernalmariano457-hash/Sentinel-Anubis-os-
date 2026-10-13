@@ -1,1 +1,0 @@
-""" APEX SENTINEL -- modules.hardware """
