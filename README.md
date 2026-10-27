@@ -8,7 +8,7 @@ https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/
 https://img.shields.io/badge/Platform-uConsole%20%7C%20Kali%20%7C%20Termux-green
 https://img.shields.io/badge/License-MIT-yellow
 
-text
+
 ╔══════════════════════════════════════════════════════════════════╗
 ║          APEX SENTINEL  v2.3  —  ANUBIS OS                       ║
 ║          Sistema Operativo Táctico  ·  uConsole Edition          ║

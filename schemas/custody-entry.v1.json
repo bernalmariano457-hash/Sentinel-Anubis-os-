@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-anubis.dev/schemas/custody-entry.v1.json",
+  "title": "Custody log entry",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "entry_id",
+    "seq",
+    "timestamp",
+    "time_source",
+    "operator_id",
+    "action",
+    "prev_hash",
+    "entry_hash",
+    "signature"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "entry_id": { "type": "string", "format": "uuid" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "time_source": { "enum": ["gps", "ntp", "system"] },
+    "operator_id": { "type": "string", "minLength": 1 },
+    "action": {
+      "enum": ["create", "verify", "pack", "unpack", "export", "sign", "rotate_key"]
+    },
+    "artifact_id": { "type": ["string", "null"] },
+    "package_id": { "type": ["string", "null"] },
+    "details": { "type": ["object", "null"] },
+    "prev_hash": { "type": "string", "pattern": "^([0-9a-f]{64})?$" },
+    "entry_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature": {
+      "type": "object",
+      "required": ["algorithm", "value", "pubkey_fingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "value": { "type": "string", "minLength": 1 },
+        "pubkey_fingerprint": {
+          "type": "string",
+          "pattern": "^SHA256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

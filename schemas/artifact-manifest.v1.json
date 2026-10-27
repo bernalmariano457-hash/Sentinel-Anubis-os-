@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-anubis.dev/schemas/artifact-manifest.v1.json",
+  "title": "Artifact manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "type",
+    "operator_id",
+    "created_at",
+    "time_source",
+    "time_uncertainty_ms",
+    "file"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "artifact_id": { "type": "string", "format": "uuid" },
+    "type": {
+      "enum": [
+        "iq",
+        "pcap",
+        "waterfall",
+        "spectrum_sweep",
+        "device_inventory",
+        "signal_classification"
+      ]
+    },
+    "operation_id": { "type": "string" },
+    "operator_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "time_source": { "enum": ["gps", "ntp", "system"] },
+    "time_uncertainty_ms": { "type": "integer", "minimum": 0 },
+    "location": {
+      "type": "object",
+      "required": ["lat", "lon"],
+      "additionalProperties": false,
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+        "alt_m": { "type": "number" },
+        "source": { "type": "string" }
+      }
+    },
+    "file": {
+      "type": "object",
+      "required": ["name", "size_bytes", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "capture_params": { "type": "object" },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "model": { "type": "string" },
+        "serial": { "type": "string" },
+        "firmware": { "type": "string" }
+      }
+    },
+    "annotations": { "type": "array" },
+    "auxiliary_files": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "supersedes": { "type": "string" },
+    "parent_artifact": { "type": "string" },
+    "signature": {
+      "type": "object",
+      "required": ["algorithm", "value", "pubkey_fingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "value": { "type": "string", "minLength": 1 },
+        "pubkey_fingerprint": {
+          "type": "string",
+          "pattern": "^SHA256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}
