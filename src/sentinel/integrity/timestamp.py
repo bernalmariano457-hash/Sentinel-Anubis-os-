@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from enum import Enum
-from typing import Any, Protocol, Sequence, runtime_checkable
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
+from typing import Any, Protocol, runtime_checkable
 
 from sentinel import SentinelError
 
@@ -33,24 +34,28 @@ DEFAULT_NTP_SERVERS: tuple[str, ...] = (
 
 
 class TimestampError(SentinelError):
+    """Base class for all timestamp-related errors."""
 
 
 class TimeProviderError(TimestampError):
+    """A specific time provider failed or is unavailable."""
 
 
 class GpsUnavailable(TimeProviderError):
+    """No GPS device present, not locked, or not configured."""
 
 
 class NtpUnavailable(TimeProviderError):
+    """ntplib not installed or all NTP servers failed."""
 
 
 class TimeResolverError(TimestampError):
+    """No time source could produce a timestamp."""
 
 
 class InvalidTimestampError(TimestampError):
-
-
-class TimeSource(str, Enum):
+    """A timestamp string or field is malformed or out of range."""
+class TimeSource(StrEnum):
 
     GPS = "gps"
     NTP = "ntp"
@@ -125,13 +130,15 @@ class TimeProvider(Protocol):
 
     @property
     def name(self) -> str:
+        ...
 
     def now(self) -> Timestamp:
+        ...
 
 
 def utc_now_iso() -> str:
     return (
-        datetime.now(timezone.utc)
+        datetime.now(UTC)
         .isoformat(timespec="seconds")
         .replace("+00:00", "Z")
     )
@@ -166,9 +173,9 @@ def _check_year(dt: datetime) -> str | None:
 
 def _iso_from_datetime(dt: datetime) -> str:
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     else:
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(UTC)
     return dt.isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
@@ -187,7 +194,7 @@ class SystemClock:
         return "system"
 
     def now(self) -> Timestamp:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         warning = _check_year(now)
         if warning is not None:
             return Timestamp(
@@ -268,10 +275,10 @@ class NtpClock:
             )
 
         best = min(results, key=lambda r: r["uncertainty_ms"])
-        now = datetime.now(timezone.utc) + \
+        now = datetime.now(UTC) + \
             timedelta(milliseconds=best["offset_ms"])
         warning = _check_year(now)
-        uncertainty = max(1, int(round(best["uncertainty_ms"])))
+        uncertainty = max(1, round(best["uncertainty_ms"]))
         detail = f"ntp:{best['server']} stratum {best['stratum']}"
 
         if warning is not None:
@@ -296,6 +303,7 @@ class NtpClock:
 class GpsImplementation(Protocol):
 
     def now(self) -> Timestamp:
+        ...
 
 
 class GpsClock:
@@ -388,6 +396,7 @@ def _monotonic_ns() -> int:
 class TimestampAuthority(Protocol):
 
     def timestamp(self, digest_hex: str) -> str | None:
+        ...
 
 
 class NullTSA:
@@ -398,19 +407,19 @@ class NullTSA:
 
 __all__ = [
     "DEFAULT_NTP_SERVERS",
+    "MAX_YEAR",
+    "MIN_YEAR",
+    "SYSTEM_DEFAULT_UNCERTAINTY_MS",
+    "SYSTEM_SUSPICIOUS_UNCERTAINTY_MS",
     "Duration",
     "GpsClock",
     "GpsImplementation",
     "GpsUnavailable",
     "InvalidTimestampError",
-    "MAX_YEAR",
-    "MIN_YEAR",
     "MonotonicClock",
     "NtpClock",
     "NtpUnavailable",
     "NullTSA",
-    "SYSTEM_DEFAULT_UNCERTAINTY_MS",
-    "SYSTEM_SUSPICIOUS_UNCERTAINTY_MS",
     "SystemClock",
     "TimeProvider",
     "TimeProviderError",

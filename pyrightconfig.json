@@ -7,7 +7,10 @@
         "test_sentinel.py",
         "plugins/ejemplo_plugin.py"
     ],
-    "extraPaths": ["."],
+    "extraPaths": [
+        ".",
+        "./src"
+    ],
     "typeCheckingMode": "strict",
 
     "reportMissingImports": "warning",

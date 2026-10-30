@@ -12,11 +12,9 @@ import sys
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Union
 
 from rich import box
 from rich.align import Align
-from rich.columns import Columns
 from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
@@ -60,13 +58,13 @@ C_BORDE:   str = "steel_blue"
 C_OK:      str = "sea_green3"
 C_ALERTA:  str = "orange3"
 C_PELIGRO: str = "red"
-_SIMBOLOS_ESTADO: Dict[str, str] = {
+_SIMBOLOS_ESTADO: dict[str, str] = {
     "activo": "●", "degradado": "◐", "caido": "✖"}
-_ESTILOS_ESTADO: Dict[str, str] = {
+_ESTILOS_ESTADO: dict[str, str] = {
     "activo": C_OK, "degradado": C_ALERTA, "caido": f"bold {C_PELIGRO}",
 }
 
-ESTILOS_LOG: Dict[str, Tuple[str, str]] = {
+ESTILOS_LOG: dict[str, tuple[str, str]] = {
     "INFO":    (C_DIM,               "ℹ"),
     "SUCCESS": (C_OK,                "✔"),
     "WARNING": (C_ALERTA,            "⚠"),
@@ -90,7 +88,7 @@ ANUBIS_ART = "\n".join([
 
 ANUBIS = ANUBIS_ART
 
-MODULOS_BOOT: List[Tuple[str, str]] = [
+MODULOS_BOOT: list[tuple[str, str]] = [
     ("HydraModule",      "Fuerza bruta / auditoría"),
     ("TacticalSniffer",  "Captura de tráfico"),
     ("RadarSentinel",    "Intercepción Wi-Fi RSSI"),
@@ -111,7 +109,7 @@ MODULOS_BOOT: List[Tuple[str, str]] = [
     ("SDRBroker",        "Proceso único dueño del RTL-SDR"),
 ]
 
-_GRUPOS_MODULOS: Dict[str, List[str]] = {
+_GRUPOS_MODULOS: dict[str, list[str]] = {
     "Red":       ["RadarSentinel", "TacticalSniffer", "BluetoothModule"],
     "RF":        ["RFModule", "SpectrumAnalyzer"],
     "Forense":   ["ExifAnalyzer", "ForensicReader", "MobileSentinel", "StealthModule"],
@@ -122,7 +120,7 @@ _GRUPOS_MODULOS: Dict[str, List[str]] = {
     "Hardware":  ["PowerManager", "SDRBroker"],
 }
 
-COMANDOS_HELP: Dict[str, List[Tuple[str, str]]] = {
+COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
     "SISTEMA": [
         ("help / ?",         "Mostrar este menú de ayuda"),
         ("status",           "Estado actual del sistema"),
@@ -211,17 +209,17 @@ class SnapshotSistema:
     disco_pct: float
     disco_usado_gb: float
     disco_total_gb: float
-    temperatura_c: Optional[float]
+    temperatura_c: float | None
 
 
 class MonitorTelemetria:
 
     def __init__(self) -> None:
-        self._cpu_previo: Optional[Tuple[int, int]] = None
+        self._cpu_previo: tuple[int, int] | None = None
 
-    def _jiffies_cpu(self) -> Optional[Tuple[int, int]]:
+    def _jiffies_cpu(self) -> tuple[int, int] | None:
         try:
-            with open(_RUTA_PROC_STAT, "r", encoding="utf-8") as manejador:
+            with open(_RUTA_PROC_STAT, encoding="utf-8") as manejador:
                 primera_linea = manejador.readline()
         except OSError:
             return None
@@ -249,13 +247,13 @@ class MonitorTelemetria:
         uso = 1.0 - (delta_ocioso / delta_total)
         return max(0.0, min(100.0, uso * 100.0))
 
-    def memoria(self) -> Tuple[float, float, float]:
+    def memoria(self) -> tuple[float, float, float]:
         try:
-            with open(_RUTA_PROC_MEMINFO, "r", encoding="utf-8") as manejador:
+            with open(_RUTA_PROC_MEMINFO, encoding="utf-8") as manejador:
                 lineas = manejador.readlines()
         except OSError:
             return 0.0, 0.0, 0.0
-        valores: Dict[str, int] = {}
+        valores: dict[str, int] = {}
         for linea in lineas:
             clave, separador, resto = linea.partition(":")
             if not separador:
@@ -271,15 +269,15 @@ class MonitorTelemetria:
         pct = usada_kb / total_kb * 100.0
         return pct, usada_kb / (1024 ** 2), total_kb / (1024 ** 2)
 
-    def temperatura_c(self) -> Optional[float]:
+    def temperatura_c(self) -> float | None:
         try:
-            with open(_RUTA_THERMAL, "r", encoding="utf-8") as manejador:
+            with open(_RUTA_THERMAL, encoding="utf-8") as manejador:
                 crudo = manejador.read().strip()
             return int(crudo) / 1000.0
         except (OSError, ValueError):
             return None
 
-    def disco(self, ruta: Union[str, "os.PathLike[str]"] = "/") -> Tuple[float, float, float]:
+    def disco(self, ruta: str | os.PathLike[str] = "/") -> tuple[float, float, float]:
         try:
             uso = shutil.disk_usage(ruta)
         except OSError:
@@ -306,21 +304,21 @@ class MonitorTelemetria:
         )
 
 
-_ip_cache: Optional[str] = None
+_ip_cache: str | None = None
 
 
-def _interfaces_activas() -> List[str]:
+def _interfaces_activas() -> list[str]:
     try:
         nombres = sorted(os.listdir(_RUTA_SYS_NET))
     except OSError:
         return []
-    candidatas: List[Tuple[str, str]] = []
+    candidatas: list[tuple[str, str]] = []
     for nombre in nombres:
         if nombre == "lo":
             continue
         ruta_operstate = os.path.join(_RUTA_SYS_NET, nombre, "operstate")
         try:
-            with open(ruta_operstate, "r", encoding="utf-8") as manejador:
+            with open(ruta_operstate, encoding="utf-8") as manejador:
                 estado = manejador.read().strip()
         except OSError:
             continue
@@ -331,7 +329,7 @@ def _interfaces_activas() -> List[str]:
     return [nombre for nombre, estado in candidatas if estado == "unknown"]
 
 
-def _ip_de_interfaz(nombre: str) -> Optional[str]:
+def _ip_de_interfaz(nombre: str) -> str | None:
     if not _FCNTL_DISPONIBLE:
         return None
     try:
@@ -387,8 +385,8 @@ def _tabla_base(compacto: bool) -> Table:
     return tabla
 
 
-def _estado_grupos(estados: Optional[Dict[str, bool]]) -> List[Tuple[str, str]]:
-    resultado: List[Tuple[str, str]] = []
+def _estado_grupos(estados: dict[str, bool] | None) -> list[tuple[str, str]]:
+    resultado: list[tuple[str, str]] = []
     for grupo, nombres in _GRUPOS_MODULOS.items():
         if estados is None:
             resultado.append((grupo, "activo"))
@@ -447,7 +445,7 @@ def _panel_hero(
     if compacto:
         layout.update(Align.center(tabla, vertical="middle"))
         alto = 9
-        relleno: Tuple[int, int] = (0, 1)
+        relleno: tuple[int, int] = (0, 1)
     else:
         layout.split_row(
             Layout(name="arte", size=_ANCHO_ARTE),
@@ -495,12 +493,12 @@ def _cuadro_boot(idx: int, total: int, nombre_mod: str, activo: bool, compacto: 
 
 
 def _panel_resumen_modulos(
-    estados_modulos: Optional[Dict[str, bool]],
+    estados_modulos: dict[str, bool] | None,
     ok_count: int,
     total: int,
     compacto: bool,
 ) -> Panel:
-    partes: List[str] = []
+    partes: list[str] = []
     for grupo, estado in _estado_grupos(estados_modulos):
         simbolo = _SIMBOLOS_ESTADO[estado]
         color = _ESTILOS_ESTADO[estado]
@@ -552,8 +550,8 @@ def _limpiar() -> None:
 
 async def _ejecutar_boot(
     console: Console,
-    modulos: List[str],
-    estados_modulos: Optional[Dict[str, bool]],
+    modulos: list[str],
+    estados_modulos: dict[str, bool] | None,
     compacto: bool,
 ) -> None:
     total = len(modulos)
@@ -570,7 +568,7 @@ def mostrar_bootloader(
     nombre: str,
     version: str,
     iface: str,
-    estados_modulos: Optional[Dict[str, bool]] = None,
+    estados_modulos: dict[str, bool] | None = None,
 ) -> None:
     _limpiar()
     compacto = _pantalla_compacta(console)
@@ -612,7 +610,7 @@ def mostrar_banner(
     nombre: str,
     version: str,
     iface: str,
-    proyecto: Optional[str] = None,
+    proyecto: str | None = None,
 ) -> None:
     _limpiar()
     compacto = _pantalla_compacta(console)
@@ -628,9 +626,9 @@ def _normalizar(texto: str) -> str:
 
 
 def _filtrar_comandos(
-    comandos: Dict[str, List[Tuple[str, str]]],
-    filtro: Optional[str],
-) -> Dict[str, List[Tuple[str, str]]]:
+    comandos: dict[str, list[tuple[str, str]]],
+    filtro: str | None,
+) -> dict[str, list[tuple[str, str]]]:
     termino = _normalizar((filtro or "").strip())
     if not termino:
         return comandos
@@ -642,7 +640,7 @@ def _filtrar_comandos(
     if por_categoria:
         return por_categoria
 
-    resultado: Dict[str, List[Tuple[str, str]]] = {}
+    resultado: dict[str, list[tuple[str, str]]] = {}
     for cat, cmds in comandos.items():
         coincidencias = [
             (cmd, desc) for cmd, desc in cmds
@@ -653,7 +651,7 @@ def _filtrar_comandos(
     return resultado
 
 
-def _tabla_comandos(cmds: List[Tuple[str, str]]) -> Table:
+def _tabla_comandos(cmds: list[tuple[str, str]]) -> Table:
     tabla = Table.grid(padding=(0, 2), expand=True)
     tabla.add_column(style="bold steel_blue1", no_wrap=True)
     tabla.add_column(style="grey58", overflow="fold", ratio=1)
@@ -665,8 +663,8 @@ def _tabla_comandos(cmds: List[Tuple[str, str]]) -> Table:
 def mostrar_ayuda(
     console: Console,
     version: str,
-    comandos: Optional[Dict[str, List[Tuple[str, str]]]] = None,
-    filtro: Optional[str] = None,
+    comandos: dict[str, list[tuple[str, str]]] | None = None,
+    filtro: str | None = None,
 ) -> None:
     if comandos is None:
         comandos = COMANDOS_HELP
@@ -725,7 +723,7 @@ def mostrar_ayuda(
 
 if __name__ == "__main__":
     _con = Console(highlight=False)
-    estados_demo: Dict[str, bool] = {
+    estados_demo: dict[str, bool] = {
         "RadarSentinel": True,  "TacticalSniffer": True,
         "RFModule": True,       "SpectrumAnalyzer": True,
         "ExifAnalyzer": True,   "ForensicReader": True,

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -12,7 +13,7 @@ class EventoCaptura:
     total: int
 
 
-type HandlerCaptura = Callable[[EventoCaptura], None]
+HandlerCaptura = Callable[[EventoCaptura], None]
 
 
 class EventBus:
@@ -33,7 +34,5 @@ class EventBus:
         with self._lock:
             handlers = list(self._handlers)
         for handler in handlers:
-            try:
+            with contextlib.suppress(Exception):
                 handler(evento)
-            except Exception:
-                pass

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 import uuid
 import zipfile
@@ -11,8 +10,6 @@ from typing import Any, Final
 
 from sentinel import SentinelPackagingError
 from sentinel.custody.log import (
-    SCHEMA_VERSION as CUSTODY_SCHEMA_VERSION,
-    CustodyAction,
     CustodyLog,
 )
 from sentinel.integrity.hashing import canonical_json, hash_file, hash_stream
@@ -24,14 +21,11 @@ from sentinel.integrity.keys import (
 )
 from sentinel.integrity.signing import (
     ManifestStructureError,
-    read_signature,
     sign_package_manifest,
     verify_artifact_manifest,
-    verify_custody_entry,
     verify_package_manifest,
-    write_signature,
 )
-from sentinel.integrity.timestamp import SystemClock, TimeSource, Timestamp
+from sentinel.integrity.timestamp import SystemClock, Timestamp
 
 PACKAGE_SCHEMA_VERSION: Final[str] = "1.0"
 ARTIFACT_SCHEMA_VERSION: Final[str] = "1.0"
@@ -49,17 +43,21 @@ _ZIP_STORED: Final[int] = zipfile.ZIP_STORED
 
 
 class SAEError(SentinelPackagingError):
+    """Base class for `.sae` errors."""
 
 
 class SAEPackError(SAEError):
+    """Packaging failed (bad inputs, missing files, IO error)."""
 
 
 class SAEVerifyError(SAEError):
+    """Verification of a `.sae` found a structural problem that could
+    not be expressed as an issue in the report (e.g. the file is not a
+    valid ZIP at all)."""
 
 
 class SAEUnpackError(SAEError):
-
-
+    """Extraction failed or was blocked (zip slip, zip bomb, IO)."""
 @dataclass(frozen=True)
 class SAEArtifactResult:
 
@@ -67,7 +65,7 @@ class SAEArtifactResult:
     valid: bool
     file_count: int
     signature_verified: bool
-    issues: tuple["SAEIssue", ...] = ()
+    issues: tuple[SAEIssue, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -184,10 +182,8 @@ def _artifact_file_names(manifest: dict[str, Any]) -> list[str]:
         for n in aux:
             if isinstance(n, str):
                 names.append(n)
-    if (Path("data.sigmf-meta").name == "data.sigmf-meta"):
-        if (manifest.get("file") or {}).get("name") == "data.bin":
-            if "data.sigmf-meta" not in names:
-                names.append("data.sigmf-meta")
+    if (manifest.get("file") or {}).get("name") == "data.bin" and "data.sigmf-meta" not in names:
+        names.append("data.sigmf-meta")
     seen: set[str] = set()
     out: list[str] = []
     for n in names:
@@ -412,14 +408,13 @@ def verify(
                 )
                 sidecar_sig = None
 
-            if sidecar_sig is not None:
-                if sidecar_sig != embedded_sig:
-                    issues.append(
-                        SAEIssue(
-                            code="signature_mismatch",
-                            message="embedded signature != manifest.sig",
-                        )
+            if sidecar_sig is not None and sidecar_sig != embedded_sig:
+                issues.append(
+                    SAEIssue(
+                        code="signature_mismatch",
+                        message="embedded signature != manifest.sig",
                     )
+                )
 
             if operators is not None:
                 op_id = manifest.get("operator_id")
@@ -892,6 +887,7 @@ __all__ = [
     "MANIFEST_SIG_MEMBER",
     "PACKAGE_SCHEMA_VERSION",
     "REPORT_MEMBER",
+    "TIMELINE_MEMBER",
     "SAEArtifactResult",
     "SAEError",
     "SAEIssue",
@@ -899,7 +895,6 @@ __all__ = [
     "SAEUnpackError",
     "SAEVerificationReport",
     "SAEVerifyError",
-    "TIMELINE_MEMBER",
     "pack",
     "unpack",
     "verify",

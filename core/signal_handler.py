@@ -1,22 +1,24 @@
 from __future__ import annotations
 
+import contextlib
 import signal
 import sys
-from typing import Callable, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.log_sistema import LogSistema
 
 
 class SignalManager:
-    def __init__(self, log: "LogSistema | None" = None) -> None:
+    def __init__(self, log: LogSistema | None = None) -> None:
         self._log = log
         self._handlers: list[Callable[[], None]] = []
 
     def registrar_cleanup(self, fn: Callable[[], None]) -> None:
         self._handlers.append(fn)
 
-    def registrar(self, on_signal: "Callable[[str], None] | None" = None) -> None:
+    def registrar(self, on_signal: Callable[[str], None] | None = None) -> None:
         def _handler(signum, frame):
             sig = "SIGINT" if signum == getattr(
                 signal, "SIGINT", 2) else "SIGTERM"
@@ -34,7 +36,5 @@ class SignalManager:
         if self._log:
             self._log.info("Sesión terminada.", "ApexSentinel")
         for fn in self._handlers:
-            try:
+            with contextlib.suppress(Exception):
                 fn()
-            except Exception:
-                pass

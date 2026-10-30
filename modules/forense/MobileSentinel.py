@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import subprocess
-import os
 import datetime
+import os
+import subprocess
 
 
 class MobileSentinel:

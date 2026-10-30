@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import subprocess
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from rich import box
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 
 class PowerManager:
@@ -28,12 +28,13 @@ class PowerManager:
         self._stop_event = threading.Event()
         self._thermal_thread: threading.Thread | None = None
         self._throttled_callbacks: list[Callable[[bool], None]] = []
-        self._is_rpi = self._detect_rasperry()
+        self._is_rpi = self._detect_raspberry()
+        self._is_uconsole = self._detect_uconsole()
 
         self._info(
-            f"Inicializado | RPi={self._is_rpi} | uConsole={self._is_uconcole}")
+            f"Inicializado | RPi={self._is_rpi} | uConsole={self._is_uconsole}")
 
-        def _detect_raspberry(self) -> bool:
+    def _detect_raspberry(self) -> bool:
         try:
             with open("/proc/cpuinfo") as f:
                 content = f.read()

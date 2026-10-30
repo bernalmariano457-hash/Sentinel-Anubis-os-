@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Final, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
 from scipy.signal import windows as sp_windows
 
-from modules.rf.rf_config import DspConfig
 from modules.rf.bands import identify_band
+from modules.rf.rf_config import DspConfig
 
 log = logging.getLogger(__name__)
 
@@ -38,8 +38,15 @@ _FLATTOP_COEFFS: Final[npt.NDArray[np.float64]] = np.array(
 
 class Signal:
     __slots__ = (
-        "freq_mhz", "potencia", "snr_db", "bw_khz",
-        "piso_dbm", "banda", "timestamp", "kurtosis", "mod_hint",
+        "banda",
+        "bw_khz",
+        "freq_mhz",
+        "kurtosis",
+        "mod_hint",
+        "piso_dbm",
+        "potencia",
+        "snr_db",
+        "timestamp",
     )
 
     def __init__(
@@ -206,7 +213,7 @@ class DSPEngine:
                 piso_dbm  = round(noise_floor_local, 2),
                 kurtosis  = kurt,
                 banda     = identify_band(freq_abs_mhz),
-                timestamp = datetime.now(timezone.utc).isoformat(),
+                timestamp = datetime.now(UTC).isoformat(),
             ))
 
             skip: int = max(3, int(bw_hz / self._bin_hz) // 2 + guard)

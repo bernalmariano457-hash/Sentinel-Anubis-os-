@@ -4,7 +4,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from math import acos, atan2, cos, degrees, floor, hypot, pi, radians, sin, sqrt
-from typing import Final, Literal, Optional
+from typing import Final, Literal
 
 import numpy as np
 
@@ -150,7 +150,7 @@ def _gillham_remap(gillham_field: int) -> int:
     return remapped
 
 
-def decode_ac12_altitude_ft(ac12_field: int) -> Optional[float]:
+def decode_ac12_altitude_ft(ac12_field: int) -> float | None:
     if ac12_field == 0:
         return None
     if ac12_field & 0x10:
@@ -159,7 +159,7 @@ def decode_ac12_altitude_ft(ac12_field: int) -> Optional[float]:
     return None
 
 
-def decode_ac13_altitude_ft(ac13_field: int) -> Optional[float]:
+def decode_ac13_altitude_ft(ac13_field: int) -> float | None:
     if ac13_field == 0:
         return None
     if ac13_field & 0x0040:
@@ -170,17 +170,17 @@ def decode_ac13_altitude_ft(ac13_field: int) -> Optional[float]:
     return None
 
 
-def decode_squawk(id13_field: int) -> Optional[str]:
+def decode_squawk(id13_field: int) -> str | None:
     if id13_field == 0:
         return None
     return f"{_gillham_remap(id13_field):04X}"
 
 
-def is_emergency_squawk(squawk: Optional[str]) -> bool:
+def is_emergency_squawk(squawk: str | None) -> bool:
     return squawk in EMERGENCY_SQUAWK_CODES if squawk else False
 
 
-def decode_callsign(raw_frame: bytes) -> Optional[str]:
+def decode_callsign(raw_frame: bytes) -> str | None:
     chars1 = (raw_frame[5] << 16) | (raw_frame[6] << 8) | raw_frame[7]
     chars2 = (raw_frame[8] << 16) | (raw_frame[9] << 8) | raw_frame[10]
     if chars1 == 0 and chars2 == 0:
@@ -195,9 +195,9 @@ def decode_callsign(raw_frame: bytes) -> Optional[str]:
 
 @dataclass(slots=True)
 class VelocityInfo:
-    groundspeed_kt: Optional[float] = None
-    track_deg: Optional[float] = None
-    vertical_rate_fpm: Optional[float] = None
+    groundspeed_kt: float | None = None
+    track_deg: float | None = None
+    vertical_rate_fpm: float | None = None
 
 
 def decode_velocity(raw_frame: bytes, subtype: int) -> VelocityInfo:
@@ -237,7 +237,7 @@ def decode_velocity(raw_frame: bytes, subtype: int) -> VelocityInfo:
 
 @dataclass(slots=True)
 class AircraftStatusInfo:
-    squawk: Optional[str] = None
+    squawk: str | None = None
     tcas_ra_active: bool = False
 
 
@@ -256,30 +256,30 @@ class CprFrame:
     lat_raw: int
     lon_raw: int
     fmt: CprFormat
-    altitude_ft: Optional[float]
+    altitude_ft: float | None
     timestamp_s: float
 
 
 @dataclass(slots=True)
 class ModeSFrame:
     downlink_format: int
-    icao: Optional[IcaoHex] = None
+    icao: IcaoHex | None = None
     icao_verified: bool = False
-    callsign: Optional[str] = None
-    cpr: Optional[CprFrame] = None
-    altitude_ft: Optional[float] = None
-    squawk: Optional[str] = None
-    groundspeed_kt: Optional[float] = None
-    track_deg: Optional[float] = None
-    vertical_rate_fpm: Optional[float] = None
+    callsign: str | None = None
+    cpr: CprFrame | None = None
+    altitude_ft: float | None = None
+    squawk: str | None = None
+    groundspeed_kt: float | None = None
+    track_deg: float | None = None
+    vertical_rate_fpm: float | None = None
     tcas_ra_active: bool = False
 
 
 def decode_mode_s_frame(
     raw_frame: bytes,
-    known_icao: Optional[set[IcaoHex]] = None,
-    timestamp_s: Optional[float] = None,
-) -> Optional[ModeSFrame]:
+    known_icao: set[IcaoHex] | None = None,
+    timestamp_s: float | None = None,
+) -> ModeSFrame | None:
     if len(raw_frame) not in (SHORT_FRAME_BITS // 8, LONG_FRAME_BITS // 8):
         return None
     df = extract_downlink_format(raw_frame)
@@ -445,10 +445,11 @@ def demodulate_iq_to_mode_s_frames(
         bit_sequence = _demodulate_symbols(amplitude[header_offset: header_offset + frame_needed], frame_bits, samples_per_us)
         raw_frame = np.packbits(bit_sequence).tobytes()
 
-        if downlink_format in EXTENDED_SQUITTER_DOWNLINK_FORMATS or downlink_format == 11:
-            if not is_crc_valid(raw_frame):
-                i += 1
-                continue
+        if (
+            downlink_format in EXTENDED_SQUITTER_DOWNLINK_FORMATS or downlink_format == 11
+        ) and not is_crc_valid(raw_frame):
+            i += 1
+            continue
 
         frames.append(raw_frame)
         consumed_end = header_offset + frame_needed
@@ -505,7 +506,7 @@ def _cpr_nl(lat: float) -> int:
     c = a / b
     if c > 1.0:
         return 1
-    return max(1, int(floor(2.0 * pi / acos(1.0 - c))))
+    return max(1, floor(2.0 * pi / acos(1.0 - c)))
 
 
 def decode_cpr_global_position(
@@ -514,7 +515,7 @@ def decode_cpr_global_position(
     odd_lat_raw: int,
     odd_lon_raw: int,
     even_is_newer: bool,
-) -> Optional[tuple[float, float]]:
+) -> tuple[float, float] | None:
     dlat_even = 360.0 / (4 * NZ)
     dlat_odd = 360.0 / (4 * NZ - 1)
 
@@ -564,7 +565,7 @@ def decode_cpr_local_position(
     cpr_lon_raw: int,
     ref_lat: float,
     ref_lon: float,
-) -> Optional[tuple[float, float]]:
+) -> tuple[float, float] | None:
     dlat = 360.0 / (4 * NZ) if cpr_fmt == 0 else 360.0 / (4 * NZ - 1)
     lat_cpr = cpr_lat_raw / 131072.0
     lon_cpr = cpr_lon_raw / 131072.0
@@ -584,37 +585,37 @@ def decode_cpr_local_position(
 @dataclass
 class AircraftState:
     icao: IcaoHex
-    callsign: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    altitude_ft: Optional[float] = None
-    groundspeed_kt: Optional[float] = None
-    track_deg: Optional[float] = None
-    vertical_rate: Optional[float] = None
-    squawk: Optional[str] = None
+    callsign: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    altitude_ft: float | None = None
+    groundspeed_kt: float | None = None
+    track_deg: float | None = None
+    vertical_rate: float | None = None
+    squawk: str | None = None
     msg_count: int = 0
     pos_msg_count: int = 0
     last_seen_s: float = field(default_factory=time.monotonic)
     position_trail: deque[tuple[float, float]] = field(
         default_factory=lambda: deque(maxlen=TRAIL_HISTORY_LEN), repr=False
     )
-    _cpr_even: Optional[CprFrame] = field(default=None, repr=False)
-    _cpr_odd: Optional[CprFrame] = field(default=None, repr=False)
-    _gs_ema: Optional[float] = field(default=None, repr=False)
-    _track_ema: Optional[float] = field(default=None, repr=False)
-    _vr_ema: Optional[float] = field(default=None, repr=False)
-    _tcas_ra_last_s: Optional[float] = field(default=None, repr=False)
+    _cpr_even: CprFrame | None = field(default=None, repr=False)
+    _cpr_odd: CprFrame | None = field(default=None, repr=False)
+    _gs_ema: float | None = field(default=None, repr=False)
+    _track_ema: float | None = field(default=None, repr=False)
+    _vr_ema: float | None = field(default=None, repr=False)
+    _tcas_ra_last_s: float | None = field(default=None, repr=False)
 
     _EMA_ALPHA: float = field(default=0.25, init=False, repr=False)
 
-    def _apply_ema(self, prev: Optional[float], sample: float) -> float:
+    def _apply_ema(self, prev: float | None, sample: float) -> float:
         return sample if prev is None else self._EMA_ALPHA * sample + (1.0 - self._EMA_ALPHA) * prev
 
     def update_velocity_ema(
         self,
-        groundspeed_kt: Optional[float],
-        track_deg: Optional[float],
-        vertical_rate: Optional[float],
+        groundspeed_kt: float | None,
+        track_deg: float | None,
+        vertical_rate: float | None,
     ) -> None:
         if groundspeed_kt is not None:
             self._gs_ema = self._apply_ema(self._gs_ema, groundspeed_kt)
@@ -670,7 +671,7 @@ class AircraftState:
         self._commit_position(result[0], result[1], resolved_alt)
         return True
 
-    def _commit_position(self, lat: float, lon: float, alt: Optional[float]) -> None:
+    def _commit_position(self, lat: float, lon: float, alt: float | None) -> None:
         self.latitude = lat
         self.longitude = lon
         if alt is not None:
@@ -710,7 +711,7 @@ class FlightStateRegistry:
         cutoff = timestamp_s - KNOWN_ICAO_TTL_S
         return {icao for icao, seen in self._known_icao.items() if seen >= cutoff}
 
-    def ingest_raw_frame(self, raw_frame: bytes, timestamp_s: Optional[float] = None) -> Optional[IcaoHex]:
+    def ingest_raw_frame(self, raw_frame: bytes, timestamp_s: float | None = None) -> IcaoHex | None:
         ts = timestamp_s if timestamp_s is not None else time.monotonic()
         frame = decode_mode_s_frame(raw_frame, self._known_icao_set(ts), ts)
         if frame is None:
@@ -741,7 +742,7 @@ class FlightStateRegistry:
             ac.mark_tcas_ra(ts)
         return frame.icao
 
-    def ingest_hex_frame(self, hex_str: str, timestamp_s: Optional[float] = None) -> Optional[IcaoHex]:
+    def ingest_hex_frame(self, hex_str: str, timestamp_s: float | None = None) -> IcaoHex | None:
         try:
             raw_frame = bytes.fromhex(hex_str.strip())
         except ValueError:
@@ -761,12 +762,12 @@ class FlightStateRegistry:
             reverse=True,
         )
 
-    def distance_to_aircraft_km(self, ac: AircraftState) -> Optional[float]:
+    def distance_to_aircraft_km(self, ac: AircraftState) -> float | None:
         if ac.latitude is None or self._rx_position == (0.0, 0.0):
             return None
         return haversine_km(*self._rx_position, ac.latitude, ac.longitude)
 
-    def bearing_to_aircraft_deg(self, ac: AircraftState) -> Optional[float]:
+    def bearing_to_aircraft_deg(self, ac: AircraftState) -> float | None:
         if ac.latitude is None:
             return None
         return bearing_deg(*self._rx_position, ac.latitude, ac.longitude)

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from rich.console import Console
 from rich.prompt import Prompt

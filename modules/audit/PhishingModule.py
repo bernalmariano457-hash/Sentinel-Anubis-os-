@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-import sys
 import subprocess
+import sys
 
 
 class PhishingModule:
@@ -79,9 +79,8 @@ class PhishingModule:
         return True
 
     def lanzar(self):
-        if not self._zphisher_instalado():
-            if not self._instalar_zphisher():
-                return
+        if not self._zphisher_instalado() and not self._instalar_zphisher():
+            return
 
         if sys.platform == "win32" and not self._verificar_bash_windows():
             return

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import shutil
+
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-
 
 DEPENDENCIAS: dict[str, dict[str, tuple[str, str]]] = {
     "RF / SDR": {
@@ -74,7 +74,7 @@ class SystemChecker:
         total_ok = 0
         total = 0
 
-        for categoria, tools in resultados.items():
+        for categoria, _tools in resultados.items():
             tabla = Table(
                 title=f"[bold cyan]{categoria}[/bold cyan]",
                 box=box.SIMPLE_HEAD,

@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from core.platform import Platform, PlatformInfo, detect as detect_platform
+from core.platform import Platform, PlatformInfo
+from core.platform import detect as detect_platform
 
 _CONFIG_PATH = Path("config/keybindings.toml")
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    try:
-        import tomllib
-    except ImportError:
-        tomllib = None
 
 
 @dataclass
@@ -65,7 +58,7 @@ class KeyBindings:
             for key in getattr(self, action):
                 mapping[key] = action
 
-        for fname, preset in self.bands.items():
+        for fname, _preset in self.bands.items():
             mapping[fname] = f"band:{fname}"
         return mapping
 

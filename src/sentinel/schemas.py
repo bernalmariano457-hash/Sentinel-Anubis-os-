@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
-from jsonschema.exceptions import ValidationError, SchemaError
+from jsonschema.exceptions import SchemaError, ValidationError
 
 from sentinel import SentinelError
 
@@ -23,7 +23,7 @@ _SCHEMAS_DIR = Path(__file__).resolve().parent.parent.parent / "schemas"
 
 
 class SentinelSchemaError(SentinelError):
-
+    """Base class for schema-related errors."""
 
 class SchemaValidationError(SentinelSchemaError):
 
@@ -38,12 +38,12 @@ class SchemaValidationError(SentinelSchemaError):
 
 
 class SchemaNotFoundError(SentinelSchemaError):
+    """The requested schema name is not registered."""
 
 
 class SchemaLoadError(SentinelSchemaError):
-
-
-@lru_cache(maxsize=None)
+    """A schema file is missing or malformed."""
+@cache
 def load_schema(name: str) -> dict[str, Any]:
 
     if name not in _SCHEMA_FILES:
@@ -68,7 +68,7 @@ def load_schema(name: str) -> dict[str, Any]:
     return schema
 
 
-@lru_cache(maxsize=None)
+@cache
 def _get_validator(name: str) -> Draft202012Validator:
     return Draft202012Validator(
         load_schema(name),

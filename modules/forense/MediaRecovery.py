@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -13,9 +14,10 @@ import stat
 import struct
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, BinaryIO, Callable, Literal, Optional, Tuple
+from typing import Any, BinaryIO, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +26,13 @@ _BLKGETSIZE64: int = 0x80081272
 LengthStrategy = Literal["footer", "capped", "riff_declared_size", "iso_bmff_boxwalk"]
 
 HashAlgorithmFactory = Callable[[], Any]
-ProgressCallback = Callable[[int, Optional[int]], Awaitable[None]]
+ProgressCallback = Callable[[int, int | None], Awaitable[None]]
 
 
 class WorkspaceManagerInterface(ABC):
 
     @abstractmethod
-    def get_active_project_path(self) -> Optional[Path]:
+    def get_active_project_path(self) -> Path | None:
         raise NotImplementedError
 
 
@@ -47,14 +49,14 @@ class SignatureDefinition:
     name: str
     extension: str
     header: bytes
-    footer: Optional[bytes] = None
+    footer: bytes | None = None
     max_size_bytes: int = 100 * 1024 * 1024
     start_offset_adjustment: int = 0
-    secondary_marker_offset: Optional[int] = None
-    secondary_marker_bytes: Optional[bytes] = None
+    secondary_marker_offset: int | None = None
+    secondary_marker_bytes: bytes | None = None
     length_strategy: LengthStrategy = "footer"
-    compiled_header: "re.Pattern[bytes]" = field(init=False, repr=False)
-    compiled_footer: Optional["re.Pattern[bytes]"] = field(init=False, repr=False, default=None)
+    compiled_header: re.Pattern[bytes] = field(init=False, repr=False)
+    compiled_footer: re.Pattern[bytes] | None = field(init=False, repr=False, default=None)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "compiled_header", re.compile(re.escape(self.header)))
@@ -81,8 +83,8 @@ class _OpenCarveJob:
     hasher: Any
     bytes_written: int = 0
     search_offset: int = 0
-    resolved_length: Optional[int] = None
-    box_probe_offset: Optional[int] = None
+    resolved_length: int | None = None
+    box_probe_offset: int | None = None
     dynamic_resolution_failed: bool = False
 
 
@@ -97,7 +99,7 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
     _FTYP_MIN_BOX_SIZE: int = 16
     _FTYP_MAX_BOX_SIZE: int = 4096
 
-    _FOURCC_PATTERN: "re.Pattern[bytes]" = re.compile(rb"[\x20-\x7e]{4}")
+    _FOURCC_PATTERN: re.Pattern[bytes] = re.compile(rb"[\x20-\x7e]{4}")
 
     ENTROPY_PROBE_SIZE: int = 128
     ENTROPY_MIN_PROBE_SIZE: int = 128
@@ -107,9 +109,9 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
 
     def __init__(
         self,
-        workspace_manager: Optional[WorkspaceManagerInterface] = None,
+        workspace_manager: WorkspaceManagerInterface | None = None,
         hash_algorithm: HashAlgorithmFactory = hashlib.sha256,
-        config_path: Optional[Path] = None,
+        config_path: Path | None = None,
     ) -> None:
         self._workspace_manager = workspace_manager
         self._hash_algorithm_factory = hash_algorithm
@@ -118,18 +120,18 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
     async def execute(
         self,
         source: Path,
-        hash_algorithm: Optional[HashAlgorithmFactory] = None,
-        on_progress: Optional[ProgressCallback] = None,
-        config_path: Optional[Path] = None,
+        hash_algorithm: HashAlgorithmFactory | None = None,
+        on_progress: ProgressCallback | None = None,
+        config_path: Path | None = None,
     ) -> list[CarvedFileResult]:
         return await self.scan(source, hash_algorithm=hash_algorithm, on_progress=on_progress, config_path=config_path)
 
     async def scan(
         self,
         source: Path,
-        hash_algorithm: Optional[HashAlgorithmFactory] = None,
-        on_progress: Optional[ProgressCallback] = None,
-        config_path: Optional[Path] = None,
+        hash_algorithm: HashAlgorithmFactory | None = None,
+        on_progress: ProgressCallback | None = None,
+        config_path: Path | None = None,
     ) -> list[CarvedFileResult]:
         signatures = await asyncio.to_thread(self._load_signatures, config_path)
         if not signatures:
@@ -178,7 +180,12 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
                 window_start = max(0, position - self.OVERLAP_SIZE)
                 window_end = min(total_size, position + self.CHUNK_SIZE)
 
-                def _process_window() -> int:
+                def _process_window(
+                    window_start: int = window_start,
+                    window_end: int = window_end,
+                    last_scanned_offset: int = last_scanned_offset,
+                    job_counter: int = job_counter,
+                ) -> int:
                     self._advance_active_jobs(active_jobs, mv, window_end, results)
                     search_start = max(window_start, last_scanned_offset)
                     updated_counter = self._detect_and_open_jobs(
@@ -229,7 +236,7 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
         logger.info("Carving finalizado sobre %s, archivos recuperados: %d", source, len(results))
         return results
 
-    def _load_signatures(self, config_path: Optional[Path]) -> dict[str, SignatureDefinition]:
+    def _load_signatures(self, config_path: Path | None) -> dict[str, SignatureDefinition]:
         resolved_path = config_path or self._default_config_path
         try:
             raw_text = resolved_path.read_text(encoding="utf-8")
@@ -285,7 +292,7 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
                 return Path(active_project_path) / "evidence" / "recovered_media"
         return self.FALLBACK_OUTPUT_PATH
 
-    def _resolve_source_size(self, source: Path) -> Optional[int]:
+    def _resolve_source_size(self, source: Path) -> int | None:
         try:
             file_descriptor = os.open(source, os.O_RDONLY)
         except (PermissionError, FileNotFoundError, OSError) as error:
@@ -304,20 +311,18 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
         finally:
             os.close(file_descriptor)
 
-    def _open_mapped_source(self, source: Path, size: int) -> Tuple[int, mmap.mmap]:
+    def _open_mapped_source(self, source: Path, size: int) -> tuple[int, mmap.mmap]:
         fd = os.open(source, os.O_RDONLY)
         try:
             mm = mmap.mmap(fd, size, prot=mmap.PROT_READ)
         except Exception:
             os.close(fd)
             raise
-        try:
+        with contextlib.suppress(AttributeError, OSError):
             mm.madvise(mmap.MADV_SEQUENTIAL)
-        except (AttributeError, OSError):
-            pass
         return fd, mm
 
-    def _close_mapped_source(self, fd: int, mm: Optional[mmap.mmap]) -> None:
+    def _close_mapped_source(self, fd: int, mm: mmap.mmap | None) -> None:
         if mm is not None:
             try:
                 mm.close()
@@ -351,7 +356,7 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
             return False
         return self._shannon_entropy(probe) >= self.STATIC_NOISE_ENTROPY_THRESHOLD
 
-    def _find_pattern(self, mv: memoryview, compiled_pattern: "re.Pattern[bytes]", start: int, end: int) -> int:
+    def _find_pattern(self, mv: memoryview, compiled_pattern: re.Pattern[bytes], start: int, end: int) -> int:
         if start >= end:
             return -1
         view = mv[start:end]
@@ -396,7 +401,7 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
                 return False
         return True
 
-    def _resolve_riff_declared_length(self, mv: memoryview, absolute_start: int, up_to_offset: int) -> Optional[int]:
+    def _resolve_riff_declared_length(self, mv: memoryview, absolute_start: int, up_to_offset: int) -> int | None:
         if absolute_start < 0 or absolute_start + 8 > up_to_offset:
             return None
         declared_size = int.from_bytes(mv[absolute_start + 4:absolute_start + 8], "little")
@@ -445,16 +450,14 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
         job_counter: int,
     ) -> Path:
         timestamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
-        seed = f"{signature.name}:{absolute_start}:{job_counter}:{time.time_ns()}".encode("utf-8")
+        seed = f"{signature.name}:{absolute_start}:{job_counter}:{time.time_ns()}".encode()
         digest = hashlib.md5(seed).hexdigest()[:12]
         filename = f"{signature.name.lower()}_{timestamp}_{digest}{signature.extension}"
         return output_dir / filename
 
     def _cleanup_partial_file(self, output_path: Path, handle: BinaryIO) -> None:
-        try:
+        with contextlib.suppress(PermissionError, OSError):
             handle.close()
-        except (PermissionError, OSError):
-            pass
         try:
             output_path.unlink(missing_ok=True)
         except (PermissionError, OSError) as error:
@@ -530,9 +533,7 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
                 payload = new_data[:max(0, remaining)]
                 self._finalize_job(job, payload, results, truncated=False)
                 return False
-            if not self._write_to_job(job, new_data):
-                return False
-            return True
+            return self._write_to_job(job, new_data)
 
         if job.signature.footer is not None:
             footer_len = len(job.signature.footer)
@@ -568,9 +569,7 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
             self._finalize_job(job, payload, results, truncated=True)
             return False
 
-        if not self._write_to_job(job, new_data):
-            return False
-        return True
+        return self._write_to_job(job, new_data)
 
     def _open_new_job(
         self,
@@ -590,7 +589,7 @@ class MediaRecoveryEngine(OrchestratorModuleInterface):
         output_path = self._build_output_path(output_dir, signature, absolute_start, job_counter)
 
         try:
-            handle: BinaryIO = open(output_path, "wb")
+            handle: BinaryIO = open(output_path, "wb")  # noqa: SIM115
         except (PermissionError, OSError, FileNotFoundError) as error:
             logger.error("No fue posible crear el archivo de salida %s: %s", output_path, error)
             return

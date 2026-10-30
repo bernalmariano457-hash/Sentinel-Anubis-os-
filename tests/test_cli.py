@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 from click.testing import CliRunner
-
 from sentinel.cli import main
 from sentinel.custody.log import CustodyAction, CustodyLog
 from sentinel.integrity.hashing import hash_file

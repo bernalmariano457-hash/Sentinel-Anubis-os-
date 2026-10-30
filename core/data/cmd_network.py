@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import socket
 import time
 
@@ -78,7 +79,7 @@ class NetworkCommands(_DomainBase):
                                   "[green]ABIERTO[/green]")
                     abiertos.append({"puerto": puerto, "servicio": servicio})
                 sock.close()
-            except socket.error:
+            except OSError:
                 pass
         self.console.print(tabla)
         self.console.print(f"[dim]Puertos abiertos: {len(abiertos)}[/dim]")
@@ -88,10 +89,11 @@ class NetworkCommands(_DomainBase):
                 {"ip": objetivo, "puertos": abiertos})
         s.log.info(
             f"PortScan {objetivo}: {len(abiertos)} puertos abiertos", "PortScan")
-        if abiertos and s.cve:
-            if Prompt.ask("\n[?] ¿Cruzar con CVE?", choices=["s", "n"], default="s") == "s":
-                s.cve.analizar_resultado_scan(
-                    [{"nombre": a["servicio"], "version": ""} for a in abiertos])
+        if abiertos and s.cve and Prompt.ask(
+            "\n[?] ¿Cruzar con CVE?", choices=["s", "n"], default="s"
+        ) == "s":
+            s.cve.analizar_resultado_scan(
+                [{"nombre": a["servicio"], "version": ""} for a in abiertos])
 
     def sweep(self):
         if not self._modulo_ok("sweep"):
@@ -141,10 +143,8 @@ class NetworkCommands(_DomainBase):
                 self.console.print(panel_radar)
                 # Actualizar mapa solo si hay display y geomap cargado
                 if _tiene_display and getattr(s, "geomap", None):
-                    try:
+                    with contextlib.suppress(Exception):
                         s.geomap.generar_mapa(s.radar.targets)
-                    except Exception:
-                        pass
                 time.sleep(2)
         except KeyboardInterrupt:
             self.console.print("\n[yellow][!] Radar detenido.[/yellow]")

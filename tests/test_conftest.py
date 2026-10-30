@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from sentinel.integrity.keys import KeyManager
 from sentinel.integrity.timestamp import TimeSource, Timestamp
 

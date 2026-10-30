@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from rich import box
 from rich.console import Console
@@ -77,7 +77,7 @@ class Proyecto:
 
 class GestorProyectos:
 
-    TIPOS = list(_TIPOS)
+    TIPOS: ClassVar[list[str]] = list(_TIPOS)
 
     def __init__(self, sentinel=None) -> None:
         self.sentinel = sentinel

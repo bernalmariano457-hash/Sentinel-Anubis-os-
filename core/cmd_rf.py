@@ -88,11 +88,13 @@ class RFCommands(_DomainBase):
         )
         try:
             import time
-            import numpy as np
-            from pathlib import Path
             from datetime import datetime
-            from modules.rf.rf_demod import Demodulator
+            from pathlib import Path
+
+            import numpy as np
+
             from modules.rf.rf_config import DemodConfig
+            from modules.rf.rf_demod import Demodulator
 
             # Usar el sample_rate real del scanner RF (no hardcodear)
             sample_rate = getattr(self.s.rf, "sample_rate", 2_048_000)

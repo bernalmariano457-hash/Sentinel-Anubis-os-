@@ -6,7 +6,6 @@ from typing import Any, Final
 
 from sentinel.integrity.hashing import canonical_json, hash_file
 from sentinel.integrity.keys import (
-    InvalidSignatureError,
     KeyManager,
     OperatorIdentity,
     SentinelKeyError,
@@ -27,14 +26,15 @@ _CUSTODY_EXCLUDED: Final[frozenset[str]] = frozenset(
 
 
 class SigningError(SentinelKeyError):
+    """Base class for signing-related errors."""
 
 
 class SignatureFileError(SigningError):
+    """A `.sig` sidecar file is missing, malformed, or unreadable."""
 
 
 class ManifestStructureError(SigningError):
-
-
+    """A manifest is missing required fields or has the wrong type."""
 def sign_bytes(
     km: KeyManager,
     data: bytes,

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import os
+import contextlib
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -45,7 +44,7 @@ class StealthModule:
             "\n[dim][stealth] Verificando máscara de identidad digital...[/dim]")
 
         try:
-            import requests  # noqa: PLC0415
+            import requests
             campos = "status,country,city,isp,query,as,proxy,hosting,mobile"
             data = requests.get(
                 f"http://ip-api.com/json/?fields={campos}", timeout=5
@@ -202,10 +201,8 @@ class StealthModule:
             border_style="red", expand=False,
         ))
 
-        try:
+        with contextlib.suppress(Exception):
             self.sentinel._cleanup()
-        except Exception:
-            pass
 
         sys.exit(0)
 

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import socket
 import os
-import subprocess
 import re
-from datetime import datetime
+import socket
+import subprocess
 
 
 class AdvancedScanner:
@@ -30,7 +29,7 @@ class AdvancedScanner:
                     r"BSSID\s+\d+\s+:\s+([0-9a-fA-F:]{17})", comando)
                 señales = re.findall(r"Señal\s+:\s+(\d+)%", comando)
 
-                for bssid, señal in zip(bssids, señales):
+                for bssid, señal in zip(bssids, señales, strict=False):
                     # Convertimos porcentaje a dBm aproximado para la API
                     dbm = (int(señal) / 2) - 100
                     self.redes_detectadas.append(

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-import queue
 import time
 from typing import Any
 
 import numpy as np
 
-from core.sdr_broker import SDRBroker, SDRMode, SDRFrame
+from core.sdr_broker import SDRBroker, SDRMode
 from modules.rf.rf_source import SDRBackend
 
 log = logging.getLogger("sentinel.rf.broker_backend")

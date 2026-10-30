@@ -7,14 +7,13 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Protocol, TypeAlias
 
 import numpy as np
 from rich import box
 from rich.console import Console, Group
-from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -318,7 +317,7 @@ class SpectrumRenderer:
                 f"={noise_floor + self._cfg.dsp.snr_threshold:.0f} dBm[/dim red]"
             )
 
-        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        timestamp = datetime.now(UTC).strftime("%H:%M:%S")
         return Panel(
             canvas,
             title=(
@@ -350,7 +349,7 @@ class SpectrumRenderer:
             canvas.append("  ")
             normalized = np.clip((row_psd - db_min) / (db_max - db_min), 0, 1)
             char_indices = (normalized * (len(_WF_CHARS) - 1)).astype(int)
-            for v, char_idx in zip(normalized, char_indices):
+            for v, char_idx in zip(normalized, char_indices, strict=False):
                 char = _WF_CHARS[char_idx]
                 v_float = float(v)
                 if v_float > 0.75:
@@ -620,8 +619,11 @@ class RFScanner:
         self._connect_hardware()
 
     def _connect_hardware(self) -> None:
-        from modules.rf.rf_broker_backend
-        import open_broker_backend as open_backend(
+        hw_cfg = self._cfg.hardware
+
+        from modules.rf.rf_broker_backend import open_broker_backend as open_backend
+
+        self._backend = open_backend(
             freq_hz=hw_cfg.sample_rate,
             sample_rate=hw_cfg.sample_rate,
             gain=hw_cfg.gain_db,
@@ -632,19 +634,19 @@ class RFScanner:
         self._agc.current_gain_db = hw_cfg.gain_db
 
         if hw_cfg.bias_tee:
-                try:
-                    self._backend._sdr.set_bias_tee(True)
-                except Exception:
-                    log.debug("bias_tee not supported by this backend")
+            try:
+                self._backend._sdr.set_bias_tee(True)
+            except Exception:
+                log.debug("bias_tee not supported by this backend")
 
-            is_mock = "Mock" in self.hw_name
-            self._emit(
-                f"[yellow][!] No physical SDR hardware — {self.hw_name}[/yellow]\n"
-                "[dim]    pip install pyrtlsdr  |  https://www.rtl-sdr.com/[/dim]"
-                if is_mock
-                else f"[green][+] RF backend: {self.hw_name}[/green]"
-            )
-            log.info("RF backend connected: %s", self.hw_name)
+        is_mock = "Mock" in self.hw_name
+        self._emit(
+            f"[yellow][!] No physical SDR hardware — {self.hw_name}[/yellow]\n"
+            "[dim]    pip install pyrtlsdr  |  https://www.rtl-sdr.com/[/dim]"
+            if is_mock
+            else f"[green][+] RF backend: {self.hw_name}[/green]"
+        )
+        log.info("RF backend connected: %s", self.hw_name)
 
     @property
     def sample_rate(self) -> int:
@@ -702,8 +704,8 @@ class RFScanner:
         mode: str = "tone",
         bw_hz: float = 12_500.0,
     ) -> None:
-        from modules.rf.rf_source import _MockBackend, mock_backend
         from modules.rf.rf_mock import SyntheticSignal
+        from modules.rf.rf_source import _MockBackend, mock_backend
         if not isinstance(self._backend, _MockBackend):
             self._backend = mock_backend(self._cfg.hardware.sample_rate)
             self.hw_name = self._backend.hw_name
@@ -733,11 +735,12 @@ class RFScanner:
     def _is_rtlsdr_freq_valid(self, freq_mhz: float) -> bool:
         from modules.rf.rf_broker_backend import BrokerBackend
         from modules.rf.rf_source import _RTLSDRBackend
-        if isinstance(self._backend, (BrokerBackend, _RTLSDRBackend)):
-            if not (_RTL_FREQ_MIN_MHZ <= freq_mhz <= _RTL_FREQ_MAX_MHZ):
-                self._emit(
-                    f"[yellow][!] {freq_mhz:.3f} MHz out of RTL-SDR range. Skipped.[/yellow]")
-                return False
+        if isinstance(self._backend, (BrokerBackend, _RTLSDRBackend)) and not (
+            _RTL_FREQ_MIN_MHZ <= freq_mhz <= _RTL_FREQ_MAX_MHZ
+        ):
+            self._emit(
+                f"[yellow][!] {freq_mhz:.3f} MHz out of RTL-SDR range. Skipped.[/yellow]")
+            return False
         return True
 
     def _get_or_create_demodulator(self) -> Demodulator:
@@ -912,7 +915,7 @@ class RFScanner:
                                     demod.play(audio)
                                 if self._cfg.demod.save_audio:
                                     ts_str = datetime.now(
-                                        timezone.utc).strftime("%H%M%S")
+                                        UTC).strftime("%H%M%S")
                                     demod.save_wav(
                                         audio,
                                         str(self._cfg.storage.iq_path /
@@ -1457,13 +1460,13 @@ class RFScanner:
 
         if self._backend is not None:
             try:
-              self._backend.close()   
-              self._emit("[green][+] SDR detach (broker activo).[/green]")
-            log.info("RF backend closed")
+                self._backend.close()
+                self._emit("[green][+] SDR detach (broker activo).[/green]")
+                log.info("RF backend closed")
             except Exception as exc:
-               self._emit(
+                self._emit(
                     f"[yellow][!] Error closing RF backend: {exc}[/yellow]")
-             finally:
+            finally:
                 self._backend = None
 
         for storage_obj in (self._signal_db, self._rf_db):

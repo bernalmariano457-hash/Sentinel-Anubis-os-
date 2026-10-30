@@ -34,7 +34,7 @@ def hash_file(path: Path | str, chunk_size: int = DEFAULT_CHUNK_SIZE) -> str:
 
 class HashWriter:
 
-    __slots__ = ("_stream", "_hasher")
+    __slots__ = ("_hasher", "_stream")
 
     def __init__(self, stream: BinaryIO) -> None:
         self._stream = stream
@@ -55,7 +55,7 @@ class HashWriter:
 
 class HashingFile:
 
-    __slots__ = ("path", "_file", "_writer")
+    __slots__ = ("_file", "_writer", "path")
 
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)

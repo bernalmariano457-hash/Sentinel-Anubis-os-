@@ -4,14 +4,14 @@ from pathlib import Path
 __version__ = "2.3"
 __author__ = "AnubisOS"
 __all__ = [
-    "RFScanner",
     "DSPEngine",
-    "SDRManager",
+    "Demodulator",
     "MockSDRManager",
+    "RFDatabase",
+    "RFScanner",
+    "SDRManager",
     "load_config",
     "setup_logging",
-    "RFDatabase",
-    "Demodulator",
 ]
 
 _parent = str(Path(__file__).resolve().parent.parent)

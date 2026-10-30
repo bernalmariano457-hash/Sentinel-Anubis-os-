@@ -1,11 +1,6 @@
 from __future__ import annotations
-from core.sdr_broker import SDRBroker
-from core.log_sistema import LogSistema
-from core.ModuleRegistry import ModuleRegistry
-from core.command_handler import CommandHandler
-from core.vendor_resolver import VendorResolver
-from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
 
+import contextlib
 import json
 import os
 import signal
@@ -14,15 +9,23 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Callable
+from typing import Any
 
 from rich.console import Console
 from rich.markup import escape as _esc
-from rich.prompt import Prompt
 from rich.panel import Panel
+from rich.prompt import Prompt
 from rich.rule import Rule
+
+from core.command_handler import CommandHandler
+from core.log_sistema import LogSistema
+from core.ModuleRegistry import ModuleRegistry
+from core.sdr_broker import SDRBroker
+from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
+from core.vendor_resolver import VendorResolver
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
@@ -93,10 +96,10 @@ def _validate_bootstrap() -> None:
         resolved = target.resolve()
         try:
             mode = resolved.stat().st_mode
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
             raise BootstrapError(
                 f"[FATAL] No se pudo crear o acceder al directorio: {resolved}"
-            )
+            ) from exc
 
         owner_writable = bool(mode & stat.S_IWUSR)
         group_writable = bool(mode & stat.S_IWGRP)
@@ -106,10 +109,10 @@ def _validate_bootstrap() -> None:
 
         try:
             dir_stat = resolved.stat()
-        except OSError:
+        except OSError as exc:
             raise BootstrapError(
                 f"[FATAL] Permisos ilegibles en: {resolved}"
-            )
+            ) from exc
 
         is_owner = (effective_uid == dir_stat.st_uid)
         is_group = (effective_gid == dir_stat.st_gid)
@@ -276,7 +279,7 @@ class ApexSentinel:
 
         self._initialized = True
 
-    def __enter__(self) -> "ApexSentinel":
+    def __enter__(self) -> ApexSentinel:
         if not self._initialized:
             raise RuntimeError("ApexSentinel no completó su inicialización")
         return self
@@ -328,11 +331,9 @@ class ApexSentinel:
                 signal.pthread_sigmask(signal.SIG_SETMASK, mascara_previa)
 
     def _registrar_fallo_apagado(self, nombre: str, error: BaseException) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.log.error(
                 f"Fallo en apagado de '{nombre}': {error}", "ShutdownCoordinator")
-        except Exception:
-            pass
 
     def registrar_apagado(
         self,
@@ -369,11 +370,9 @@ class ApexSentinel:
         try:
             SDRBroker.get().stop()
         except Exception as exc:
-            try:
+            with contextlib.suppress(Exception):
                 self.log.warning(
                     f"SDRBroker cleanup: {exc}", "ApexSentinel")
-            except Exception:
-                pass
 
     def _detener_tareas_activas(self) -> None:
         cola = getattr(self, "cola", None)
@@ -468,8 +467,8 @@ class ApexSentinel:
                     "primer_arranque": True,
                 }
             }
-        except json.JSONDecodeError:
-            raise SystemExit("[FATAL] config.json está dañado.")
+        except json.JSONDecodeError as exc:
+            raise SystemExit("[FATAL] config.json está dañado.") from exc
 
     def _guardar_config(self) -> None:
         try:
@@ -494,11 +493,9 @@ class ApexSentinel:
 
     def _limpiar(self) -> None:
         comando = ["cmd", "/c", "cls"] if os.name == "nt" else ["clear"]
-        try:
+        with contextlib.suppress(subprocess.TimeoutExpired, FileNotFoundError, OSError, SubprocesoRechazadoError):
             self.ejecutar_subproceso(
                 comando, timeout=3.0, capturar_salida=False)
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError, SubprocesoRechazadoError):
-            pass
 
     def obtener_fabricante(self, mac: str) -> str:
         return VendorResolver.resolve(mac)

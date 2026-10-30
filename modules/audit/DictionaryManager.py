@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +17,13 @@ class DictionaryManager:
             from rich.console import Console
             self._console = Console()
 
-    BASE_PATHS: list[str] = [
+    BASE_PATHS: ClassVar[list[str]] = [
         "/usr/share/wordlists",
         "/usr/share/seclists",
         os.path.expanduser("~/.wordlists"),
     ]
 
-    DICT_MAP: dict[str, list[str]] = {
+    DICT_MAP: ClassVar[dict[str, list[str]]] = {
         "ssh": [
             "metasploit/unix_passwords.txt",
             "rockyou.txt",

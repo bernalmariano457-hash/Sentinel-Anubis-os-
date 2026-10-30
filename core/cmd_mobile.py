@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess
-
-from rich.panel import Panel
+from pathlib import Path
 
 from core._base import _DomainBase
 

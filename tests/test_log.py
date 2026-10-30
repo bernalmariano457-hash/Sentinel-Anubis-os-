@@ -5,22 +5,18 @@ import threading
 from pathlib import Path
 
 import pytest
-
 from sentinel.custody.log import (
     SCHEMA_VERSION,
-    ChainIssue,
-    ChainVerificationReport,
     CustodyAction,
     CustodyChainError,
-    CustodyIOError,
     CustodyLog,
     CustodyLogError,
     build_entry,
     finalize_entry,
 )
 from sentinel.integrity.hashing import sha256_canonical
-from sentinel.integrity.keys import InvalidSignatureError, KeyManager
-from sentinel.integrity.timestamp import TimeSource, Timestamp
+from sentinel.integrity.keys import KeyManager
+from sentinel.integrity.timestamp import Timestamp
 
 
 class TestBuildEntry:

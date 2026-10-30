@@ -5,10 +5,10 @@ import logging
 import queue
 import threading
 import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Iterator, Protocol, TypeAlias
+from typing import Any, Final, Protocol, TypeAlias
 
 import numpy as np
 from rich import box
@@ -124,7 +124,7 @@ class RecordingResult:
 
 
 def _utc_timestamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _write_json(path: Path, data: MetaDict) -> None:
@@ -296,8 +296,8 @@ class IQPlaybackEngine:
         self._console = console
 
     def play_file(self, path: Path, mode: str, sample_rate: int) -> None:
-        from modules.rf.rf_demod import Demodulator
         from modules.rf.rf_config import DemodConfig
+        from modules.rf.rf_demod import Demodulator
 
         resolved_rate = self._resolve_sample_rate(path, sample_rate)
         self._console.print(

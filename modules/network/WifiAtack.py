@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import os
-import time
 import subprocess
-import threading
 import sys
+import threading
+import time
+
 # 🛡️ CAPA DE COMPATIBILIDAD (BYPASS)
 try:
-    from scapy.all import RadioTap, Dot11, Dot11Beacon, Dot11Elt, sendp, RandMAC, Dot11Deauth
+    from scapy.all import Dot11, Dot11Beacon, Dot11Deauth, Dot11Elt, RadioTap, RandMAC, sendp
     ESPACIO_RADIO_DISPONIBLE = True
 except ImportError:
     ESPACIO_RADIO_DISPONIBLE = False

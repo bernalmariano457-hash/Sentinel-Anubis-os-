@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sentinel-Anubis lock state v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "state": {"enum": ["normal", "locked", "unlocked"]},
+    "changed_at": {"type": "string", "format": "date-time"},
+    "operator_id": {"type": "string", "minLength": 1},
+    "reason": {"type": "string", "minLength": 1},
+    "details": {"type": "object"},
+    "signature": {
+      "type": "object",
+      "properties": {
+        "algorithm": {"const": "ed25519"},
+        "value": {"type": "string"},
+        "pubkey_fingerprint": {"type": "string", "pattern": "^SHA256:[0-9a-f]{64}$"}
+      },
+      "required": ["algorithm", "value", "pubkey_fingerprint"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "state",
+    "changed_at",
+    "operator_id",
+    "reason",
+    "details",
+    "signature"
+  ],
+  "additionalProperties": false
+}

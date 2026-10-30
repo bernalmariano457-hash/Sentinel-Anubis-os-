@@ -6,10 +6,10 @@ import logging
 import os
 import threading
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("apex_sentinel.hash_chain")
 
@@ -18,15 +18,18 @@ GENESIS_HASH = "0" * 64
 
 
 class ChainIntegrityError(Exception):
+    """Base class for hash-chain errors."""
 
 
 class ChainFileError(ChainIntegrityError):
+    """The chain file is missing, unreadable, or malformed."""
 
 
 class ChainTamperedError(ChainIntegrityError):
+    """A hash in the chain does not match the expected value."""
 
 
-class BlockStatus(str, Enum):
+class BlockStatus(StrEnum):
     VALID = "VALID"
     HASH_MISMATCH = "HASH_MISMATCH"
     EVIDENCE_MISSING = "EVIDENCE_MISSING"
@@ -49,7 +52,7 @@ class ChainBlock:
         return asdict(self)
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ChainBlock":
+    def from_dict(data: dict[str, Any]) -> ChainBlock:
         try:
             return ChainBlock(
                 index=int(data["index"]),
@@ -71,10 +74,10 @@ class VerificationResult:
     is_valid: bool
     total_blocks: int
     verified_blocks: int
-    first_failure_index: Optional[int]
+    first_failure_index: int | None
     failures: list[dict[str, Any]] = field(default_factory=list)
     verified_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat())
+        default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -131,7 +134,7 @@ class HashChainLogger:
         return hasher.hexdigest()
 
     def _compute_block_hash(self, previous_hash: str, file_hash: str, timestamp: str) -> str:
-        payload = f"{previous_hash}{file_hash}{timestamp}".encode("utf-8")
+        payload = f"{previous_hash}{file_hash}{timestamp}".encode()
         return hashlib.new(self._hash_algorithm, payload).hexdigest()
 
     def _read_chain_raw(self) -> list[dict[str, Any]]:
@@ -158,11 +161,11 @@ class HashChainLogger:
             raw_blocks = self._read_chain_raw()
         return [ChainBlock.from_dict(item) for item in raw_blocks]
 
-    def get_last_block(self) -> Optional[ChainBlock]:
+    def get_last_block(self) -> ChainBlock | None:
         chain = self.load_chain()
         return chain[-1] if chain else None
 
-    def seal_evidence(self, file_path: str | os.PathLike[str], *, metadata: Optional[dict[str, Any]] = None) -> ChainBlock:
+    def seal_evidence(self, file_path: str | os.PathLike[str], *, metadata: dict[str, Any] | None = None) -> ChainBlock:
 
         path = Path(file_path)
         with self._lock:
@@ -173,7 +176,7 @@ class HashChainLogger:
             previous_hash = last_block.block_hash if last_block is not None else GENESIS_HASH
             next_index = (last_block.index +
                           1) if last_block is not None else 0
-            timestamp = datetime.now(timezone.utc).isoformat()
+            timestamp = datetime.now(UTC).isoformat()
             block_hash = self._compute_block_hash(
                 previous_hash, file_hash, timestamp)
 
@@ -216,7 +219,7 @@ class HashChainLogger:
     def verify_chain(self, *, check_evidence_files: bool = True) -> VerificationResult:
 
         failures: list[dict[str, Any]] = []
-        first_failure_index: Optional[int] = None
+        first_failure_index: int | None = None
 
         try:
             chain = self.load_chain()

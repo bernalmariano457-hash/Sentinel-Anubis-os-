@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from rich import box
 from rich.console import Console
@@ -48,7 +48,7 @@ class PluginBase:
     VERSION = "1.0"
     DESCRIPCION = "Plugin base sin descripción"
     AUTOR = "Anónimo"
-    COMANDOS:   list[str] = []
+    COMANDOS: ClassVar[list[str]] = []
 
     def __init__(self, sentinel: ApexSentinel) -> None:
         self.sentinel = sentinel

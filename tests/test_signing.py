@@ -4,21 +4,15 @@ import json
 from pathlib import Path
 
 import pytest
-
 from sentinel.integrity.keys import (
-    InvalidSignatureBundleError,
     InvalidSignatureError,
     KeyManager,
-    OperatorIdentity,
-    SentinelKeyError,
     SignatureBundle,
 )
 from sentinel.integrity.signing import (
-    DOMAIN_BYTES,
     DOMAIN_CUSTODY_ENTRY,
     DOMAIN_FILE,
     DOMAIN_MANIFEST_ARTIFACT,
-    DOMAIN_MANIFEST_PACKAGE,
     ManifestStructureError,
     SignatureFileError,
     read_signature,
@@ -32,6 +26,7 @@ from sentinel.integrity.signing import (
     verify_artifact_manifest,
     verify_bytes,
     verify_custody_entry,
+    verify_entity,
     verify_file,
     verify_file_with_sidecar,
     verify_package_manifest,

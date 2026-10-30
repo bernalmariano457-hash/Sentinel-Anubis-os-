@@ -76,7 +76,7 @@ class NetworkCommands(_DomainBase):
                         tabla.add_row(str(puerto), servicio,
                                       "[green]ABIERTO[/green]")
                         abiertos.append({"puerto": puerto, "servicio": servicio})
-            except socket.error:
+            except OSError:
                 pass
         self.console.print(tabla)
         self.console.print(f"[dim]Puertos abiertos: {len(abiertos)}[/dim]")
@@ -86,10 +86,11 @@ class NetworkCommands(_DomainBase):
                 {"ip": objetivo, "puertos": abiertos})
         s.log.info(
             f"PortScan {objetivo}: {len(abiertos)} puertos abiertos", "PortScan")
-        if abiertos and s.cve:
-            if Prompt.ask("\n[?] ¿Cruzar con CVE?", choices=["s", "n"], default="s") == "s":
-                s.cve.analizar_resultado_scan(
-                    [{"nombre": a["servicio"], "version": ""} for a in abiertos])
+        if abiertos and s.cve and Prompt.ask(
+            "\n[?] ¿Cruzar con CVE?", choices=["s", "n"], default="s"
+        ) == "s":
+            s.cve.analizar_resultado_scan(
+                [{"nombre": a["servicio"], "version": ""} for a in abiertos])
 
     def sweep(self) -> None:
         if not self._modulo_ok("sweep"):

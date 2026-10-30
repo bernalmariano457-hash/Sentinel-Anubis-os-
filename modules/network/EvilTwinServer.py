@@ -7,12 +7,11 @@ import sys
 import threading
 from typing import TYPE_CHECKING
 
-from flask import Flask, render_template, request
-from werkzeug.serving import make_server
-
 from evil_twin_events import EventBus, EventoCaptura
 from evil_twin_renderer import PortalRenderer
 from evil_twin_store import CapturaStore
+from flask import Flask, render_template, request
+from werkzeug.serving import make_server
 
 if TYPE_CHECKING:
     from core.log_sistema import LogSistema

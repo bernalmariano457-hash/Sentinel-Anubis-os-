@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
-from xml.etree.ElementTree import Element, SubElement, ElementTree, indent
+from xml.etree.ElementTree import Element, ElementTree, SubElement, indent
 
 from rich import box
 from rich.table import Table
@@ -22,8 +22,8 @@ from rich.table import Table
 from modules.network.wifi_ble_fusion import rssi_a_distancia
 
 if TYPE_CHECKING:
-    from modules.network.bt_module import BluetoothModule, DispositivoBLE
     from modules.network.bt_mapa import DeviceTrack
+    from modules.network.bt_module import BluetoothModule, DispositivoBLE
     from modules.network.wifi_ble_fusion import EstimacionPosicion, PuntoAP
 
 log = logging.getLogger(__name__)

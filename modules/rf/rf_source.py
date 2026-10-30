@@ -6,8 +6,9 @@ import struct
 import threading
 import weakref
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Final
+from typing import Final
 
 import numpy as np
 
@@ -215,7 +216,7 @@ class _TCPBackend(SDRBackend):
                     if not chunk:
                         return None
                     self._buf.extend(chunk)
-                except socket.timeout:
+                except TimeoutError:
                     break
             if len(self._buf) < needed_bytes:
                 return None

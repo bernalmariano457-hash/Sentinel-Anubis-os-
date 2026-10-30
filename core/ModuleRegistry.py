@@ -4,11 +4,13 @@ import importlib
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 try:
     from modules.forensic.MediaRecovery import (
         MediaRecoveryEngine,
+    )
+    from modules.forensic.MediaRecovery import (
         WorkspaceManagerInterface as _WorkspaceInterface,
     )
     _MEDIA_RECOVERY_OK = True
@@ -23,7 +25,7 @@ class _SentinelWorkspaceAdapter(_WorkspaceInterface):
     def __init__(self, sentinel: Any) -> None:
         self._sentinel = sentinel
 
-    def get_active_project_path(self) -> Optional[Path]:
+    def get_active_project_path(self) -> Path | None:
         gp = getattr(self._sentinel, "gp", None)
         if gp is None:
             return None
@@ -53,7 +55,7 @@ MODULOS: list[ModuleSpec] = [
                critico=True,  display_name="SecurityModule"),
     ModuleSpec("cola",         "ColaTareas",        "core.ColaTareas"),
     ModuleSpec("gp",           "GestorProyectos",   "core.GestorProyectos"),
-    ModuleSpec("power",        "PowerManager",       "core.power_manager")
+    ModuleSpec("power",        "PowerManager",       "core.power_manager"),
     ModuleSpec("sniffer",      "TacticalSniffer",
                "modules.network.TacticalSniffer"),
     ModuleSpec("radar",        "RadarSentinel",
@@ -155,30 +157,30 @@ class ModuleRegistry:
         if not _MEDIA_RECOVERY_OK:
             self._warn(
                 "MediaRecoveryEngine — modulo no disponible en el entorno")
-            setattr(self._sentinel, "recovery", None)
+            self._sentinel.recovery = None
             return False
         try:
             inst = MediaRecoveryEngine(
                 workspace_manager=_SentinelWorkspaceAdapter(self._sentinel)
             )
-            setattr(self._sentinel, "recovery", inst)
+            self._sentinel.recovery = inst
             return True
         except Exception as exc:
             self._warn(f"MediaRecoveryEngine — error al iniciar: {exc}")
-            setattr(self._sentinel, "recovery", None)
+            self._sentinel.recovery = None
             return False
 
     def _cargar_motor_rep(self) -> bool:
         if getattr(self._sentinel, "gp", None) is None:
-            setattr(self._sentinel, "motor_rep", None)
+            self._sentinel.motor_rep = None
             return False
         try:
             from modules.reporte.MotorReportes import MotorReportes
-            setattr(self._sentinel, "motor_rep", MotorReportes(self._sentinel))
+            self._sentinel.motor_rep = MotorReportes(self._sentinel)
             return True
         except Exception as exc:
             self._warn(f"MotorReportes — error: {exc}")
-            setattr(self._sentinel, "motor_rep", None)
+            self._sentinel.motor_rep = None
             return False
 
     def _cargar_checker(self) -> bool:

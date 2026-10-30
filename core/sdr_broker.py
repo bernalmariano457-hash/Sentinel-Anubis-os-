@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import contextlib
 import multiprocessing as mp
 import queue
 import threading
 import time
-from dataclasses import dataclass, field, replace
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable
 import time as _time
+from dataclasses import dataclass, replace
+from enum import Enum
+from typing import Any
+
 import numpy as np
 
 try:
@@ -49,8 +50,8 @@ class SDRFrame:
 
 def _sdr_worker(
     config_dict: dict,
-    cmd_q: "mp.Queue",
-    publisher_q: "mp.Queue",
+    cmd_q: mp.Queue,
+    publisher_q: mp.Queue,
     stop_event: Any,
     ready_event: Any,
 ) -> None:
@@ -76,10 +77,8 @@ def _sdr_worker(
             sdr.sample_rate = config.sample_rate
             sdr.center_freq = config.center_hz
             sdr.gain = "auto" if config.gain == "auto" else float(config.gain)
-            try:
+            with contextlib.suppress(Exception):
                 sdr.freq_correction = int(config.ppm)
-            except Exception:
-                pass
             opened = True
             ready_event.set()
             return True
@@ -122,16 +121,12 @@ def _sdr_worker(
                 elif t == "ppm":
                     config.ppm = int(cmd["value"])
                     if sdr is not None:
-                        try:
+                        with contextlib.suppress(Exception):
                             sdr.freq_correction = config.ppm
-                        except Exception:
-                            pass
                 elif t == "reopen":
                     if sdr is not None:
-                        try:
+                        with contextlib.suppress(Exception):
                             sdr.close()
-                        except Exception:
-                            pass
                         sdr = None
                     opened = False
                     _open()
@@ -149,14 +144,11 @@ def _sdr_worker(
             continue
 
         try:
-
             if config.mode in (SDRMode.IQ, SDRMode.BOTH):
-         n = max(config.fft_size * 2, 65_536)
-
-
-    else:
-        n = config.fft_size * 2
-    iq = sdr.read_samples(n).astype(np.complex64, copy=False)
+                n = max(config.fft_size * 2, 65_536)
+            else:
+                n = config.fft_size * 2
+            iq = sdr.read_samples(n).astype(np.complex64, copy=False)
 
             if iq is None or len(iq) < config.fft_size:
                 time.sleep(0.05)
@@ -187,14 +179,10 @@ def _sdr_worker(
             try:
                 publisher_q.put_nowait(frame)
             except queue.Full:
-                try:
+                with contextlib.suppress(queue.Empty):
                     publisher_q.get_nowait()
-                except queue.Empty:
-                    pass
-                try:
+                with contextlib.suppress(queue.Full):
                     publisher_q.put_nowait(frame)
-                except queue.Full:
-                    pass
 
             last_tx = frame.timestamp
 
@@ -202,31 +190,29 @@ def _sdr_worker(
             time.sleep(0.1)
 
     if sdr is not None:
-        try:
+        with contextlib.suppress(Exception):
             sdr.close()
-        except Exception:
-            pass
 
 
 class SDRBroker:
-    _instance: "SDRBroker | None" = None
+    _instance: SDRBroker | None = None
     _lock = threading.Lock()
 
     @classmethod
-    def get(cls) -> "SDRBroker":
+    def get(cls) -> SDRBroker:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = SDRBroker()
             return cls._instance
 
     def __init__(self) -> None:
-        self._cmd_q:        "mp.Queue" = mp.Queue()
-        self._publisher_q:  "mp.Queue" = mp.Queue(maxsize=8)
+        self._cmd_q:        mp.Queue = mp.Queue()
+        self._publisher_q:  mp.Queue = mp.Queue(maxsize=8)
         self._stop_event = mp.Event()
         self._ready_event = mp.Event()
         self._worker:       mp.Process | None = None
         self._config = SDRConfig()
-        self._subscribers:  list[tuple[str, "mp.Queue"]] = []
+        self._subscribers:  list[tuple[str, mp.Queue]] = []
         self._sub_lock = threading.Lock()
         self._broadcast_thread: threading.Thread | None = None
         self._broadcast_stop = threading.Event()
@@ -274,10 +260,8 @@ class SDRBroker:
         if not self._started:
             return
         self._broadcast_stop.set()
-        try:
+        with contextlib.suppress(Exception):
             self._cmd_q.put_nowait({"type": "stop"})
-        except Exception:
-            pass
         self._stop_event.set()
         if self._broadcast_thread:
             self._broadcast_thread.join(timeout=1.5)
@@ -319,18 +303,16 @@ class SDRBroker:
         self._send({"type": "reopen"})
 
     def _send(self, cmd: dict) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self._cmd_q.put_nowait(cmd)
-        except Exception:
-            pass
 
-    def subscribe(self, name: str, maxsize: int = 4) -> "SDRSubscription":
-        q: "mp.Queue" = mp.Queue(maxsize=maxsize)
+    def subscribe(self, name: str, maxsize: int = 4) -> SDRSubscription:
+        q: mp.Queue = mp.Queue(maxsize=maxsize)
         with self._sub_lock:
             self._subscribers.append((name, q))
         return SDRSubscription(name=name, queue=q, broker=self)
 
-    def _unsubscribe(self, q: "mp.Queue") -> None:
+    def _unsubscribe(self, q: mp.Queue) -> None:
         with self._sub_lock:
             self._subscribers = [(n, qq)
                                  for (n, qq) in self._subscribers if qq is not q]
@@ -347,14 +329,10 @@ class SDRBroker:
                 try:
                     q.put_nowait(frame)
                 except queue.Full:
-                    try:
+                    with contextlib.suppress(queue.Empty):
                         q.get_nowait()
-                    except queue.Empty:
-                        pass
-                    try:
+                    with contextlib.suppress(queue.Full):
                         q.put_nowait(frame)
-                    except queue.Full:
-                        pass
 
     @property
     def started(self) -> bool:
@@ -375,28 +353,27 @@ class SDRBroker:
 
 
 class SDRSubscription:
-    def __init__(self, name: str, queue: "mp.Queue", broker: SDRBroker) -> None:
+    def __init__(self, name: str, queue: mp.Queue, broker: SDRBroker) -> None:
         self.name = name
         self._q = queue
         self._broker = broker
         self._closed = False
-        
-    def get_iq_blocking(self, min_samples: int, timeout: float = 2.0) -> "np.ndarray | None":
 
-    buffer: list = []
-    total = 0
-    deadline = _time.time() + timeout
-    while total < min_samples and _time.time() < deadline:
-        remaining = deadline - _time.time()
-        frame = self.get(timeout=max(0.05, min(remaining, 0.5)))
-        if frame is None or frame.iq is None:
-            continue
-        buffer.append(frame.iq)
-        total += len(frame.iq)
-    if not buffer:
-        return None
-    merged = _np.concatenate(buffer) if len(buffer) > 1 else buffer[0]
-    return merged[:min_samples]
+    def get_iq_blocking(self, min_samples: int, timeout: float = 2.0) -> np.ndarray | None:
+        buffer: list = []
+        total = 0
+        deadline = _time.time() + timeout
+        while total < min_samples and _time.time() < deadline:
+            remaining = deadline - _time.time()
+            frame = self.get(timeout=max(0.05, min(remaining, 0.5)))
+            if frame is None or frame.iq is None:
+                continue
+            buffer.append(frame.iq)
+            total += len(frame.iq)
+        if not buffer:
+            return None
+        merged = np.concatenate(buffer) if len(buffer) > 1 else buffer[0]
+        return merged[:min_samples]
 
     def get_latest(self) -> SDRFrame | None:
         if self._closed:

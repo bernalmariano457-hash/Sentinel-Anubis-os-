@@ -3,11 +3,12 @@ from __future__ import annotations
 import logging
 import math
 import time
-import urllib.request
 import urllib.error
-from datetime import datetime, timezone
+import urllib.request
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
+from typing import ClassVar
 
 import numpy as np
 from rich.console import Console
@@ -20,8 +21,13 @@ log = logging.getLogger("sentinel.rf.noaa")
 _SCIPY_OK = False
 try:
     from scipy.signal import (
-        butter, sosfilt, sosfiltfilt, hilbert,
-        resample_poly, firwin, lfilter,
+        butter,
+        firwin,
+        hilbert,
+        lfilter,
+        resample_poly,
+        sosfilt,
+        sosfiltfilt,
     )
     _SCIPY_OK = True
 except ImportError:
@@ -347,7 +353,6 @@ class TerminalRenderer:
         img_a: np.ndarray,
         img_b: np.ndarray | None = None,
     ) -> None:
-        from rich.text import Text
         self.console.rule("[bold cyan]Canal A — Visible / IR[/bold cyan]")
         self._draw(img_a, "A", thermal=False)
         if img_b is not None and img_b.size > 0:
@@ -392,7 +397,7 @@ class TerminalRenderer:
 
 
 class TLEManager:
-    _cache:    dict[str, tuple[str, str]] = {}
+    _cache:    ClassVar[dict[str, tuple[str, str]]] = {}
     _cache_ts: float = 0.0
     _TTL = 3600 * 6
 
@@ -440,7 +445,7 @@ class PassCalculator:
         except ImportError:
             return [{"error": "pip install sgp4 --break-system-packages"}]
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         passes: list[dict] = []
 
         for sat_name in NOAA_SATELLITES:
@@ -458,7 +463,7 @@ class PassCalculator:
 
             for step_s in range(0, 86400, 30):
                 t = now.timestamp() + step_s
-                dt = datetime.fromtimestamp(t, tz=timezone.utc)
+                dt = datetime.fromtimestamp(t, tz=UTC)
                 jd, fr = jday(
                     dt.year, dt.month, dt.day,
                     dt.hour, dt.minute, dt.second + dt.microsecond / 1e6,
@@ -477,7 +482,7 @@ class PassCalculator:
                 elif elev <= horizon_deg and in_pass:
                     in_pass = False
                     dt_start = datetime.fromtimestamp(
-                        pass_start, tz=timezone.utc)
+                        pass_start, tz=UTC)
                     passes.append({
                         "satellite":  sat_name,
                         "freq_mhz":   NOAA_SATELLITES[sat_name] / 1e6,
@@ -544,34 +549,34 @@ class NOAADecoder:
         ppm = getattr(hw, "ppm_correction",  0)
         idx = getattr(hw, "device_index",    0)
 
-    def _factory(freq_hz: float, sample_rate: int) -> Source:
-    try:
-        from modules.rf.rf_broker_backend import open_broker_backend
-        backend = open_broker_backend(
-            freq_hz=freq_hz,
-            sample_rate=sample_rate,
-            gain=gain,
-            ppm=ppm,
-            device_index=idx,
-        )
-        from modules.rf.rf_source import _cf32_to_u8
+        def _factory(freq_hz: float, sample_rate: int) -> Source:
+            try:
+                from modules.rf.rf_broker_backend import open_broker_backend
+                backend = open_broker_backend(
+                    freq_hz=freq_hz,
+                    sample_rate=sample_rate,
+                    gain=gain,
+                    ppm=ppm,
+                    device_index=idx,
+                )
+                from modules.rf.rf_source import _cf32_to_u8
 
-        def _read() -> bytes | None:
-            iq = backend.read_raw(sample_rate // 10)
-            if iq is None:
-                return None
-            return _cf32_to_u8(iq)
+                def _read() -> bytes | None:
+                    iq = backend.read_raw(sample_rate // 10)
+                    if iq is None:
+                        return None
+                    return _cf32_to_u8(iq)
 
-        return _read
-    except Exception as exc:
-        log.warning(
-            "NOAADecoder: broker no disponible (%s) — null source", exc)
+                return _read
+            except Exception as exc:
+                log.warning(
+                    "NOAADecoder: broker no disponible (%s) \u2014 null source", exc)
 
-        def _null() -> None:
-            import time as _t
-            _t.sleep(0.1)
-            return None
-        return _null
+                def _null() -> None:
+                    import time as _t
+                    _t.sleep(0.1)
+                    return None
+                return _null
 
         self._rf_factory: SourceFactory = _factory
 
@@ -639,7 +644,7 @@ class NOAADecoder:
         duration: int = 120,
         sat_name: str = "NOAA",
         save_png: bool = True,
-        on_evidence: Callable[[str, dict | None, None]] = None,
+        on_evidence: Callable[[str, dict | None, None]] | None = None,
     ) -> Path | None:
         self.console.print(
             f"\n[bold green][NOAA] {sat_name}  {freq_hz/1e6:.3f} MHz  {duration}s[/bold green]\n"
@@ -651,8 +656,8 @@ class NOAADecoder:
         actual_rate: int = APT_AUDIO_RATE
 
         try:
-            from modules.rf.rf_demod import Demodulator
             from modules.rf.rf_config import DemodConfig
+            from modules.rf.rf_demod import Demodulator
 
             cfg = DemodConfig(
                 mode="wfm", audio_rate=APT_AUDIO_RATE, volume=1.0)
@@ -847,7 +852,7 @@ class NOAADecoder:
         on_evidence: Callable[[str, dict | None, None]],
     ) -> Path | None:
         try:
-            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             slug = sat_name.replace(" ", "_").replace("-", "_")
             out = Path("data/evidence/rf/noaa")
             out.mkdir(parents=True, exist_ok=True)
@@ -888,8 +893,8 @@ class NOAADecoder:
             return None
 
     def _show_passes(self) -> None:
-        from rich.table import Table
         from rich import box
+        from rich.table import Table
 
         lat_s = Prompt.ask(
             "[bold cyan][?] Latitud  (ej. 21.48)[/bold cyan]").strip()

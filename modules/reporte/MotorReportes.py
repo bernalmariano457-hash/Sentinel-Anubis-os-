@@ -4,7 +4,6 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn

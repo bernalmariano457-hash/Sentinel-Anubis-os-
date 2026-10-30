@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import math
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
@@ -184,7 +184,7 @@ def _modulate_pulsed(
     envelope     = np.zeros(n_samples, dtype=np.float32)
     starts       = np.arange(0, n_samples, pulse_period)
     ends         = np.minimum(starts + pulse_width, n_samples)
-    for s, e in zip(starts, ends):
+    for s, e in zip(starts, ends, strict=False):
         envelope[s:e] = 1.0
     return amp * envelope * carrier
 
@@ -379,7 +379,7 @@ def generate_fixture(
 
     iq.view(np.float32).tofile(str(out_path))
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     meta: dict = {
         "global": {
             "core:datatype":    _SIGMF_DATATYPE,

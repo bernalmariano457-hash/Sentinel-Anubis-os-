@@ -5,19 +5,17 @@ import zipfile
 from pathlib import Path
 
 import pytest
-
-from sentinel.custody.log import CustodyAction, CustodyLog
-from sentinel.integrity.keys import KeyManager, OperatorIdentity
-from sentinel.integrity.timestamp import TimeSource, Timestamp
+from sentinel.custody.log import CustodyLog
+from sentinel.integrity.keys import KeyManager
+from sentinel.integrity.timestamp import Timestamp
 from sentinel.packaging.sae import (
     CUSTODY_MEMBER,
     MANIFEST_MEMBER,
     MANIFEST_SIG_MEMBER,
-    SAEError,
+    TIMELINE_MEMBER,
     SAEPackError,
     SAEUnpackError,
     SAEVerifyError,
-    TIMELINE_MEMBER,
     pack,
     unpack,
     verify,
@@ -456,7 +454,7 @@ class TestUnpack:
         bad = tmp_path / "evil.sae"
         with zipfile.ZipFile(bad, "w") as zf:
             zf.writestr("../outside.txt", b"pwned")
-        with pytest.raises(SAEUnpackError, match=".."):
+        with pytest.raises(SAEUnpackError, match=r"\.\."):
             unpack(bad, tmp_path / "out")
 
     def test_rejects_absolute_path(self, tmp_path: Path) -> None:

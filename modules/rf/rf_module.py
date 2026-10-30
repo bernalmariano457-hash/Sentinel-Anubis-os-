@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Callable, Protocol, runtime_checkable
+from collections.abc import Callable
+from typing import Protocol, runtime_checkable
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
-from rich import box
 
 from modules.rf.bands import tactical_bands
-from modules.rf.rf_config import load_config, RFConfig
+from modules.rf.rf_config import RFConfig
 from modules.rf.RFScanner import RFScanner
 
 log = logging.getLogger("sentinel.rf.module")

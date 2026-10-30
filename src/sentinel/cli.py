@@ -5,6 +5,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from sentinel import SentinelError
+from sentinel.integrity.keys import KeyManager
+from sentinel.security import Lockdown, LockState, StateError, read_state
+from sentinel.security.state import STATE_FILENAME
+
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -20,6 +25,8 @@ from sentinel.integrity.keys import (
 from sentinel.packaging.sae import (
     SAEError,
     SAEVerificationReport,
+)
+from sentinel.packaging.sae import (
     verify as verify_sae,
 )
 
@@ -203,6 +210,84 @@ def cmd_show_operator(operator_pub: Path) -> None:
             title=str(operator_pub),
         )
     )
+
+_WORKSPACE_OPTION = click.option(
+    "--workspace",
+    type=click.Path(file_okay=False, path_type=Path),
+    required=True,
+    help="Workspace directory.",
+)
+
+_STATE_STYLES = {
+    LockState.NORMAL: "green",
+    LockState.LOCKED: "red",
+    LockState.UNLOCKED: "yellow",
+}
+
+
+@main.command("vault-setup")
+@_WORKSPACE_OPTION
+@click.option("--operator-id", required=True, help="Operator that owns the vault.")
+@click.option("--passphrase", prompt=True, hide_input=True, confirmation_prompt=True)
+def vault_setup(workspace: Path, operator_id: str, passphrase: str) -> None:
+    """Initialise the evidence vault for a workspace."""
+    try:
+        km = KeyManager.load(operator_id, operator_id)
+        Lockdown(workspace, km).setup(passphrase)
+    except (SentinelError, ValueError) as e:
+        err_console.print(f"[red]error:[/red] {e}")
+        sys.exit(2)
+    console.print(f"[green]vault ready[/green] in {workspace}")
+
+
+@main.command("lock")
+@_WORKSPACE_OPTION
+@click.option("--operator-id", required=True, help="Operator signing the lock.")
+@click.option("--reason", default="manual", show_default=True)
+@click.option("--passphrase", prompt=True, hide_input=True)
+def lock(workspace: Path, operator_id: str, reason: str, passphrase: str) -> None:
+    """Encrypt and remove evidence from the workspace."""
+    try:
+        km = KeyManager.load(operator_id, operator_id)
+        record = Lockdown(workspace, km).lock(passphrase, reason=reason)
+    except (SentinelError, ValueError) as e:
+        err_console.print(f"[red]error:[/red] {e}")
+        sys.exit(2)
+    console.print(f"[red]locked[/red] at {record.changed_at} ({record.reason})")
+
+
+@main.command("unlock")
+@_WORKSPACE_OPTION
+@click.option("--operator-id", required=True, help="Operator that signed the lock.")
+@click.option("--passphrase", prompt=True, hide_input=True)
+def unlock(workspace: Path, operator_id: str, passphrase: str) -> None:
+    """Decrypt and restore evidence into the workspace."""
+    try:
+        km = KeyManager.load(operator_id, operator_id)
+        record = Lockdown(workspace, km).unlock(passphrase)
+    except (SentinelError, ValueError) as e:
+        err_console.print(f"[red]error:[/red] {e}")
+        sys.exit(2)
+    console.print(f"[yellow]unlocked[/yellow] at {record.changed_at}")
+
+
+@main.command("status")
+@_WORKSPACE_OPTION
+def status(workspace: Path) -> None:
+    """Show the current lock state of a workspace."""
+    if not (workspace / STATE_FILENAME).exists():
+        console.print("no state file (normal)")
+        return
+    try:
+        record = read_state(workspace)
+    except StateError as e:
+        err_console.print(f"[red]error:[/red] {e}")
+        sys.exit(2)
+    style = _STATE_STYLES[record.state]
+    console.print(f"state:    [{style}]{record.state.value}[/{style}]")
+    console.print(f"changed:  {record.changed_at}")
+    console.print(f"reason:   {record.reason}")
+    console.print(f"operator: [cyan]{record.operator_id}[/cyan]")
 
 
 if __name__ == "__main__":

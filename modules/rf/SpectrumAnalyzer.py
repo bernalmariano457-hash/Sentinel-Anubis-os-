@@ -11,9 +11,9 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, Sequence
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 from rich import box
@@ -22,11 +22,13 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 
-from core.platform import PlatformInfo, detect as detect_platform
-from core.keybindings import BandPreset, KeyBindings, load as load_keys
+from core.keybindings import BandPreset, KeyBindings
+from core.keybindings import load as load_keys
+from core.platform import PlatformInfo
+from core.platform import detect as detect_platform
+
 if TYPE_CHECKING:
     from Main import ApexSentinel
-    from modules.rf.rf_source import SDRBackend
 
 log = logging.getLogger("sentinel.rf.spectrum")
 
@@ -339,12 +341,12 @@ class _SDRAdapter:
         self._broker.tune(mhz * 1e6)
         self._cfg.center_mhz = mhz
 
-    def set_gain(self, gain: "str | float") -> None:
+    def set_gain(self, gain: str | float) -> None:
         value = "auto" if str(gain).lower() == "auto" else float(gain)
         self._broker.set_gain(value)
         self._cfg.gain = str(gain)
 
-    def read_psd(self) -> "np.ndarray | None":
+    def read_psd(self) -> np.ndarray | None:
         frame = self._sub.get_latest()
         if frame is None or frame.psd_dbm is None:
             return None
@@ -469,7 +471,7 @@ def _render_spectrum_matrix(
     rows = np.arange(H - 1, -1, -1)
     db_values = cfg.floor_dbm + (rows / H) * (cfg.ref_dbm - cfg.floor_dbm)
 
-    for row_idx, (row, db) in enumerate(zip(rows, db_values)):
+    for _row_idx, (row, db) in enumerate(zip(rows, db_values, strict=False)):
         body.append(f"{db:>6.0f} │", style="dim green")
 
         norm_row = norm
@@ -779,14 +781,14 @@ def _serialize_export_to_json(payload: _ExportPayload) -> str:
         ],
         "spectrum": [
             {"freq_mhz": float(f), "power_dbm": float(p)}
-            for f, p in zip(payload.freqs_mhz.tolist(), payload.powers_dbm.tolist())
+            for f, p in zip(payload.freqs_mhz.tolist(), payload.powers_dbm.tolist(), strict=False)
         ],
     }, indent=2)
 
 
 def _write_export_csv(path: Path, payload: _ExportPayload) -> None:
     rows: list[tuple[float, float]] = list(
-        zip(payload.freqs_mhz.tolist(), payload.powers_dbm.tolist())
+        zip(payload.freqs_mhz.tolist(), payload.powers_dbm.tolist(), strict=False)
     )
     with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
@@ -1158,7 +1160,7 @@ def _channel_power(
 def _freq_axis(start: float, end: float, W: int) -> str:
     n = min(6, W // 12)
     line = [" "] * W
-    for pos, f in zip(np.linspace(0, W - 1, n).astype(int), np.linspace(start, end, n)):
+    for pos, f in zip(np.linspace(0, W - 1, n).astype(int), np.linspace(start, end, n), strict=False):
         lbl = f"{f:.1f}"
         s = max(0, pos - len(lbl) // 2)
         for i, ch in enumerate(lbl):

@@ -268,7 +268,7 @@ def _canvas_a_text(g: _Canvas) -> Text:
 # RENDER PRINCIPAL DEL MAPA
 
 def render_mapa(
-    dispositivos: list["DispositivoBLE"],
+    dispositivos: list[DispositivoBLE],
     tracks: dict[str, DeviceTrack],
     ciclo: int,
 ) -> Text:
@@ -336,7 +336,7 @@ def render_mapa(
 # PANEL LATERAL
 
 def _panel_lateral(
-    dispositivos: list["DispositivoBLE"],
+    dispositivos: list[DispositivoBLE],
     tracks: dict[str, DeviceTrack],
     t_inicio: float,
     ciclo: int,
@@ -454,7 +454,7 @@ def _panel_lateral(
 # VISTA COMPLETA
 
 def render_vista(
-    dispositivos: list["DispositivoBLE"],
+    dispositivos: list[DispositivoBLE],
     tracks:        dict[str, DeviceTrack],
     t_inicio:      float,
     ciclo:         int,
@@ -482,7 +482,7 @@ def render_vista(
 # DETECCIÓN DE ALERTAS
 
 def _evaluar_alertas(
-    dispositivos: list["DispositivoBLE"],
+    dispositivos: list[DispositivoBLE],
     tracks: dict[str, DeviceTrack],
     alertas: list[str],
 ) -> None:
@@ -509,7 +509,7 @@ def _evaluar_alertas(
 class BLEMapaRadar:
     SCAN_INTERVAL = 5.0
 
-    def __init__(self, bt_module: "BluetoothModule"):
+    def __init__(self, bt_module: BluetoothModule):
         self.bt = bt_module
         self.console: Console = getattr(bt_module, "console", Console())
         self.log = getattr(bt_module, "log",  None)
@@ -586,7 +586,12 @@ class BLEMapaRadar:
                 nuevos_ciclo: list = []
 
                 # Escaneo BLE
-                def _cb(device: "BLEDevice", adv: "AdvertisementData"):
+                def _cb(
+                    device: BLEDevice,
+                    adv: AdvertisementData,
+                    ciclo: int = ciclo,
+                    nuevos_ciclo: list = nuevos_ciclo,
+                ):
                     rssi = adv.rssi if adv.rssi else -99
                     servicios = [str(u) for u in (adv.service_uuids or [])]
                     with self._lock:

@@ -207,8 +207,8 @@ class GeomapSentinel:
         return 0.0, 0.0
 
     def _mostrar_fallback_tabla(self, targets: dict[str, dict[str, Any]]) -> None:
-        from rich.table import Table
         from rich import box
+        from rich.table import Table
 
         tabla = Table(
             title=f"[bold green]RADAR — {len(targets)} objetivo(s)[/bold green]",

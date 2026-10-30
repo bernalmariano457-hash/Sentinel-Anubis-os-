@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from sentinel.custody.log import CustodyAction, CustodyLog
 from sentinel.integrity.hashing import hash_file
 from sentinel.integrity.keys import KeyManager

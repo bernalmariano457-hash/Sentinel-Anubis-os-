@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import ClassVar
 
 from rich.console import Console
 from rich.panel import Panel
@@ -31,7 +32,7 @@ class AuditEngine:
     TIMEOUT_SQLMAP: int = 600
     TIMEOUT_DEFAULT: int = 60
 
-    HERRAMIENTAS_REQUERIDAS: list[str] = ["nmap", "sqlmap"]
+    HERRAMIENTAS_REQUERIDAS: ClassVar[list[str]] = ["nmap", "sqlmap"]
 
     def __init__(self, main_app):
         self.main_app = main_app

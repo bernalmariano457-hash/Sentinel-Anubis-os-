@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import ipaddress
 import json
@@ -10,9 +11,10 @@ import random
 import threading
 import time
 from collections import deque
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import ClassVar
 
 import requests
 from rich import box
@@ -25,7 +27,9 @@ from rich.text import Text
 
 # Scapy (opcional: modo demo funciona sin él)
 try:
-    from scapy.all import Dot11, Dot11Elt, sniff as scapy_sniff
+    from scapy.all import Dot11, Dot11Elt
+    from scapy.all import sniff as scapy_sniff
+
     # FIX (ALTO): import movido al nivel de módulo; ya no se repite por paquete
     from scapy.layers.inet import IP as ScapyIP
     _SCAPY_OK = True
@@ -302,9 +306,9 @@ def _beep(n: int = 1) -> None:
 
 class ExportadorSesion:
     @staticmethod
-    def exportar(targets: dict[str, "Dispositivo"],
+    def exportar(targets: dict[str, Dispositivo],
                  geo_cache: dict[str, GeoIP]) -> tuple[Path, Path]:
-        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
         base = Path(f"sentinel_sesion_{ts}")
 
         # JSON
@@ -366,7 +370,7 @@ class ExportadorSesion:
 
 class RenderRadar:
 
-    SIMBOLO = {"CRITICO": "◉", "ALTO": "●", "MEDIO": "○", "BAJO": "·"}
+    SIMBOLO: ClassVar[dict[str, str]] = {"CRITICO": "◉", "ALTO": "●", "MEDIO": "○", "BAJO": "·"}
 
     def __init__(self, radius: int = RADAR_RADIUS):
         self.radius = radius
@@ -375,7 +379,7 @@ class RenderRadar:
     def tick(self) -> None:
         self._barrido = (self._barrido + 0.15) % (2 * math.pi)
 
-    def render(self, targets: dict[str, "Dispositivo"]) -> Panel:
+    def render(self, targets: dict[str, Dispositivo]) -> Panel:
         gs = self.radius * 2 + 1
         grid: list[list[str]] = [[" " for _ in range(gs)] for _ in range(gs)]
         c = self.radius
@@ -404,7 +408,7 @@ class RenderRadar:
         grid[c][c] = "╋"
 
         activos = {m: d for m, d in targets.items() if d.activo}
-        for mac, dev in activos.items():
+        for _mac, dev in activos.items():
             x = int(c + dev.distancia_visual * math.cos(dev.angle))
             y = int(c + dev.distancia_visual * math.sin(dev.angle))
             if 0 <= x < gs and 0 <= y < gs:
@@ -442,8 +446,8 @@ class RenderRadar:
 
 class RenderMapa:
 
-    SIMBOLO_TIPO = {"active": "●", "warn": "◆", "danger": "◉"}
-    COLOR_TIPO = {"active": "green", "warn": "yellow", "danger": "red"}
+    SIMBOLO_TIPO: ClassVar[dict[str, str]] = {"active": "●", "warn": "◆", "danger": "◉"}
+    COLOR_TIPO: ClassVar[dict[str, str]] = {"active": "green", "warn": "yellow", "danger": "red"}
 
     def __init__(self, ancho: int = MAP_ANCHO, alto: int = MAP_ALTO):
         self.ancho = ancho
@@ -507,7 +511,7 @@ class RenderMapa:
 
 class RenderTablaDispositivos:
 
-    def render(self, targets: dict[str, "Dispositivo"]) -> Panel:
+    def render(self, targets: dict[str, Dispositivo]) -> Panel:
         tabla = Table(
             box=box.SIMPLE_HEAD, header_style="bold green",
             show_edge=False, expand=True,
@@ -595,7 +599,7 @@ class RenderLog:
     def agregar(self, msg: str, nivel: str = "INFO") -> None:
         color = {"INFO": "green", "WARN": "yellow", "DANGER": "red",
                  "GEO": "cyan", "DEBUG": "dim"}.get(nivel, "white")
-        ts = datetime.now(tz=timezone.utc).strftime("%H:%M:%S")
+        ts = datetime.now(tz=UTC).strftime("%H:%M:%S")
         line = Text()
         line.append(ts,  style="dim green")
         line.append(" ")
@@ -710,10 +714,8 @@ class RadarSentinel:
             rssi = -90
         ssid = "Oculto"
         if pkt.haslayer(Dot11Elt) and pkt.info:
-            try:
+            with contextlib.suppress(Exception):
                 ssid = pkt.info.decode("utf-8", errors="ignore") or "Oculto"
-            except Exception:
-                pass
         self._registrar(mac, rssi, ssid)
 
         # FIX (ALTO): ScapyIP ya está importado a nivel de módulo
@@ -826,13 +828,13 @@ class RadarSentinel:
         return layout
 
     def _render_header(self) -> Panel:
-        ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ts = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         modo = "[yellow]DEMO[/yellow]" if self.demo_mode else f"[green]{self.interface}[/green]"
         with self._lock:
             n = len(self._targets)
         txt = Text()
         txt.append("APEX SENTINEL", style="bold green")
-        txt.append(f" · RadarSentinel v2.3 · ", style="dim green")
+        txt.append(" · RadarSentinel v2.3 · ", style="dim green")
         txt.append(f"iface: {modo}", style="green")
         txt.append(f"  modo: [cyan]{self.modo}[/cyan]", style="")
         txt.append(f"  paquetes: {self._paquetes}", style="dim green")

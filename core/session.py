@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class Session:
-    def __init__(self, sentinel: "ApexSentinel") -> None:
+    def __init__(self, sentinel: ApexSentinel) -> None:
         self._s = sentinel
 
     def _console(self):

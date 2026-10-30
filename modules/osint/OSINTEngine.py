@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 from rich import box
-from rich.columns import Columns
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.rule import Rule
@@ -218,7 +217,7 @@ class OSINTEngine:
             resultado["A"] = []
 
         try:
-            import dns.resolver  # noqa: PLC0415
+            import dns.resolver
             mx = [str(r.exchange).rstrip(".") for r in
                   dns.resolver.resolve(dominio, "MX")]
             resultado["MX"] = mx
@@ -230,7 +229,7 @@ class OSINTEngine:
     def _whois(self, dominio: str) -> dict[str, Any] | None:
         # Intentar python-whois primero (más fiable)
         try:
-            import whois  # noqa: PLC0415
+            import whois
             w = whois.whois(dominio)
             if w:
                 return {k: str(v) for k, v in w.items()
@@ -365,7 +364,7 @@ class OSINTEngine:
             "OSINTEngine",
         )
 
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
         ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         seguro = objetivo.replace(".", "_").replace("/", "_")[:40]
         destino = _EVIDENCE_DIR / f"{tipo}_{seguro}_{ts}.json"

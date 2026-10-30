@@ -14,8 +14,9 @@ from rich.progress import (
 
 if TYPE_CHECKING:
     from rich.console import Console
-    from core.log_sistema import LogSistema
+
     from core.GestorProyectos import GestorProyectos
+    from core.log_sistema import LogSistema
 
 
 class UIWidgets:

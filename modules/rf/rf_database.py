@@ -5,10 +5,11 @@ import json
 import logging
 import sqlite3
 import threading
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final, Generator, Iterator
+from typing import Any, Final
 
 log: Final = logging.getLogger("sentinel.rf.database")
 
@@ -130,15 +131,15 @@ _CSV_EXPORT_FIELDS: Final[tuple[str, ...]] = (
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _hours_ago_iso(hours: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    return (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
 
 
 def _days_ago_iso(days: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
 
 def _extract_banda_tuple(signal_dict: dict[str, Any]) -> tuple[str | None, str | None]:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import logging
 import math
 import os
@@ -7,8 +8,9 @@ import subprocess
 import sys
 import tempfile
 import wave
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Final, Protocol
+from typing import Final, Protocol
 
 import numpy as np
 
@@ -40,27 +42,15 @@ _DeemphFn = Callable[[np.ndarray, float, float], np.ndarray]
 def _resolve_pyaudio() -> bool:
     if not _IS_LINUX:
         return False
-    try:
-        import pyaudio as _pa
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("pyaudio") is not None
 
 
 def _resolve_sounddevice() -> bool:
-    try:
-        import sounddevice as _sd
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("sounddevice") is not None
 
 
 def _resolve_scipy_decimate() -> bool:
-    try:
-        from scipy.signal import decimate as _d
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("scipy.signal") is not None
 
 
 _PYAUDIO_AVAILABLE: Final[bool] = _resolve_pyaudio()

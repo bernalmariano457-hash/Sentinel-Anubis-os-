@@ -9,7 +9,7 @@ class NetworkModule:
 
     def escanear_red(self):
         self.sentinel.console.print(
-            f"\n[cyan][*] Iniciando escaneo de red...[/cyan]")
+            "\n[cyan][*] Iniciando escaneo de red...[/cyan]")
         rango = "192.168.1.1/24"
         solicitud = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=rango)
         try:
@@ -19,6 +19,6 @@ class NetworkModule:
             for _, recibido in anuncios:
                 self.sentinel.console.print(
                     f"  {recibido.psrc:<15}   {recibido.hwsrc:<20}")
-        except:
+        except Exception:
             self.sentinel.console.print(
                 "[red][!] Error: ¿Tienes permisos de Administrador?[/red]")

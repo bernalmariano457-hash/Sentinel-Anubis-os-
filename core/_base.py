@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from Main import ApexSentinel
     from rich.console import Console
+
+    from Main import ApexSentinel
 
 
 class _DomainBase:

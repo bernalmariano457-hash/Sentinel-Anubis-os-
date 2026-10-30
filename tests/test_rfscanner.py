@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import json
-import math
-import sqlite3
-import tempfile
-from pathlib import Path
 import sys
-import os
+from pathlib import Path
 
-import pytest
 import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -219,7 +215,7 @@ class TestDSP:
 
     def test_psd_with_short_samples(self, dsp_engine):
         iq = np.random.randn(100).astype(np.complex64)
-        freqs, psd = dsp_engine.compute_psd(iq)
+        _freqs, psd = dsp_engine.compute_psd(iq)
         assert np.all(np.isfinite(psd))
 
     def test_freq_resolution(self, dsp_engine, sample_rate, fft_size):
@@ -260,7 +256,7 @@ class TestMockSDR:
         assert power > 0
 
     def test_from_file(self, tmp_dir, sample_rate):
-        from modules.rf.rf_mock import generate_fixture, MockSDRManager, SyntheticSignal
+        from modules.rf.rf_mock import MockSDRManager, SyntheticSignal, generate_fixture
         fixture = tmp_dir / "test.cf32"
         generate_fixture(
             str(fixture),
@@ -295,7 +291,7 @@ class TestDemodulator:
         return Demodulator(cfg, sample_rate)
 
     def test_nfm_output_shape(self, demod, sample_rate):
-        from modules.rf.rf_mock import generate_iq, SyntheticSignal
+        from modules.rf.rf_mock import SyntheticSignal, generate_iq
         iq = generate_iq(sample_rate, sample_rate // 2,
                          [SyntheticSignal(mode="nfm", power_dbm=-50)])
         audio = demod.demodulate(iq)
@@ -306,7 +302,7 @@ class TestDemodulator:
     def test_am_output_shape(self, sample_rate):
         from modules.rf.rf_config import DemodConfig
         from modules.rf.rf_demod import Demodulator
-        from modules.rf.rf_mock import generate_iq, SyntheticSignal
+        from modules.rf.rf_mock import SyntheticSignal, generate_iq
         cfg = DemodConfig(mode="am", audio_rate=48_000)
         demod = Demodulator(cfg, sample_rate)
         iq = generate_iq(sample_rate, sample_rate // 2,
@@ -324,7 +320,7 @@ class TestDemodulator:
         assert demod.demodulate(iq) is None
 
     def test_save_wav(self, demod, sample_rate, tmp_dir):
-        from modules.rf.rf_mock import generate_iq, SyntheticSignal
+        from modules.rf.rf_mock import SyntheticSignal, generate_iq
         iq = generate_iq(sample_rate, sample_rate // 4,
                          [SyntheticSignal(mode="nfm", power_dbm=-50)])
         audio = demod.demodulate(iq)
@@ -341,8 +337,8 @@ class TestSignalDB:
         assert sid > 0
 
     def test_insert_and_query_signal(self, signal_db):
-        from modules.rf.dsp import Signal
         from modules.rf.bands import identify_band
+        from modules.rf.dsp import Signal
         signal_db.open_session("RTL-SDR", 2_048_000)
         sig = Signal(
             freq_mhz=433.92,
@@ -385,8 +381,8 @@ class TestSignalDB:
 
 class TestCSVExporter:
     def test_export_signals(self, storage_cfg, tmp_dir):
-        from modules.rf.rf_storage import CSVExporter
         from modules.rf.dsp import Signal
+        from modules.rf.rf_storage import CSVExporter
         exp = CSVExporter(storage_cfg)
         sigs = [
             Signal(433.92, -60.0, 15.0, 12.5, -75.0,

@@ -7,9 +7,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+from _test_shared import _BtModuleFalso, _DispositivoBLEFalso
 from rich.console import Console
 
-from _test_shared import _BtModuleFalso, _DispositivoBLEFalso
 from modules.network.geo_export import (
     GeoExporter,
     _circulo_coords,

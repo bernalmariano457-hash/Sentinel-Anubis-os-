@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from rich import box
 from rich.console import Console
@@ -91,10 +93,8 @@ class ColaTareas:
     def _log(self, msg: str, estilo: str = "dim") -> None:
         log.debug("%s", msg)
         if threading.current_thread() is threading.main_thread():
-            try:
+            with contextlib.suppress(Exception):
                 self._console.print(msg, style=estilo)
-            except Exception:
-                pass
 
     def _log_bg(self, msg: str) -> None:
         log.info("%s", msg)

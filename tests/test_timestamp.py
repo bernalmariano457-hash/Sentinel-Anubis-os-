@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-
 from sentinel.integrity.timestamp import (
     MAX_YEAR,
     MIN_YEAR,
@@ -139,16 +138,16 @@ class TestValidateIsoUtc:
 
 class TestCheckYear:
     def test_ok(self) -> None:
-        dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2026, 1, 1, tzinfo=UTC)
         assert _check_year(dt) is None
 
     def test_too_early(self) -> None:
-        dt = datetime(MIN_YEAR - 1, 12, 31, tzinfo=timezone.utc)
+        dt = datetime(MIN_YEAR - 1, 12, 31, tzinfo=UTC)
         msg = _check_year(dt)
         assert msg is not None and "before" in msg
 
     def test_too_late(self) -> None:
-        dt = datetime(MAX_YEAR + 1, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(MAX_YEAR + 1, 1, 1, tzinfo=UTC)
         msg = _check_year(dt)
         assert msg is not None and "after" in msg
 
@@ -256,7 +255,7 @@ class TestSystemClock:
         class _FrozenDatetime(real_datetime):
             @classmethod
             def now(cls, tz=None):
-                return real_datetime(1970, 1, 1, tzinfo=timezone.utc)
+                return real_datetime(1970, 1, 1, tzinfo=UTC)
 
         monkeypatch.setattr(ts_mod, "datetime", _FrozenDatetime)
         ts = SystemClock().now()
@@ -309,12 +308,12 @@ class TestNtpClock:
             NtpClock(servers=["a", "b"], client=client).now()
 
     def test_offset_applied_to_local_clock(self) -> None:
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         response = _FakeNtpResponse(
             offset=10.0, delay=0.010, root_dispersion=0.001)
         ts = NtpClock(servers=["x"], client=_FakeNtpClient(
             {"x": response})).now()
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
         parsed = ts.datetime
         assert before + \
             timedelta(seconds=10) <= parsed <= after + timedelta(seconds=11)
@@ -327,8 +326,8 @@ class TestNtpClock:
 
     def test_flags_suspicious_year_from_ntp(self) -> None:
         far_past_offset_s = (
-            datetime(1970, 1, 1, tzinfo=timezone.utc)
-            - datetime.now(timezone.utc)
+            datetime(1970, 1, 1, tzinfo=UTC)
+            - datetime.now(UTC)
         ).total_seconds()
         response = _FakeNtpResponse(offset=far_past_offset_s)
         ts = NtpClock(servers=["x"], client=_FakeNtpClient(

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 _MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}$")
 
 
 class VendorResolver:
     # Tabla OUI local
-    _LOCAL: dict[str, str] = {
+    _LOCAL: ClassVar[dict[str, str]] = {
         "8C:64:A2": "Apple",        "3C:D9:2B": "Apple",        "00:17:F2": "Apple",
         "58:CB:52": "Samsung",      "90:7A:58": "Samsung",      "B0:72:BF": "Samsung",
         "D8:24:BD": "Huawei",       "00:E0:FC": "Huawei",       "6C:4B:90": "Huawei",
@@ -25,7 +26,7 @@ class VendorResolver:
         "00:1B:DC": "Samsung",      "8C:71:F8": "Samsung",
     }
 
-    _cache: dict[str, str] = {}
+    _cache: ClassVar[dict[str, str]] = {}
 
     _API_URL = "https://api.macvendors.com/{mac}"
     _USER_AGENT = "ApexSentinel/2.3"

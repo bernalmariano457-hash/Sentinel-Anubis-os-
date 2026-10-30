@@ -13,18 +13,20 @@ entre sí.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Awaitable, Callable, DefaultDict, List, Optional, Union
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger("apex_sentinel.event_bus")
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     """Catálogo canónico de tipos de eventos reconocidos por el sistema."""
     EVIDENCE_CREATED = "EVIDENCE_CREATED"
     EVIDENCE_SEALED = "EVIDENCE_SEALED"
@@ -46,7 +48,7 @@ class Event:
     timestamp: float = field(default_factory=time.time)
 
 
-EventHandler = Callable[[Event], Union[None, Awaitable[None]]]
+EventHandler = Callable[[Event], Awaitable[None] | None]
 
 
 class EventBus:
@@ -61,19 +63,19 @@ class EventBus:
     """
 
     def __init__(self, *, max_queue_size: int = 1000, history_size: int = 200) -> None:
-        self._subscribers: DefaultDict[str, List[EventHandler]] = defaultdict(list)
-        self._wildcard_subscribers: List[EventHandler] = []
+        self._subscribers: defaultdict[str, list[EventHandler]] = defaultdict(list)
+        self._wildcard_subscribers: list[EventHandler] = []
         self._queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=max_queue_size)
-        self._dispatcher_task: Optional[asyncio.Task[None]] = None
+        self._dispatcher_task: asyncio.Task[None] | None = None
         self._running: bool = False
-        self._history: List[Event] = []
+        self._history: list[Event] = []
         self._max_history: int = history_size
 
     @property
     def is_running(self) -> bool:
         return self._running
 
-    def subscribe(self, event_type: Union[str, EventType], handler: EventHandler) -> None:
+    def subscribe(self, event_type: str | EventType, handler: EventHandler) -> None:
         """
         Suscribe un manejador a un tipo de evento específico.
 
@@ -87,7 +89,7 @@ class EventBus:
             self._subscribers[key].append(handler)
         logger.debug("Suscriptor registrado para '%s': %s", key, getattr(handler, "__name__", repr(handler)))
 
-    def unsubscribe(self, event_type: Union[str, EventType], handler: EventHandler) -> bool:
+    def unsubscribe(self, event_type: str | EventType, handler: EventHandler) -> bool:
         """Elimina un manejador previamente suscrito. Retorna True si existía, False en caso contrario."""
         key = event_type.value if isinstance(event_type, EventType) else str(event_type)
         try:
@@ -101,8 +103,8 @@ class EventBus:
 
     async def publish(
         self,
-        event_type: Union[str, EventType],
-        payload: Optional[dict[str, Any]] = None,
+        event_type: str | EventType,
+        payload: dict[str, Any] | None = None,
         source: str = "unknown",
     ) -> Event:
         """
@@ -120,8 +122,8 @@ class EventBus:
 
     def publish_nowait(
         self,
-        event_type: Union[str, EventType],
-        payload: Optional[dict[str, Any]] = None,
+        event_type: str | EventType,
+        payload: dict[str, Any] | None = None,
         source: str = "unknown",
     ) -> Event:
         """
@@ -138,7 +140,7 @@ class EventBus:
 
     async def _dispatch(self, event: Event) -> None:
         """Invoca a todos los manejadores suscritos a un evento, aislando fallos individuales."""
-        handlers: List[EventHandler] = list(self._subscribers.get(event.type, [])) + list(self._wildcard_subscribers)
+        handlers: list[EventHandler] = list(self._subscribers.get(event.type, [])) + list(self._wildcard_subscribers)
         if not handlers:
             logger.debug("Evento '%s' (id=%s) publicado sin suscriptores.", event.type, event.event_id)
             return
@@ -163,7 +165,7 @@ class EventBus:
         while self._running:
             try:
                 event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             try:
                 self._record_history(event)
@@ -190,19 +192,17 @@ class EventBus:
         if drain:
             try:
                 await asyncio.wait_for(self._queue.join(), timeout=timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Tiempo de espera agotado drenando la cola de eventos antes del apagado.")
 
         self._running = False
         if self._dispatcher_task is not None:
             self._dispatcher_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._dispatcher_task
-            except asyncio.CancelledError:
-                pass
             self._dispatcher_task = None
         logger.info("EventBus detenido.")
 
-    def get_history(self) -> List[Event]:
+    def get_history(self) -> list[Event]:
         """Retorna una copia superficial del historial reciente de eventos procesados."""
         return list(self._history)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class DuckyModule:
         except OSError as e:
             logger.error("[HID] Error de escritura: %s", e)
 
-    def escribir_texto(self, texto: str, delay: float = None):
+    def escribir_texto(self, texto: str, delay: float | None = None):
         delay = delay if delay is not None else self.DEFAULT_DELAY
         for char in texto:
             if char in _SHIFT_MAP:
@@ -131,7 +131,7 @@ class DuckyModule:
 
     def ejecutar_script(self, ruta_script: str):
         try:
-            with open(ruta_script, "r", encoding="utf-8") as f:
+            with open(ruta_script, encoding="utf-8") as f:
                 lineas = f.readlines()
         except OSError as e:
             logger.error("[Script] No se pudo abrir %s: %s", ruta_script, e)

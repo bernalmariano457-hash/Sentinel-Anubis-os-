@@ -1,29 +1,26 @@
 from __future__ import annotations
 
-import os
-import copy
+import contextlib
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, ClassVar
 
 log = logging.getLogger(__name__)
 try:
-    import tomllib                      # stdlib Python 3.11+
+    import tomllib  # stdlib Python 3.11+
     _TOML_READ = tomllib
     _TOML_WRITE = None
 except ImportError:
     try:
-        import tomllib as _TOML_READ      # pip install tomli
+        import tomllib as _TOML_READ  # pip install tomli
         _TOML_WRITE = None
     except ImportError:
         _TOML_READ = None
         _TOML_WRITE = None
 
-try:
-    import tomllib as _TOML_WRITE       # pip install tomli-w
-except ImportError:
-    pass
+with contextlib.suppress(ImportError):
+    import tomli_w as _TOML_WRITE
 
 
 @dataclass
@@ -89,7 +86,7 @@ class LoggingConfig:
 
 class Config:
 
-    SEARCH_PATHS = [
+    SEARCH_PATHS: ClassVar[list[Path]] = [
         Path.home() / ".config" / "rfscanner" / "config.toml",
         Path("config.toml"),
         Path(__file__).parent.parent / "config_default.toml",

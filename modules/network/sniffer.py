@@ -6,9 +6,9 @@ import os
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 try:
     from scapy.all import AsyncSniffer, Packet, PcapWriter
@@ -28,12 +28,15 @@ EVIDENCE_NOTIFY_TIMEOUT_SECONDS = 5.0
 
 
 class SnifferError(Exception):
+    """Base class for packet-sniffer errors."""
 
 
 class SnifferDependencyError(SnifferError):
+    """A required dependency (e.g. scapy) is not installed."""
 
 
 class SnifferPermissionError(SnifferError):
+    """Insufficient privileges to open a capture interface."""
 
 
 @dataclass(frozen=True)
@@ -51,7 +54,7 @@ class RotationPolicy:
 @dataclass
 class _ActiveCapture:
     path: Path
-    writer: "PcapWriter"
+    writer: PcapWriter
     opened_at_monotonic: float
     opened_at_iso: str
     packet_count: int = 0
@@ -101,9 +104,9 @@ class NetworkSniffer:
                 f"No fue posible crear el directorio de salida '{self._output_dir}': {exc}") from exc
 
         self._state_lock = threading.RLock()
-        self._active_capture: Optional[_ActiveCapture] = None
-        self._sniffer: Optional["AsyncSniffer"] = None
-        self._rotation_watchdog: Optional[threading.Thread] = None
+        self._active_capture: _ActiveCapture | None = None
+        self._sniffer: AsyncSniffer | None = None
+        self._rotation_watchdog: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._running = False
         self._sequence_number = 0
@@ -113,7 +116,7 @@ class NetworkSniffer:
         return self._running
 
     def _generate_pcap_path(self) -> Path:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         self._sequence_number += 1
         filename = f"{self._file_prefix}_{timestamp}_{self._sequence_number:06d}.pcap"
         return self._output_dir / filename
@@ -126,7 +129,7 @@ class NetworkSniffer:
         except OSError as exc:
             raise SnifferError(
                 f"No fue posible crear el archivo PCAP '{path}': {exc}") from exc
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         logger.info("Nuevo archivo de evidencia PCAP abierto: %s", path)
         return _ActiveCapture(path=path, writer=writer, opened_at_monotonic=time.monotonic(), opened_at_iso=now.isoformat())
 
@@ -152,7 +155,7 @@ class NetworkSniffer:
             "packet_count": capture.packet_count,
             "bytes_written": capture.bytes_written,
             "opened_at": capture.opened_at_iso,
-            "closed_at": datetime.now(timezone.utc).isoformat(),
+            "closed_at": datetime.now(UTC).isoformat(),
             "interface": self._interface,
         }
         try:
@@ -170,12 +173,10 @@ class NetworkSniffer:
         elapsed = time.monotonic() - capture.opened_at_monotonic
         if elapsed >= self._rotation_policy.max_duration_seconds:
             return True
-        if capture.bytes_written >= self._rotation_policy.max_size_bytes:
-            return True
-        return False
+        return capture.bytes_written >= self._rotation_policy.max_size_bytes
 
     def _rotate_if_needed(self) -> None:
-        closed_capture: Optional[_ActiveCapture] = None
+        closed_capture: _ActiveCapture | None = None
         with self._state_lock:
             capture = self._active_capture
             if capture is not None and self._should_rotate(capture):
@@ -202,7 +203,7 @@ class NetworkSniffer:
         if capture is not None:
             self._finalize_closed_capture(capture)
 
-    def _handle_packet(self, packet: "Packet") -> None:
+    def _handle_packet(self, packet: Packet) -> None:
         try:
             raw_length = len(bytes(packet))
             with self._state_lock:

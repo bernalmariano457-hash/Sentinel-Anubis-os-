@@ -7,9 +7,10 @@ import socket
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from rich import box
 from rich.console import Console
@@ -24,7 +25,7 @@ from core.vendor_resolver import VendorResolver
 log = logging.getLogger(__name__)
 
 try:
-    from bleak import BleakClient, BleakScanner
+    from bleak import BleakScanner
     from bleak.backends.device import BLEDevice
     from bleak.backends.scanner import AdvertisementData
     BLEAK_OK = True
@@ -175,7 +176,7 @@ class BluetoothModule:
 
     def _hci_cmd(self, args: list[str], check: bool = False) -> subprocess.CompletedProcess:
         return subprocess.run(
-            ["sudo", "hciconfig", self.HCI_IFACE] + args,
+            ["sudo", "hciconfig", self.HCI_IFACE, *args],
             capture_output=True,
             text=True,
             check=check,
@@ -197,7 +198,7 @@ class BluetoothModule:
 
     def _btmgmt_cmd(self, args: list[str]) -> subprocess.CompletedProcess:
         return subprocess.run(
-            ["sudo", "btmgmt"] + args,
+            ["sudo", "btmgmt", *args],
             capture_output=True,
             text=True,
         )
@@ -347,7 +348,11 @@ class BluetoothModule:
         while time.monotonic() - inicio < duracion_seg:
             ciclo_nuevos: list[DispositivoBLE] = []
 
-            def _cb(device: BLEDevice, adv: AdvertisementData) -> None:
+            def _cb(
+                device: BLEDevice,
+                adv: AdvertisementData,
+                ciclo_nuevos: list[DispositivoBLE] = ciclo_nuevos,
+            ) -> None:
                 servicios = [str(u) for u in (adv.service_uuids or [])]
                 rssi = adv.rssi if adv.rssi else -99
                 with self._lock:
@@ -589,7 +594,7 @@ class BluetoothModule:
             while True:
                 try:
                     data = origen.recv(self.BRIDGE_BUF)
-                except socket.timeout:
+                except TimeoutError:
                     self._warn(f"[{etiqueta}] Timeout — cerrando puente.")
                     break
 

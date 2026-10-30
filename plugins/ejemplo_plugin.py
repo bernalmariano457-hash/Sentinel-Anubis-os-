@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from core.PluginSystem import PluginBase
 
 
@@ -8,7 +10,7 @@ class EjemploPlugin(PluginBase):
     VERSION = "2.3"
     DESCRIPCION = "Plugin de demostración del sistema"
     AUTOR = "AnubisOS"
-    COMANDOS = ["hola", "ejemplo"]
+    COMANDOS: ClassVar[list[str]] = ["hola", "ejemplo"]
 
     def ejecutar(self, comando: str, args: list[str] | None = None):
         if comando == "hola":

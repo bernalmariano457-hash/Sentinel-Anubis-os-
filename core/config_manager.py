@@ -34,8 +34,8 @@ class ConfigManager:
                     "primer_arranque": True,
                 }
             }
-        except json.JSONDecodeError:
-            raise SystemExit("[FATAL] config.json está dañado.")
+        except json.JSONDecodeError as exc:
+            raise SystemExit("[FATAL] config.json está dañado.") from exc
 
     def guardar(self, config: dict) -> None:
         try:

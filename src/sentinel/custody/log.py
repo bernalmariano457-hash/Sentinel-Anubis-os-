@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Final, Iterator
+from typing import Any, Final
 
 import portalocker
 
@@ -25,25 +27,26 @@ from sentinel.integrity.signing import (
 )
 from sentinel.integrity.timestamp import TimeSource, Timestamp
 
-
 SCHEMA_VERSION: Final[str] = "1.0"
 
 DEFAULT_LOCK_TIMEOUT_S: Final[float] = 10.0
 
 
 class CustodyError(SentinelCustodyError):
+    """Base class for custody log errors."""
 
 
 class CustodyLogError(CustodyError):
+    """A structural problem with the log (bad schema, missing field)."""
 
 
 class CustodyChainError(CustodyError):
+    """The chain is broken (hash mismatch, seq gap, invalid signature)."""
 
 
 class CustodyIOError(CustodyError):
-
-
-class CustodyAction(str, Enum):
+    """Filesystem or locking failure."""
+class CustodyAction(StrEnum):
 
     CREATE = "create"
     VERIFY = "verify"
@@ -198,7 +201,7 @@ class CustodyLog:
         return open(self.path, "a+", encoding="utf-8", newline="\n")
 
     def _open_for_read(self) -> Any:
-        return open(self.path, "r", encoding="utf-8", newline="\n")
+        return open(self.path, encoding="utf-8", newline="\n")
 
     def _locked(self, fh: Any, mode: int) -> None:
         try:
@@ -207,10 +210,8 @@ class CustodyLog:
             raise CustodyIOError(f"cannot lock {self.path}: {e}") from e
 
     def _unlock(self, fh: Any) -> None:
-        try:
+        with contextlib.suppress(portalocker.LockException):
             portalocker.unlock(fh)
-        except portalocker.LockException:
-            pass
 
     def _read_all_locked(self, fh: Any) -> list[dict[str, Any]]:
         fh.seek(0)

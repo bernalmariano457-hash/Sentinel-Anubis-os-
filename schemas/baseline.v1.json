@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sentinel-Anubis signed file baseline v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "operator_id": {"type": "string", "minLength": 1},
+    "root": {"type": "string", "minLength": 1},
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "size_bytes": {"type": "integer", "minimum": 0}
+        },
+        "required": ["path", "sha256", "size_bytes"],
+        "additionalProperties": false
+      }
+    },
+    "include_patterns": {"type": "array", "items": {"type": "string"}},
+    "exclude_patterns": {"type": "array", "items": {"type": "string"}},
+    "signature": {
+      "type": "object",
+      "properties": {
+        "algorithm": {"const": "ed25519"},
+        "value": {"type": "string"},
+        "pubkey_fingerprint": {"type": "string", "pattern": "^SHA256:[0-9a-f]{64}$"}
+      },
+      "required": ["algorithm", "value", "pubkey_fingerprint"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "created_at",
+    "operator_id",
+    "root",
+    "files",
+    "include_patterns",
+    "exclude_patterns",
+    "signature"
+  ],
+  "additionalProperties": false
+}

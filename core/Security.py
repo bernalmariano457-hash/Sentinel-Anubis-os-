@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 import sys
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken

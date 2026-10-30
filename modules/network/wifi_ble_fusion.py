@@ -9,7 +9,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from rich import box
@@ -37,7 +37,7 @@ _MAX_DIST_M = 150.0
 _COND_MAX = 1e6
 
 
-class MetodoPosicion(str, Enum):
+class MetodoPosicion(StrEnum):
     TRILATERACION = "trilateration"
     CENTROIDE_PONDERADO = "weighted_centroid"
     UNICA_FUENTE = "single"
@@ -46,7 +46,7 @@ class MetodoPosicion(str, Enum):
         return self.value
 
 
-class FuenteWifi(str, Enum):
+class FuenteWifi(StrEnum):
     NMCLI = "nmcli"
     IWLIST = "iwlist"
     DESCONOCIDA = "desconocida"

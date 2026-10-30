@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Final, TypeVar
+from typing import Any, Final, TypeVar
 
 log: Final = logging.getLogger("sentinel.rf.config")
 
@@ -432,9 +433,7 @@ def save_config(cfg: RFConfig, path: str | Path = "config.toml") -> None:
         for field_name, field_value in section_fields.items():
             if isinstance(field_value, bool):
                 lines.append(f"{field_name} = {'true' if field_value else 'false'}")
-            elif isinstance(field_value, str):
-                lines.append(f'{field_name} = "{field_value}"')
-            elif isinstance(field_value, Path):
+            elif isinstance(field_value, (str, Path)):
                 lines.append(f'{field_name} = "{field_value}"')
             else:
                 lines.append(f"{field_name} = {field_value}")

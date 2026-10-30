@@ -5,11 +5,12 @@ import json
 import logging
 import sqlite3
 import threading
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from io import BufferedWriter
 from pathlib import Path
-from typing import Any, Generator, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -110,7 +111,7 @@ class _SignalLike(Protocol):
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _signal_to_dict(signal: Any) -> dict[str, Any]:
@@ -341,7 +342,7 @@ class SignalDB:
         if retention_days <= 0:
             return
         cutoff = (
-            datetime.now(timezone.utc) - timedelta(days=retention_days)
+            datetime.now(UTC) - timedelta(days=retention_days)
         ).isoformat()
         with self._write_lock, self._write_conn() as conn:
             conn.execute(
@@ -407,7 +408,7 @@ class CSVExporter:
         freq_mhz: float,
         hw_type: str = "",
     ) -> Path:
-        ts     = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts     = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         hw_tag = hw_type.replace(" ", "_") if hw_type else "unknown"
         target = self._csv_path / f"scan_{freq_mhz:.3f}MHz_{hw_tag}_{ts}.csv"
         try:
@@ -427,7 +428,7 @@ class CSVExporter:
         freq_ini: float,
         freq_fin: float,
     ) -> Path:
-        ts     = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts     = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         target = self._csv_path / f"sweep_{freq_ini:.0f}-{freq_fin:.0f}MHz_{ts}.csv"
         try:
             with open(target, "w", newline="", encoding="utf-8") as fh:
@@ -454,7 +455,7 @@ class SigMFWriter:
         hw_type: str = "",
         notes: str = "",
     ) -> SigMFRecording:
-        ts   = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts   = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         base = self._iq_path / f"iq_{freq_hz / 1e6:.3f}MHz_{ts}"
         return SigMFRecording(base, freq_hz, sample_rate, hw_type, notes)
 

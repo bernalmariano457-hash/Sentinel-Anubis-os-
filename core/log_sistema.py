@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import atexit
+import contextlib
 import json
 import logging
 import logging.handlers
 import queue
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from rich import box
 from rich.console import Console
@@ -38,11 +39,11 @@ _QUEUE_MAXSIZE:        int = 4_096
 
 
 def _ts_iso() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 class _StdlibHandler(logging.Handler):
-    _NIVEL_MAP = {
+    _NIVEL_MAP: ClassVar[dict[int, str]] = {
         logging.DEBUG:    "DEBUG",
         logging.INFO:     "INFO",
         logging.WARNING:  "WARNING",
@@ -50,7 +51,7 @@ class _StdlibHandler(logging.Handler):
         logging.CRITICAL: "CRITICAL",
     }
 
-    def __init__(self, log_sistema: "LogSistema"):
+    def __init__(self, log_sistema: LogSistema):
         super().__init__()
         self._ls = log_sistema
 
@@ -342,7 +343,7 @@ class LogSistema:
             nivel_txt = Text()
             nivel_txt.append(f"{icono} {e['nivel']}", style=color)
             extra_str = ""
-            if "extra" in e and e["extra"]:
+            if e.get("extra"):
                 extra_str = "  ".join(
                     f"{k}={v}" for k, v in e["extra"].items())
             tabla.add_row(
@@ -371,7 +372,7 @@ class LogSistema:
 
     def exportar_jsonl(self, destino: Path | None = None) -> Path:
         if destino is None:
-            ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
             destino = self._log_dir / \
                 f"export_{self.session_id[:8]}_{ts}.jsonl"
 
@@ -395,10 +396,8 @@ class LogSistema:
         if self._stop_event.is_set():
             return  # ya cerrado
         self._stop_event.set()
-        try:
+        with contextlib.suppress(queue.Full):
             self._cola.put_nowait(None)
-        except queue.Full:
-            pass
         self._worker.join(timeout=5.0)
 
         logging.getLogger().removeHandler(self._stdlib_handler)

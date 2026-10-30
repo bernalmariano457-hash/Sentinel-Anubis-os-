@@ -4,10 +4,10 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich import box
 
 if TYPE_CHECKING:
     from core.Security import SecurityModule
@@ -33,7 +33,7 @@ def _expandir_rutas(rutas: list[Path]) -> list[Path]:
 
 
 class SentinelRecovery:
-    def __init__(self, security_module: "SecurityModule") -> None:
+    def __init__(self, security_module: SecurityModule) -> None:
         if security_module is None:
             raise ValueError(
                 "SentinelRecovery requiere una instancia de SecurityModule. "

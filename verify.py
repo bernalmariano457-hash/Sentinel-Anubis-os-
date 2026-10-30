@@ -1,5 +1,4 @@
 from __future__ import annotations
-from modules.integrity.hash_chain import ChainIntegrityError, HashChainLogger, VerificationResult
 
 import argparse
 import json
@@ -8,6 +7,8 @@ from pathlib import Path
 from typing import NoReturn
 
 import yaml
+
+from modules.integrity.hash_chain import ChainIntegrityError, HashChainLogger, VerificationResult
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -18,6 +19,7 @@ EXIT_INTEGRITY_VIOLATION = 2
 
 
 class VerifyCliError(Exception):
+    """Raised for operational errors in the verify CLI (bad config, bad path)."""
 
 
 def resolve_chain_file(args: argparse.Namespace) -> Path:

@@ -5,9 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
-
 from sentinel.integrity.keys import (
-    DEFAULT_SERVICE,
     InvalidSignatureBundleError,
     InvalidSignatureError,
     KeyManager,

@@ -62,7 +62,7 @@ def setup_credenciales(forzar: bool = False) -> None:
 
     # Limpiar config.json si tiene password_hash
     if _CONFIG_FILE.exists():
-        with open(_CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(_CONFIG_FILE, encoding="utf-8") as f:
             config = json.load(f)
         sistema = config.get("sistema", {})
         if "password_hash" in sistema:
@@ -92,11 +92,11 @@ def verificar_integridad() -> None:
         print(f"  [✓] Credenciales: {_CREDS_FILE}")
         print(f"      Tipo de hash: {tipo}")
     else:
-        print(f"  [!] Sin credenciales. Ejecuta: python sentinel_setup.py")
+        print("  [!] Sin credenciales. Ejecuta: python sentinel_setup.py")
 
     # config.json
     if _CONFIG_FILE.exists():
-        with open(_CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(_CONFIG_FILE, encoding="utf-8") as f:
             config = json.load(f)
         if "password_hash" in config.get("sistema", {}):
             print(

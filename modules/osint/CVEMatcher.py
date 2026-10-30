@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import time
 import logging
+import time
 from dataclasses import dataclass, field
 
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+from rich import box
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.rule import Rule
-from rich import box
-
+from rich.table import Table
+from urllib3.util.retry import Retry
 
 log = logging.getLogger(__name__)
 

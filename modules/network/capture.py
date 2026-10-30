@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import contextlib
+import logging
 import queue
 import signal
 import threading
 import time
-import logging
-from typing import Callable
-
-import numpy as np
+from collections.abc import Callable
 
 log = logging.getLogger("rfscanner.capture")
 
@@ -118,10 +117,8 @@ class CaptureThread(threading.Thread):
                 time.sleep(0.1)
 
         # Señal de fin al consumidor
-        try:
+        with contextlib.suppress(queue.Full):
             self._queue.put_nowait(_STOP_SENTINEL)
-        except queue.Full:
-            pass
 
         log.info(f"CaptureThread detenido — "
                  f"{self._reads_ok} lecturas OK, {self._reads_fail} errores")

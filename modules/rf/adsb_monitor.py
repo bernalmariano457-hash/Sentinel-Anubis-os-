@@ -5,7 +5,7 @@ import queue
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, Literal, Optional
+from typing import TYPE_CHECKING, Final, Literal
 
 import numpy as np
 from rich import box
@@ -18,17 +18,19 @@ from rich.text import Text
 if TYPE_CHECKING:
     from rich.console import Console
 
+import contextlib
+
 from adsb_decoder import (
     DEFAULT_SAMPLE_RATE_HZ,
-    FlightStateRegistry,
     STALE_TIMEOUT_S,
+    FlightStateRegistry,
     compass_arrow,
     demodulate_iq_to_mode_s_frames,
     icao_country_code,
     is_emergency_squawk,
 )
 
-from core.sdr_broker import SDRBroker, SDRMode, SDRFrame
+from core.sdr_broker import SDRBroker, SDRFrame, SDRMode
 
 log: logging.Logger = logging.getLogger("sentinel.rf.adsb")
 
@@ -75,20 +77,16 @@ _ALT_COLOR_BANDS: Final[tuple[tuple[int, str], ...]] = (
 )
 
 
-def _put_drop_oldest(target_queue: "queue.Queue[Chunk]", item: Chunk) -> None:
+def _put_drop_oldest(target_queue: queue.Queue[Chunk], item: Chunk) -> None:
     try:
         target_queue.put_nowait(item)
         return
     except queue.Full:
         pass
-    try:
+    with contextlib.suppress(queue.Empty):
         target_queue.get_nowait()
-    except queue.Empty:
-        pass
-    try:
+    with contextlib.suppress(queue.Full):
         target_queue.put_nowait(item)
-    except queue.Full:
-        pass
 
 
 def _cf32_to_u8(iq: np.ndarray) -> bytes:
@@ -109,7 +107,7 @@ class BrokerProducer(threading.Thread):
 
     def __init__(
         self,
-        output_queue: "queue.Queue[Chunk]",
+        output_queue: queue.Queue[Chunk],
         stop_event: threading.Event,
         center_freq_hz: int = ADSB_CENTER_FREQ_HZ,
         sample_rate_hz: int = DEFAULT_SAMPLE_RATE_HZ,
@@ -124,7 +122,7 @@ class BrokerProducer(threading.Thread):
         self._chunk_samples = chunk_samples
         self._broker = SDRBroker.get()
         self._sub = None
-        self.error: Optional[BaseException] = None
+        self.error: BaseException | None = None
 
         if not self._broker.hardware_ok:
             raise RuntimeError(
@@ -181,16 +179,14 @@ class BrokerProducer(threading.Thread):
             self.error = exc
         finally:
             if self._sub is not None:
-                try:
+                with contextlib.suppress(Exception):
                     self._sub.close()
-                except Exception:
-                    pass
 
 
 class DemoFrameProducer(threading.Thread):
     def __init__(
         self,
-        output_queue: "queue.Queue[Chunk]",
+        output_queue: queue.Queue[Chunk],
         stop_event: threading.Event,
         interval_s: float = DEMO_FRAME_INTERVAL_S,
     ) -> None:
@@ -198,7 +194,7 @@ class DemoFrameProducer(threading.Thread):
         self._queue = output_queue
         self._stop_event = stop_event
         self._interval_s = interval_s
-        self.error: Optional[BaseException] = None
+        self.error: BaseException | None = None
 
     def run(self) -> None:
         idx = 0
@@ -214,7 +210,7 @@ class DemoFrameProducer(threading.Thread):
 class ConsumerThread(threading.Thread):
     def __init__(
         self,
-        input_queue: "queue.Queue[Chunk]",
+        input_queue: queue.Queue[Chunk],
         registry: FlightStateRegistry,
         registry_lock: threading.Lock,
         stop_event: threading.Event,
@@ -226,7 +222,7 @@ class ConsumerThread(threading.Thread):
         self._lock = registry_lock
         self._stop_event = stop_event
         self._sample_rate_hz = sample_rate_hz
-        self.error: Optional[BaseException] = None
+        self.error: BaseException | None = None
 
     def run(self) -> None:
         while not self._stop_event.is_set():
@@ -257,7 +253,7 @@ class ConsumerThread(threading.Thread):
                 self.error = exc
 
 
-def _altitude_color(altitude_ft: Optional[float]) -> str:
+def _altitude_color(altitude_ft: float | None) -> str:
     if altitude_ft is None:
         return "dim white"
     for limit, color in _ALT_COLOR_BANDS:
@@ -266,11 +262,11 @@ def _altitude_color(altitude_ft: Optional[float]) -> str:
     return "bright_cyan"
 
 
-def _format_optional(value: Optional[float], fmt: str = ".0f") -> str:
+def _format_optional(value: float | None, fmt: str = ".0f") -> str:
     return f"{value:{fmt}}" if value is not None else "[dim]\u00b7[/dim]"
 
 
-def _format_vertical_rate(vr: Optional[float]) -> str:
+def _format_vertical_rate(vr: float | None) -> str:
     if vr is None:
         return "[dim]\u00b7[/dim]"
     sym = "\u2191" if vr > 64 else "\u2193" if vr < -64 else "\u2192"
@@ -278,7 +274,7 @@ def _format_vertical_rate(vr: Optional[float]) -> str:
     return f"[{color}]{sym}{abs(vr):.0f}[/{color}]"
 
 
-def _format_squawk(squawk: Optional[str]) -> str:
+def _format_squawk(squawk: str | None) -> str:
     if squawk is None:
         return "[dim]\u00b7[/dim]"
     if is_emergency_squawk(squawk):
@@ -401,18 +397,18 @@ class ADSBMonitorPipeline:
     def __init__(
         self,
         registry: FlightStateRegistry,
-        console: Optional["Console"] = None,
+        console: Console | None = None,
         refresh_hz: int = RENDER_REFRESH_HZ,
     ) -> None:
         from rich.console import Console as _Console
         self.registry = registry
         self._console = console or _Console()
         self._refresh_hz = refresh_hz
-        self._queue: "queue.Queue[Chunk]" = queue.Queue(maxsize=QUEUE_MAXSIZE)
+        self._queue: queue.Queue[Chunk] = queue.Queue(maxsize=QUEUE_MAXSIZE)
         self._stop_event = threading.Event()
         self._registry_lock = threading.Lock()
-        self._producer: Optional[threading.Thread] = None
-        self._consumer: Optional[ConsumerThread] = None
+        self._producer: threading.Thread | None = None
+        self._consumer: ConsumerThread | None = None
 
     def run_live_sdr(
         self,
@@ -489,7 +485,7 @@ class AircraftMonitor:
 
     def __init__(self, sentinel: object) -> None:
         self._sentinel = sentinel
-        self._console: "Console" = getattr(sentinel, "console", None)
+        self._console: Console = getattr(sentinel, "console", None)
         if self._console is None:
             from rich.console import Console as _Console
             self._console = _Console()
@@ -510,7 +506,7 @@ class AircraftMonitor:
         self._rx_lon: float = float(getattr(pos_ref, "lon", 0.0))
 
         # Pipeline activo (para poder detenerlo desde cerrar())
-        self._pipeline: Optional[ADSBMonitorPipeline] = None
+        self._pipeline: ADSBMonitorPipeline | None = None
 
     def _log_info(self, msg: str) -> None:
         self._console.print(f"[cyan][{self._MODULE_LABEL}][/cyan] {msg}")
@@ -562,4 +558,43 @@ class AircraftMonitor:
             f"1090 MHz  gain={self._gain_db} dB  sr={self._sample_rate / 1e6:.1f} MSPS"
         )
         registry = FlightStateRegistry(self._rx_lat, self._rx_lon)
-        pipeline = ADSBMonitorPipeline(registry, co
+        pipeline = ADSBMonitorPipeline(registry, console=self._console)
+        self._pipeline = pipeline
+        try:
+            pipeline.run_live_sdr(
+                sample_rate_hz=self._sample_rate,
+                gain_db=self._gain_db,
+                ppm_correction=self._ppm_corr,
+                device_index=self._device_index,
+            )
+        except Exception as exc:
+            self._log_error(f"Error en captura ADS-B: {exc}")
+        finally:
+            self._pipeline = None
+
+    def _start_demo(self) -> None:
+
+        self._log_info("Iniciando modo demo (datos simulados)")
+        registry = FlightStateRegistry(self._rx_lat, self._rx_lon)
+        pipeline = ADSBMonitorPipeline(registry, console=self._console)
+        self._pipeline = pipeline
+        try:
+            pipeline.run_demo()
+        except Exception as exc:
+            self._log_error(f"Error en modo demo: {exc}")
+        finally:
+            self._pipeline = None
+
+    def _configure_receiver(self) -> None:
+
+        raise NotImplementedError(
+            "_configure_receiver: pendiente de implementar")
+
+    def cerrar(self) -> None:
+
+        if self._pipeline is not None:
+            try:
+                self._pipeline.stop()
+            except Exception as exc:
+                self._log_warn(f"Error deteniendo pipeline ADS-B: {exc}")
+            self._pipeline = None

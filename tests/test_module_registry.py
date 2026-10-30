@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import importlib
 import types
 from typing import Any
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -185,7 +184,7 @@ class TestCargarUno:
         with patch("importlib.import_module", return_value=mod):
             registry._cargar_uno(spec)
 
-        instancia = getattr(sentinel, "mi_modulo")
+        instancia = sentinel.mi_modulo
         assert isinstance(instancia, MiClase)
 
     def test_asigna_none_y_retorna_false_si_clase_no_existe(
@@ -198,7 +197,7 @@ class TestCargarUno:
             ok = registry._cargar_uno(spec)
 
         assert ok is False
-        assert getattr(sentinel, "modulo") is None
+        assert sentinel.modulo is None
 
     def test_asigna_none_y_retorna_false_si_init_lanza_excepcion(
         self, registry: ModuleRegistry, sentinel: MagicMock
@@ -214,7 +213,7 @@ class TestCargarUno:
             ok = registry._cargar_uno(spec)
 
         assert ok is False
-        assert getattr(sentinel, "modulo_roto") is None
+        assert sentinel.modulo_roto is None
 
     def test_asigna_none_y_retorna_false_si_modulo_no_existe(
         self, registry: ModuleRegistry, sentinel: MagicMock
@@ -224,7 +223,7 @@ class TestCargarUno:
             ok = registry._cargar_uno(spec)
 
         assert ok is False
-        assert getattr(sentinel, "ausente") is None
+        assert sentinel.ausente is None
 
     def test_modulo_critico_falla_silenciosamente_igual(
         self, registry: ModuleRegistry, sentinel: MagicMock
@@ -233,7 +232,7 @@ class TestCargarUno:
         with patch("importlib.import_module", side_effect=ModuleNotFoundError):
             ok = registry._cargar_uno(spec)
         assert ok is False
-        assert getattr(sentinel, "seg") is None
+        assert sentinel.seg is None
 
     def test_registra_warning_cuando_clase_no_existe(
         self, registry: ModuleRegistry, sentinel: MagicMock
@@ -267,7 +266,7 @@ class TestCargaDependencias:
         sentinel.security = None
         ok = registry._cargar_recovery()
         assert ok is False
-        assert getattr(sentinel, "recovery") is None
+        assert sentinel.recovery is None
 
     def test_recovery_retorna_true_si_security_disponible(
         self, registry: ModuleRegistry, sentinel: MagicMock
@@ -283,7 +282,7 @@ class TestCargaDependencias:
             ok = registry._cargar_recovery()
 
         assert ok is True
-        assert getattr(sentinel, "recovery") is not None
+        assert sentinel.recovery is not None
 
     def test_recovery_retorna_false_si_import_falla(
         self, registry: ModuleRegistry, sentinel: MagicMock
@@ -300,7 +299,7 @@ class TestCargaDependencias:
         sentinel.gp = None
         ok = registry._cargar_motor_rep()
         assert ok is False
-        assert getattr(sentinel, "motor_rep") is None
+        assert sentinel.motor_rep is None
 
     def test_motor_rep_retorna_true_si_gp_disponible(
         self, registry: ModuleRegistry, sentinel: MagicMock

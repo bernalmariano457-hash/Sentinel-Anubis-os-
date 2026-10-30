@@ -17,7 +17,7 @@ _recovery_lock: threading.Lock = threading.Lock()
 
 class ForenseCommands:
 
-    s: "ApexSentinel"
+    s: ApexSentinel
 
     def recover(self, args: list[str]) -> None:
         if getattr(self.s, "recovery", None) is None:

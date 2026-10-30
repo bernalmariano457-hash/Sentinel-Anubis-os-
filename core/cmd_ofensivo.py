@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import sys
 import threading
@@ -245,10 +246,8 @@ class OfensivoCommands(_DomainBase):
             border_style="magenta", expand=False,
         ))
 
-        try:
+        with contextlib.suppress(KeyboardInterrupt, EOFError):
             input()
-        except (KeyboardInterrupt, EOFError):
-            pass
 
         self.console.print("[yellow][!] Deteniendo portal cautivo...[/yellow]")
         s.log.audit("Evil Twin detenido.", "EvilTwin")

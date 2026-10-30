@@ -4,15 +4,14 @@ import math
 import threading
 
 import pytest
+from _test_shared import _BtModuleFalso
 from rich.console import Console
 
-from _test_shared import _BtModuleFalso
 from modules.network.wifi_ble_fusion import (
     EstimacionPosicion,
-    FusionBLEWiFi,
     FuenteWifi,
+    FusionBLEWiFi,
     MetodoPosicion,
-    PuntoAP,
     WiFiScanner,
     _bloque_a_punto,
     _centroide_ponderado,

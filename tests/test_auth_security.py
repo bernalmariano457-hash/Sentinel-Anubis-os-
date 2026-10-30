@@ -94,12 +94,12 @@ class TestVerificar:
 
     def test_verifica_hash_legacy_sin_sal(self):
         from core.auth import _verificar
-        legacy = hashlib.sha256("legacy_pass1".encode()).hexdigest()
+        legacy = hashlib.sha256(b"legacy_pass1").hexdigest()
         assert _verificar("legacy_pass1", legacy) is True
 
     def test_rechaza_hash_legacy_incorrecto(self):
         from core.auth import _verificar
-        legacy = hashlib.sha256("legacy_pass1".encode()).hexdigest()
+        legacy = hashlib.sha256(b"legacy_pass1").hexdigest()
         assert _verificar("otra_pass", legacy) is False
 
     def test_verifica_devuelve_false_con_hash_vacio(self):
@@ -116,7 +116,7 @@ class TestEsLegacy:
 
     def test_sha256_plano_es_legacy(self):
         from core.auth import _es_legacy
-        legacy = hashlib.sha256("pass12345".encode()).hexdigest()
+        legacy = hashlib.sha256(b"pass12345").hexdigest()
         assert _es_legacy(legacy) is True
 
     def test_sha256_salted_es_legacy(self):
@@ -305,7 +305,7 @@ class TestMigracionBcrypt:
         import core.auth as auth_mod
         from core.auth import GestorAuth
 
-        legacy_hash = hashlib.sha256("mi_password1".encode()).hexdigest()
+        legacy_hash = hashlib.sha256(b"mi_password1").hexdigest()
         auth_mod._CREDS_FILE.write_text(legacy_hash, encoding="utf-8")
 
         ga = GestorAuth({}, mock_console, mock_log)

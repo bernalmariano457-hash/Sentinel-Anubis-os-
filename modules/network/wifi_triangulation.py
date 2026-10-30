@@ -7,20 +7,19 @@ import math
 import platform
 import re
 import subprocess
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rich import box
 from rich.align import Align
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
-from rich import box
 
 if TYPE_CHECKING:
     pass  # sentinel type imported lazily to avoid circular imports
@@ -257,7 +256,7 @@ class WiFiScanner:
         }.get(self._os, lambda: [])()
         return self._build(raw)
 
-    def _build(self, raw: list[Dict]) -> list[AccessPoint]:
+    def _build(self, raw: list[dict]) -> list[AccessPoint]:
         result: list[AccessPoint] = []
         for entry in raw:
             bssid = entry["bssid"].upper()
@@ -305,10 +304,10 @@ class WiFiScanner:
         return sorted(result, key=lambda a: a.rssi_dbm, reverse=True)
 
     # Linux
-    def _linux(self) -> list[Dict]:
+    def _linux(self) -> list[dict]:
         return self._nmcli() or self._iwlist()
 
-    def _nmcli(self) -> list[Dict]:
+    def _nmcli(self) -> list[dict]:
         try:
             raw = subprocess.check_output(
                 [
@@ -321,8 +320,8 @@ class WiFiScanner:
         except Exception:
             return []
 
-        entries: list[Dict] = []
-        current: Dict = {}
+        entries: list[dict] = []
+        current: dict = {}
         for line in raw.splitlines():
             m = re.match(r"^(\w+):\s*(.*)", line.strip())
             if not m:
@@ -361,7 +360,7 @@ class WiFiScanner:
         except Exception:
             return "wlan0"
 
-    def _iwlist(self) -> list[Dict]:
+    def _iwlist(self) -> list[dict]:
         iface = self._wlan_iface()
         try:
             raw = subprocess.check_output(
@@ -397,7 +396,7 @@ class WiFiScanner:
         return result
 
     # macOS
-    def _macos(self) -> list[Dict]:
+    def _macos(self) -> list[dict]:
         airport = (
             "/System/Library/PrivateFrameworks/Apple80211.framework"
             "/Versions/Current/Resources/airport"
@@ -432,7 +431,7 @@ class WiFiScanner:
         return result
 
     # Windows
-    def _windows(self) -> list[Dict]:
+    def _windows(self) -> list[dict]:
         try:
             raw = subprocess.check_output(
                 ["netsh", "wlan", "show", "networks", "mode=bssid"],
@@ -667,7 +666,7 @@ def _screen(
     return Group(title, map_panel, ap_panel, tri_panel, hint)
 
 
-def setup_wizard(cfg: Config, scanner: "WiFiScanner", console: Console) -> None:
+def setup_wizard(cfg: Config, scanner: WiFiScanner, console: Console) -> None:
 
     def ask(prompt: str, default: str) -> str:
         val = console.input(

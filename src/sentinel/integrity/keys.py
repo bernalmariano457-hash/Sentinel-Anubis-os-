@@ -2,23 +2,22 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import secrets
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any, Final
 
 import keyring
 import keyring.errors
-from sentinel import SentinelError
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
+
+from sentinel import SentinelError
 
 DEFAULT_SERVICE: Final[str] = "sentinel-anubis"
 
@@ -32,23 +31,27 @@ _FP_PREFIX: Final[str] = "SHA256:"
 
 
 class SentinelKeyError(SentinelError):
+    """Base class for all key-management errors."""
 
 
 class OperatorNotFoundError(SentinelKeyError):
+    """The operator_id does not exist in the keyring."""
 
 
 class KeyringUnavailableError(SentinelKeyError):
+    """The OS keyring backend is not available or refused the operation."""
 
 
 class InvalidSignatureError(SentinelKeyError):
+    """The signature does not verify against the given data and public key."""
 
 
 class InvalidSignatureBundleError(SentinelKeyError):
+    """The signature bundle is malformed."""
 
 
 class RotationError(SentinelKeyError):
-
-
+    """Rotation cannot be completed (e.g. target operator_id already exists)."""
 @dataclass(frozen=True)
 class SignatureBundle:
 
@@ -166,7 +169,7 @@ class OperatorIdentity:
 
 
 def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _fingerprint(pubkey_raw: bytes) -> str:
@@ -351,8 +354,12 @@ class KeyManager:
             raise KeyringUnavailableError(f"keyring delete failed: {e}") from e
 
     def verify_consistency(self) -> None:
-
         pub_raw = self._private_key.public_key().public_bytes(
             encoding=serialization.Encoding.Raw,
             format=serialization.PublicFormat.Raw,
         )
+        if _fingerprint(pub_raw) != self.identity.pubkey_fingerprint:
+            raise SentinelKeyError(
+                f"stored private key does not match public key for "
+                f"operator {self.identity.operator_id!r}"
+            )

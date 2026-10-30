@@ -4,11 +4,10 @@ import hashlib
 import json
 import os
 import sys
-import tempfile
 import threading
 import time
-import uuid
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -153,7 +152,7 @@ class TestGestorAuth:
         assert auth._verificar(pwd, hash_legacy)
 
     def test_verificar_legacy_sha256_incorrecto(self, auth):
-        hash_legacy = hashlib.sha256("correcto".encode()).hexdigest()
+        hash_legacy = hashlib.sha256(b"correcto").hexdigest()
         assert not auth._verificar("incorrecto", hash_legacy)
 
     def test_verificar_sha256_con_salt(self, auth):
@@ -181,8 +180,9 @@ class TestGestorAuth:
         assert not auth._verificar("la_mala", h)
 
     def test_solicitar_acceso_correcto(self, console, mock_log):
-        from core.auth import GestorAuth
         import hashlib
+
+        from core.auth import GestorAuth
         pwd = "acceso123"
         salt = "deadbeef"
         h_str = hashlib.sha256((salt + pwd).encode()).hexdigest()
@@ -196,8 +196,9 @@ class TestGestorAuth:
         assert resultado is True
 
     def test_solicitar_acceso_agota_intentos(self, console, mock_log):
-        from core.auth import GestorAuth
         import hashlib
+
+        from core.auth import GestorAuth
         salt = "cafebabe"
         h_str = hashlib.sha256((salt + "correcta").encode()).hexdigest()
         config = {"sistema": {
@@ -473,7 +474,7 @@ class PluginTest(PluginBase):
             VERSION = "2.0"
             DESCRIPCION = "Plugin de prueba"
             AUTOR = "AutorTest"
-            COMANDOS = ["cmd1"]
+            COMANDOS: ClassVar[list[str]] = ["cmd1"]
 
             def ejecutar(self, comando, args=None):
                 pass
@@ -490,7 +491,7 @@ class PluginTest(PluginBase):
 
         class PluginIncompleto(PluginBase):
             NOMBRE = "incompleto"
-            COMANDOS = []
+            COMANDOS: ClassVar[list[str]] = []
 
         p = PluginIncompleto(sentinel_mock)
         with pytest.raises(NotImplementedError):
@@ -683,7 +684,6 @@ class TestRFModuleIntegrado:
         rf.barrido_espectro(88.0, 108.0, 1.0)
 
     def test_exportar_csv_crea_archivo(self, rf, tmp_dir):
-        from pathlib import Path
         rf.EXPORT_PATH = tmp_dir / "rf"
         rf.EXPORT_PATH.mkdir(parents=True, exist_ok=True)
 
@@ -735,7 +735,6 @@ class TestMotorDSP:
         return señal + ruido
 
     def test_psd_forma_correcta(self, dsp, iq_ruido):
-        import numpy as np
         freqs, psd = dsp.calcular_psd(iq_ruido, 2_048_000)
         assert len(freqs) == 2048
         assert len(psd) == 2048
@@ -788,7 +787,7 @@ class TestMotorDSP:
     def test_muestras_cortas_no_lanza(self, dsp):
         import numpy as np
         iq_corto = np.ones(50, dtype=np.complex64)
-        freqs, psd = dsp.calcular_psd(iq_corto, 2_048_000)
+        _freqs, psd = dsp.calcular_psd(iq_corto, 2_048_000)
         assert len(psd) == 2048
 
 
@@ -816,6 +815,7 @@ class TestRealHardware:
 
     def test_captura_muestras_reales(self, hardware_required):
         import numpy as np
+
         from modules.rf.RFScanner import RFScanner
         sentinel = MagicMock()
         rf = RFScanner(sentinel)
