@@ -1,186 +1,94 @@
-set -euo pipefail
+#!/usr/bin/env bash
+set -e
 
-RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
+RED='\033[0;31m'
+NC='\033[0m' 
 
-info()    { echo -e "${CYAN}[*]${NC} $*"; }
-ok()      { echo -e "${GREEN}[✓]${NC} $*"; }
-warn()    { echo -e "${YELLOW}[!]${NC} $*"; }
-error()   { echo -e "${RED}[✗]${NC} $*" >&2; }
-header()  { echo -e "\n${BOLD}${CYAN}══ $* ══${NC}"; }
+echo -e "${CYAN}====================================================${NC}"
+echo -e "${CYAN}      INSTALADOR DE APEX SENTINEL — ANUBIS OS       ${NC}"
+echo -e "${CYAN}====================================================${NC}"
 
-detect_platform() {
-    if [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d "/data/data/com.termux" ]]; then
-        echo "termux"
-    elif [[ "$(uname -m)" == "aarch64" ]] && grep -qi "clockworkpi\|uconsole" /proc/device-tree/model 2>/dev/null; then
-        echo "uconsole"
-    elif command -v apt-get &>/dev/null; then
-        echo "kali"
-    else
-        echo "generic"
-    fi
-}
+if [ -d "/data/data/com.termux" ]; then
+    PLATFORM="termux"
+elif grep -q "ClockworkPi" /proc/device-tree/model 2>/dev/null || grep -q "Raspberry Pi" /proc/device-tree/model 2>/dev/null; then
+    PLATFORM="uconsole"
+else
+    PLATFORM="linux"
+fi
+echo -e "${GREEN}[+] Plataforma detectada: $PLATFORM${NC}"
 
-check_python() {
-    local py="${1:-python3}"
-    if ! command -v "$py" &>/dev/null; then
-        error "Python no encontrado. Instala Python 3.13+."
-        exit 1
-    fi
-    local version
-    version=$("$py" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-    local major minor
-    major=$(echo "$version" | cut -d. -f1)
-    minor=$(echo "$version" | cut -d. -f2)
-    if [[ $major -lt 3 ]] || [[ $major -eq 3 && $minor -lt 13 ]]; then
-        error "Se requiere Python 3.13+. Versión detectada: $version"
-        exit 1
-    fi
-    ok "Python $version detectado"
-    echo "$py"
-}
+echo -e "${CYAN}[*] Instalando dependencias del sistema...${NC}"
+if [ "$PLATFORM" = "termux" ]; then
+    pkg update -y
+    pkg install -y python python-pip rtl-sdr root-repo tsu git
+elif [ "$PLATFORM" = "uconsole" ]; then
+    sudo apt update
+    sudo apt install -y python3 python3-pip python3-venv rtl-sdr librtlsdr-dev git
+else
+    sudo apt update
+    sudo apt install -y python3 python3-pip python3-venv rtl-sdr librtlsdr-dev git
+fi
 
-setup_venv() {
-    local py="$1"
-    if [[ -d ".venv" ]]; then
-        warn ".venv ya existe — usando el existente"
-    else
-        info "Creando entorno virtual en .venv ..."
-        "$py" -m venv .venv
-        ok "Entorno virtual creado"
-    fi
-    # shellcheck source=/dev/null
+echo -e "${CYAN}[*] Configurando entorno de Python...${NC}"
+cd "$(dirname "$0")"
+
+if [ "$PLATFORM" = "termux" ]; then
+    pip install -e ".[termux]" --break-system-packages
+else
+    python3 -m venv .venv
     source .venv/bin/activate
-    pip install --upgrade pip --quiet
-}
+    pip install --upgrade pip
+    pip install -e ".[all]"
+fi
 
-install_system_deps() {
-    local platform="$1"
-    case "$platform" in
-        uconsole|kali)
-            if command -v apt-get &>/dev/null; then
-                info "Instalando dependencias del sistema (apt) ..."
-                sudo apt-get install -y --no-install-recommends \
-                    rtl-sdr librtlsdr-dev \
-                    libpcap-dev \
-                    portaudio19-dev \
-                    libffi-dev \
-                    2>/dev/null || warn "Algunas dependencias del sistema no se pudieron instalar"
-                ok "Dependencias del sistema instaladas"
-            fi
-            ;;
-        termux)
-            info "Instalando dependencias Termux ..."
-            pkg install -y rtl-sdr python 2>/dev/null || warn "Algunas dependencias Termux no se pudieron instalar"
-            ok "Dependencias Termux instaladas"
-            ;;
-    esac
-}
+if [ "$PLATFORM" != "termux" ]; then
+    echo -e "${CYAN}[*] Instalando servicio de arranque automático...${NC}"
+    
+    CURRENT_DIR=$(pwd)
+    CURRENT_USER=$(whoami)
+    
+    cat <<EOF | sudo tee /etc/systemd/system/sentinel.service > /dev/null
+[Unit]
+Description=Apex Sentinel - Anubis OS Tactical Terminal
+After=network.target
 
-install_package() {
-    local extras="$1"
-    local platform="$2"
-    local pip_args=()
+[Service]
+Type=simple
+User=$CURRENT_USER
+WorkingDirectory=$CURRENT_DIR
+Environment="SENTINEL_AUTH_MODE=systemd"
+ExecStart=$CURRENT_DIR/.venv/bin/python $CURRENT_DIR/Main.py
+Restart=on-failure
+RestartSec=5
+StandardInput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
 
-    if [[ "$platform" == "termux" ]]; then
-        pip_args+=("--break-system-packages")
-    fi
+[Install]
+WantedBy=multi-user.target
+EOF
 
-    info "Instalando sentinel-anubis-os[$extras] ..."
-    pip install -e ".[$extras]" "${pip_args[@]}" --quiet
-    ok "Paquete instalado"
-}
+    sudo systemctl daemon-reload
+    sudo systemctl enable sentinel.service
+    echo -e "${GREEN}[+] Servicio systemd instalado y habilitado.${NC}"
+fi
 
-setup_dirs() {
-    local dirs=(
-        "data/logs"
-        "data/evidence"
-        "data/evidence/rf"
-        "data/evidence/rf/iq"
-        "data/evidence/mobile"
-        "core/data/logs"
-        "core/data/security"
-        "plugins"
-        "tests"
-    )
-    for d in "${dirs[@]}"; do
-        mkdir -p "$d"
-    done
-    ok "Directorios de trabajo creados"
-}
+# 5. Crear estructura de directorios de datos
+echo -e "${CYAN}[*] Creando estructura de directorios...${NC}"
+mkdir -p data/logs data/evidence data/evidence/rf data/evidence/rf/iq data/proyectos
 
-verify_install() {
-    if python -c "import rich, bcrypt, cryptography" 2>/dev/null; then
-        ok "Dependencias core verificadas"
-    else
-        error "Verificación fallida — revisa los errores anteriores"
-        exit 1
-    fi
-}
-
-main() {
-    local mode="${1:-auto}"
-    local platform
-    platform=$(detect_platform)
-
-    header "APEX SENTINEL — Instalación"
-    info "Plataforma detectada: ${BOLD}$platform${NC}"
-
-    case "$mode" in
-        --help|-h)
-            grep "^#  " "$0" | sed 's/^#  //'
-            exit 0
-            ;;
-        --uconsole)  platform="uconsole" ;;
-        --termux)    platform="termux" ;;
-        --kali)      platform="kali" ;;
-        --dev)       platform="${platform}-dev" ;;
-        auto) ;;  # usar la detección automática
-        *)
-            error "Modo desconocido: $mode"
-            exit 1
-            ;;
-    esac
-
-    local extras
-    case "$platform" in
-        uconsole)      extras="uconsole" ;;
-        termux)        extras="termux" ;;
-        *-dev)         extras="all" ;;
-        *)             extras="network,rtlsdr" ;;
-    esac
-
-    # Python
-    local py
-    py=$(check_python "python3")
-
-    if [[ "$platform" != "termux" ]]; then
-        setup_venv "$py"
-    fi
-
-    install_system_deps "${platform%%-dev}"
-    install_package "$extras" "$platform"
-    setup_dirs
-    verify_install
-
-    header "Instalación completa"
-    echo ""
-    if [[ "$platform" == "termux" ]]; then
-        echo -e "  ${GREEN}python Main.py${NC}"
-    else
-        echo -e "  ${GREEN}source .venv/bin/activate${NC}"
-        echo -e "  ${GREEN}python Main.py${NC}"
-        if [[ "$extras" == "all" ]]; then
-            echo -e "  ${GREEN}pytest${NC}                    # correr tests"
-            echo -e "  ${GREEN}ruff check .${NC}              # linter"
-            echo -e "  ${GREEN}pyright${NC}                   # type checker"
-        fi
-    fi
-    echo ""
-}
-
-main "${1:-auto}"
+echo -e "${GREEN}====================================================${NC}"
+echo -e "${GREEN}      INSTALACIÓN COMPLETADA CON ÉXITO              ${NC}"
+echo -e "${GREEN}====================================================${NC}"
+echo -e "Para iniciar manualmente:"
+if [ "$PLATFORM" = "termux" ]; then
+    echo -e "  python Main.py"
+else
+    echo -e "  source .venv/bin/activate && python Main.py"
+    echo -e "Para arrancar el servicio ahora:"
+    echo -e "  sudo systemctl start sentinel"
+fi

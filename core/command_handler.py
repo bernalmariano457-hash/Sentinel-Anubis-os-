@@ -11,7 +11,6 @@ from core.cmd_osint import OsintCommands
 from core.cmd_rf import RFCommands
 from core.cmd_sistema import SistemaCommands
 from core.cmd_wireless import WirelessCommands
-from core.forensic_bridge import is_system_locked
 
 if TYPE_CHECKING:
     from Main import ApexSentinel

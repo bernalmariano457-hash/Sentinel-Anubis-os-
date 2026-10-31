@@ -24,6 +24,9 @@ from rich.progress import (
 )
 from rich.table import Table
 
+# IMPORTACIÓN DEL GUARDIÁN
+from core.hardware_guard import HardwareGuard
+
 log: Final = logging.getLogger("sentinel.rf.recorder")
 
 IQ_DIR: Final[Path] = Path("data/evidence/rf/iq")
@@ -155,7 +158,8 @@ def _build_sigmf_meta(result: RecordingResult, requested_duration_s: int) -> Met
 
 def _locate_meta(iq_path: Path) -> Path | None:
     return next(
-        (iq_path.with_suffix(ext) for ext in META_EXTENSIONS if iq_path.with_suffix(ext).exists()),
+        (iq_path.with_suffix(ext)
+         for ext in META_EXTENSIONS if iq_path.with_suffix(ext).exists()),
         None,
     )
 
@@ -163,8 +167,10 @@ def _locate_meta(iq_path: Path) -> Path | None:
 def _parse_meta(meta_path: Path) -> tuple[float, int, float, str]:
     raw: MetaDict = json.loads(meta_path.read_text(encoding="utf-8"))
     if "global" in raw:
-        sample_rate = int(raw["global"].get("core:sample_rate", DEFAULT_SAMPLE_RATE))
-        freq_hz = int((raw.get("captures") or [{}])[0].get("core:frequency", 0))
+        sample_rate = int(raw["global"].get(
+            "core:sample_rate", DEFAULT_SAMPLE_RATE))
+        freq_hz = int((raw.get("captures") or [{}])[
+                      0].get("core:frequency", 0))
         duration = float(raw["global"].get("rfscanner:duration_s", 0))
         hardware = raw["global"].get("core:hw", "?")
     else:
@@ -183,10 +189,12 @@ def _resolve_output_path(raw: str | Path) -> Path:
 class _AsyncFileWriter:
     def __init__(self, path: Path) -> None:
         self._path = path
-        self._queue: queue.Queue[bytes | None] = queue.Queue(maxsize=WRITE_QUEUE_MAXSIZE)
+        self._queue: queue.Queue[bytes | None] = queue.Queue(
+            maxsize=WRITE_QUEUE_MAXSIZE)
         self._bytes_written = 0
         self._error: BaseException | None = None
-        self._thread = threading.Thread(target=self._writer_loop, daemon=True, name="rf-iq-writer")
+        self._thread = threading.Thread(
+            target=self._writer_loop, daemon=True, name="rf-iq-writer")
         self._thread.start()
 
     def _writer_loop(self) -> None:
@@ -204,14 +212,16 @@ class _AsyncFileWriter:
 
     def submit(self, raw_bytes: bytes) -> None:
         if self._error is not None:
-            raise RuntimeError(f"IQ writer thread failed: {self._error}") from self._error
+            raise RuntimeError(
+                f"IQ writer thread failed: {self._error}") from self._error
         self._queue.put(raw_bytes)
 
     def flush_and_close(self) -> int:
         self._queue.put(None)
         self._thread.join()
         if self._error is not None:
-            raise RuntimeError(f"IQ writer thread failed: {self._error}") from self._error
+            raise RuntimeError(
+                f"IQ writer thread failed: {self._error}") from self._error
         return self._bytes_written
 
     def abort(self) -> None:
@@ -238,8 +248,12 @@ class IQCaptureSession:
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self._writer is not None and exc_type is not None:
-            self._writer.abort()
+        if self._writer is not None:
+            if exc_type is not None:
+                # Protección: Si hubo un error (como desconexión del SDR), borramos el archivo corrupto
+                self._writer.abort()
+            else:
+                self._writer.flush_and_close()
 
     def run(self, progress: Progress, task_id: Any) -> RecordingResult | None:
         assert self._writer is not None
@@ -249,15 +263,18 @@ class IQCaptureSession:
             while (elapsed := time.monotonic() - t_start) < self._cfg.duration_s:
                 block = self._rf._capturar(self._cfg.freq_hz)
                 if block is None:
-                    log.warning("rf._capturar returned None at %.1fs — stopping early.", elapsed)
+                    log.warning(
+                        "rf._capturar returned None at %.1fs — stopping early.", elapsed)
                     break
                 encoded = block.astype(np.complex64)
                 self._writer.submit(encoded.tobytes())
                 self._total_samples += len(encoded)
-                progress.update(task_id, completed=min(elapsed, self._cfg.duration_s))
+                progress.update(task_id, completed=min(
+                    elapsed, self._cfg.duration_s))
 
         except KeyboardInterrupt:
-            log.info("IQ capture interrupted by user after %.1fs.", time.monotonic() - t_start)
+            log.info("IQ capture interrupted by user after %.1fs.",
+                     time.monotonic() - t_start)
 
         finally:
             bytes_written = self._writer.flush_and_close()
@@ -317,12 +334,14 @@ class IQPlaybackEngine:
             f"{len(samples) / resolved_rate:.1f}s · {n_blocks} blocks[/dim]"
         )
 
-        demod_cfg = DemodConfig(mode=mode, audio_rate=AUDIO_OUTPUT_RATE, volume=AUDIO_PLAYBACK_VOLUME)
+        demod_cfg = DemodConfig(
+            mode=mode, audio_rate=AUDIO_OUTPUT_RATE, volume=AUDIO_PLAYBACK_VOLUME)
         demod = Demodulator(demod_cfg, resolved_rate)
 
         try:
             for block_idx in range(n_blocks):
-                block = samples[block_idx * block_size:(block_idx + 1) * block_size]
+                block = samples[block_idx *
+                                block_size:(block_idx + 1) * block_size]
                 audio = demod.demodulate(block)
                 if audio is not None and len(audio) > 0:
                     demod.play(audio)
@@ -337,7 +356,8 @@ class IQPlaybackEngine:
             return fallback
         try:
             _, sample_rate, _, _ = _parse_meta(meta_path)
-            self._console.print(f"[dim]Metadata loaded from: {meta_path.name}[/dim]")
+            self._console.print(
+                f"[dim]Metadata loaded from: {meta_path.name}[/dim]")
             return sample_rate
         except Exception as exc:
             log.warning("Could not parse metadata %s: %s", meta_path, exc)
@@ -347,7 +367,8 @@ class IQPlaybackEngine:
         try:
             return np.fromfile(str(path), dtype=np.complex64)
         except Exception as exc:
-            self._console.print(f"[red][!] Failed to read IQ file: {exc}[/red]")
+            self._console.print(
+                f"[red][!] Failed to read IQ file: {exc}[/red]")
             log.exception("IQ file read error: %s", path)
             return None
 
@@ -381,9 +402,11 @@ class RecordingListView:
         for file_path in files:
             stat = file_path.stat()
             size_mb = stat.st_size / 1e6
-            modified = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+            modified = datetime.fromtimestamp(
+                stat.st_mtime).strftime("%Y-%m-%d %H:%M")
             info_label = self._build_info_label(file_path)
-            table.add_row(file_path.name, f"{size_mb:.1f} MB", modified, info_label)
+            table.add_row(file_path.name,
+                          f"{size_mb:.1f} MB", modified, info_label)
 
         self._console.print(table)
 
@@ -407,9 +430,22 @@ class RFRecorder:
         IQ_DIR.mkdir(parents=True, exist_ok=True)
 
     def record(self, cfg: RecordingConfig) -> Path | None:
-        rf_source: RFSource | None = getattr(self._sentinel, "rf_scanner", None)
+
+        if not HardwareGuard.check_disk_space(IQ_DIR):
+            self._console.print(
+                "[bold red][!] ABORTADO: Disco lleno (menos de 100MB libres).[/bold red]")
+            return None
+
+        power_module = getattr(self._sentinel, "power", None)
+        ok_hw, msg_hw = HardwareGuard.check_thermal_and_power(power_module)
+        if not ok_hw:
+            self._console.print(f"[bold red][!] ABORTADO: {msg_hw}[/bold red]")
+            return None
+
+        rf_source: RFSource | None = getattr(
+            self._sentinel, "rf", None)
         if rf_source is None:
-            self._console.print("[red][!] rf_scanner not available.[/red]")
+            self._console.print("[red][!] rf module not available.[/red]")
             return None
 
         timestamp = _utc_timestamp()
@@ -501,7 +537,8 @@ class RFRecorder:
             console=self._console,
             transient=True,
         ) as progress:
-            task_id = progress.add_task(f"Capturing {cfg.freq_label}...", total=cfg.duration_s)
+            task_id = progress.add_task(
+                f"Capturing {cfg.freq_label}...", total=cfg.duration_s)
             session = IQCaptureSession(rf_source, cfg, out_path)
             with session:
                 return session.run(progress, task_id)

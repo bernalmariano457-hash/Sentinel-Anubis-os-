@@ -13,8 +13,6 @@ from collections.abc import Callable
 from pathlib import Path
 from types import TracebackType
 from typing import Any
-from core.forensic_bridge import is_system_locked, get_lockdown, start_integrity_monitor
-from pathlib import Path
 
 from rich.console import Console
 from rich.markup import escape as _esc
@@ -28,6 +26,9 @@ from core.ModuleRegistry import ModuleRegistry
 from core.sdr_broker import SDRBroker
 from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
 from core.vendor_resolver import VendorResolver
+
+# Integración con el módulo forense
+from core.forensic_bridge import is_system_locked, start_integrity_monitor
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
@@ -231,24 +232,22 @@ class ApexSentinel:
         self.log = LogSistema(self.console)
 
         self.workspace = Path.cwd()
-        self.operator_id = "op-alice"
+        self.operator_id = "op-mariano"
+        self.baseline_path = self.workspace / "baseline.json"
 
         if is_system_locked(self.workspace):
             self.console.print(
                 "[bold red]SISTEMA BLOQUEADO POR COMPROMISO DE INTEGRIDAD[/bold red]")
             self.console.print(
-                "Usa el comando `sentinel unlock --workspace . --operator-id op-alice` en tu terminal para restaurar el acceso.")
-            import sys
+                "Usa el comando `sentinel unlock --workspace . --operator-id op-mariano` en tu terminal para restaurar el acceso.")
             sys.exit(1)
 
-        self.workspace = Path.cwd()
-        self.operator_id = "op-mariano"
-        self.baseline_path = self.workspace / "baseline.json
-
-        baseline_path = self.workspace / "baseline.json"
-        if baseline_path.exists():
+        if self.baseline_path.exists():
             start_integrity_monitor(
-                self.workspace, self.operator_id, baseline_path)
+                self.workspace, self.operator_id, self.baseline_path)
+        else:
+            self.console.print(
+                "[yellow]Advertencia: No hay baseline.json. El monitor de integridad no está activo.[/yellow]")
 
         self._coordinator: _ShutdownCoordinator = _ShutdownCoordinator()
         self._registrar_apagado_nucleo()
@@ -645,6 +644,14 @@ class ApexSentinel:
         }
 
     def _despachar(self, entrada: str) -> bool:
+
+        if is_system_locked(self.workspace):
+            self.console.print(
+                "[bold red]⚠️ SISTEMA BLOQUEADO POR COMPROMISO DE INTEGRIDAD ⚠️[/bold red]")
+            self.console.print(
+                "No se pueden ejecutar comandos. Ve a la terminal y usa `sentinel unlock`.")
+            return True
+
         partes = entrada.strip().lower().split()
         if not partes:
             return True

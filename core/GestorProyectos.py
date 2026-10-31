@@ -12,6 +12,11 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
+from sentinel.integrity.keys import KeyManager
+from sentinel.reporting.json_report import generate_report
+from sentinel.reporting.pdf_report import generate_pdf_report
+from sentinel.packaging.sae import pack
+
 log = logging.getLogger("sentinel.proyectos")
 
 _PROYECTOS_BASE = Path("data/proyectos")
@@ -192,12 +197,62 @@ class GestorProyectos:
         if not self.proyecto_activo:
             self._console.print("[yellow][!] No hay proyecto activo.[/yellow]")
             return
-        self.proyecto_activo.estado = "cerrado"
-        self._guardar(self.proyecto_activo)
+
+        p = self.proyecto_activo
         self._console.print(
-            f"[green][+] Proyecto '[bold]{self.proyecto_activo.nombre}[/bold]' cerrado.[/green]"
+            f"\n[cyan]Cerrando proyecto {p.nombre} y generando paquete forense...[/cyan]")
+
+        try:
+            operator_id = getattr(self.sentinel, "operator_id", "op-mariano")
+            workspace = Path.cwd()
+
+            json_report_path = generate_report(workspace, operator_id)
+            pdf_report_path = p.ruta / "reports" / \
+                f"{json_report_path.stem}.pdf"
+            generate_pdf_report(json_report_path, pdf_report_path)
+
+            evidence_dir = workspace / "data" / "evidence"
+            artifact_dirs = list(evidence_dir.glob(
+                "art-*")) if evidence_dir.exists() else []
+            custody_path = workspace / "custody.log"
+
+            sae_output = p.ruta / "reports" / f"PROYECTO_{p.id}.sae"
+
+            if artifact_dirs and custody_path.exists():
+                km = KeyManager.load(operator_id, operator_id)
+                pack(
+                    output_path=sae_output,
+                    operator=km,
+                    operation_id=p.id,
+                    artifact_dirs=artifact_dirs,
+                    custody_log_path=custody_path
+                )
+                self._console.print(
+                    f"[green][+] Paquete forense generado: {sae_output.name}[/green]")
+            else:
+                self._console.print(
+                    "[yellow][!] No hay artefactos o custody.log para empaquetar.[/yellow]")
+
+            if json_report_path.exists():
+                json_dest = p.ruta / "reports" / json_report_path.name
+                import shutil
+                shutil.move(str(json_report_path), str(json_dest))
+
+            self._console.print(
+                f"[green][+] Reportes guardados en: {p.ruta / 'reports'}[/green]")
+
+        except Exception as e:
+            self._console.print(
+                f"[bold red][!] Error en cierre forense: {e}[/bold red]")
+            self._console.print(
+                "[yellow][!] El proyecto se cerrará, pero la evidencia no pudo ser empaquetada.[/yellow]")
+
+        p.estado = "cerrado"
+        self._guardar(p)
+        self._console.print(
+            f"[green][+] Proyecto '[bold]{p.nombre}[/bold]' cerrado.[/green]"
         )
-        log.info(f"Proyecto cerrado: {self.proyecto_activo.nombre}")
+        log.info(f"Proyecto cerrado: {p.nombre}")
         self.proyecto_activo = None
 
     def registrar_evidencia(

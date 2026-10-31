@@ -55,7 +55,7 @@ dependencies = [
     "keyring>=24.0",
     "portalocker>=3.0",
     "jsonschema>=4.20",
-
+    "reportlab>=3.6,<4"
 ]
 
 [project.optional-dependencies]

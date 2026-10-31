@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from core._base import _DomainBase
 from core.validators import Validador
+from core.evidence_bridge import register_evidence
+from core.hardware_guard import HardwareGuard
 
 
 class RFCommands(_DomainBase):
@@ -89,21 +93,18 @@ class RFCommands(_DomainBase):
         try:
             import time
             from datetime import datetime
-            from pathlib import Path
 
             import numpy as np
 
             from modules.rf.rf_config import DemodConfig
             from modules.rf.rf_demod import Demodulator
 
-            # Usar el sample_rate real del scanner RF (no hardcodear)
             sample_rate = getattr(self.s.rf, "sample_rate", 2_048_000)
             cfg = DemodConfig(mode=modo, audio_rate=48000, volume=0.85)
             demod = Demodulator(cfg, sample_rate=sample_rate)
             audio_total = []
             inicio = time.time()
 
-            # Corrección: el método real es _capture_iq() en el RFScanner.
             scanner = getattr(self.s.rf, "_scanner", None)
             if scanner is None:
                 self.console.print(
@@ -122,12 +123,27 @@ class RFCommands(_DomainBase):
 
             if guardar and audio_total:
                 ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-                dest = Path("data/evidence/rf") / \
+                dest = Path("data/evidence") / \
                     f"audio_{freq:.3f}MHz_{modo}_{ts}.wav"
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 demod.save_wav(np.concatenate(audio_total), str(dest))
-                self.console.print(
-                    f"[green][+] Audio guardado: {dest}[/green]")
+
+                try:
+                    final_dir = register_evidence(
+                        workspace=self.s.workspace,
+                        operator_id=self.s.operator_id,
+                        artifact_path=dest,
+                        artifact_type="audio_wav",
+                        details={"freq_mhz": freq, "mode": modo,
+                                 "duration_s": duracion}
+                    )
+                    self.console.print(
+                        f"[green][+] Audio guardado y registrado en custodia.[/green]")
+                    self.console.print(
+                        f"[dim]    Ubicación: {final_dir}[/dim]")
+                except Exception as e:
+                    self.console.print(
+                        f"[bold red][!] ERROR FORENSE: El audio se guardó pero no se pudo firmar: {e}[/bold red]")
 
             demod.stop_audio()
         except KeyboardInterrupt:
@@ -150,7 +166,27 @@ class RFCommands(_DomainBase):
             self.console, "[?] Duración (segundos)", 5, 300, 10)
         try:
             from modules.rf.rf_recorder import RFRecorder
-            RFRecorder(self.s).grabar(freq_mhz=freq, duracion_seg=duracion)
+            rec = RFRecorder(self.s)
+
+            result_path = rec.grabar(freq_mhz=freq, duracion_seg=duracion)
+
+            if result_path and Path(result_path).exists():
+                try:
+                    final_dir = register_evidence(
+                        workspace=self.s.workspace,
+                        operator_id=self.s.operator_id,
+                        artifact_path=Path(result_path),
+                        artifact_type="iq_raw",
+                        details={"freq_mhz": freq, "duration_s": duracion}
+                    )
+                    self.console.print(
+                        f"[green][+] Grabación IQ registrada en custodia.[/green]")
+                    self.console.print(
+                        f"[dim]    Ubicación: {final_dir}[/dim]")
+                except Exception as e:
+                    self.console.print(
+                        f"[bold red][!] ERROR FORENSE: La grabación existe pero no se pudo firmar: {e}[/bold red]")
+
         except ImportError:
             self.console.print("[red][!] rf_recorder.py no encontrado.[/red]")
 

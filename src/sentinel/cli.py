@@ -4,6 +4,9 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+from sentinel.reporting.json_report import generate_report
+from sentinel.reporting.pdf_report import generate_pdf_report
+from sentinel.packaging.sae import pack
 
 from sentinel import SentinelError
 from sentinel.integrity.keys import KeyManager
@@ -317,6 +320,74 @@ def baseline_create(workspace: Path, operator_id: str) -> None:
     console.print(f"Signed by: {operator_id}")
     console.print(f"Files tracked: {len(bl.files)}")
     console.print(f"Saved to: {out_path}")
+
+
+@main.command("report")
+@click.option("--workspace", type=click.Path(file_okay=False, path_type=Path), required=True)
+@click.option("--operator-id", required=True, help="Operator who signed the log.")
+def cmd_report(workspace: Path, operator_id: str) -> None:
+    try:
+        # 1. Generar JSON
+        json_path = generate_report(workspace, operator_id)
+        console.print(f"[green]JSON Report generated:[/green] {json_path}")
+
+        # 2. Generar PDF
+        pdf_path = workspace / f"{json_path.stem}.pdf"
+        generate_pdf_report(json_path, pdf_path)
+        console.print(f"[green]PDF Report generated:[/green] {pdf_path}")
+
+    except Exception as e:
+        err_console.print(f"[red]error generating report:[/red] {e}")
+        sys.exit(2)
+
+
+@main.command("pack")
+@click.option("--workspace", type=click.Path(file_okay=False, path_type=Path), required=True)
+@click.option("--operator-id", required=True, help="Operator signing the package.")
+@click.option("--output", type=click.Path(file_okay=True, path_type=Path), required=True, help="Output .sae file.")
+def cmd_pack(workspace: Path, operator_id: str, output: Path) -> None:
+    try:
+        km = KeyManager.load(operator_id, operator_id)
+
+        # Buscar artefactos (asumiendo que están en data/evidence)
+        evidence_dir = workspace / "data" / "evidence"
+        artifact_dirs = [d for d in evidence_dir.iterdir(
+        ) if d.is_dir()] if evidence_dir.exists() else []
+
+        if not artifact_dirs:
+            console.print(
+                "[yellow]No artifact directories found. Packaging only custody log and metadata.[/yellow]")
+
+            dummy = workspace / "dummy_art"
+            dummy.mkdir(exist_ok=True)
+            (dummy / "data.bin").write_bytes(b"test")
+
+            console.print(
+                "[red]Cannot pack without valid artifact directories.[/red]")
+            sys.exit(2)
+
+        custody_path = workspace / "custody.log"
+        if not custody_path.exists():
+            console.print("[red]No custody.log found in workspace.[/red]")
+            sys.exit(2)
+
+        console.print(
+            f"[cyan]Packing {len(artifact_dirs)} artifacts and custody log...[/cyan]")
+
+        manifest = pack(
+            output_path=output,
+            operator=km,
+            operation_id="OP-001",
+            artifact_dirs=artifact_dirs,
+            custody_log_path=custody_path
+        )
+
+        console.print(f"[green]Package created:[/green] {output}")
+        console.print(f"Package ID: {manifest['package_id']}")
+
+    except Exception as e:
+        err_console.print(f"[red]error packing evidence:[/red] {e}")
+        sys.exit(2)
 
 
 if __name__ == "__main__":
