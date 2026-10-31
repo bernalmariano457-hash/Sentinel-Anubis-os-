@@ -13,6 +13,8 @@ from collections.abc import Callable
 from pathlib import Path
 from types import TracebackType
 from typing import Any
+from core.forensic_bridge import is_system_locked, get_lockdown, start_integrity_monitor
+from pathlib import Path
 
 from rich.console import Console
 from rich.markup import escape as _esc
@@ -227,6 +229,26 @@ class ApexSentinel:
         self._initialized: bool = False
         self.console = Console(highlight=False)
         self.log = LogSistema(self.console)
+
+        self.workspace = Path.cwd()
+        self.operator_id = "op-alice"
+
+        if is_system_locked(self.workspace):
+            self.console.print(
+                "[bold red]SISTEMA BLOQUEADO POR COMPROMISO DE INTEGRIDAD[/bold red]")
+            self.console.print(
+                "Usa el comando `sentinel unlock --workspace . --operator-id op-alice` en tu terminal para restaurar el acceso.")
+            import sys
+            sys.exit(1)
+
+        self.workspace = Path.cwd()
+        self.operator_id = "op-mariano"
+        self.baseline_path = self.workspace / "baseline.json
+
+        baseline_path = self.workspace / "baseline.json"
+        if baseline_path.exists():
+            start_integrity_monitor(
+                self.workspace, self.operator_id, baseline_path)
 
         self._coordinator: _ShutdownCoordinator = _ShutdownCoordinator()
         self._registrar_apagado_nucleo()

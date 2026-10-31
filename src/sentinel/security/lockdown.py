@@ -1,3 +1,5 @@
+"""Lock/unlock orchestration over the vault, the state machine and the custody log."""
+
 from __future__ import annotations
 
 import shutil
@@ -19,8 +21,7 @@ from sentinel.security.state import (
     write_state,
 )
 
-DEFAULT_LOCK_INCLUDE: Final[tuple[str, ...]] = (
-    "evidence", "custody.log", "config")
+DEFAULT_LOCK_INCLUDE: Final[tuple[str, ...]] = ("evidence", "custody.log", "config")
 
 
 class LockdownError(SentinelError):
@@ -65,23 +66,29 @@ class Lockdown:
 
     def lock(
         self,
-        passphrase: str,
+        passphrase: str | None = None,
         include: tuple[str, ...] = DEFAULT_LOCK_INCLUDE,
         reason: str = "manual",
         details: dict[str, Any] | None = None,
     ) -> StateRecord:
+        """Seal the included paths, delete the plaintext and mark the workspace locked.
+        If passphrase is None, the workspace is marked LOCKED but files are not encrypted.
+        """
         if not vault.is_setup(self.workspace):
             raise LockdownError("vault is not set up")
         if self.is_locked():
             raise LockdownActiveError("workspace is already locked")
         if vault.has_blob(self.workspace):
             raise LockdownActiveError("a sealed vault blob already exists")
+        
         names = list(include)
         vault.validate_include(names)
-        vault.verify_passphrase(self.workspace, passphrase)
+        if passphrase is not None:
+            vault.verify_passphrase(self.workspace, passphrase)
+            
         previous = self._previous_state()
-        write_state(self.workspace, self.operator, LockState.LOCKED,
-                    self._now().iso_utc, reason, details)
+        write_state(self.workspace, self.operator, LockState.LOCKED, self._now().iso_utc, reason, details)
+        
         try:
             custody = self._custody()
             if custody.exists():
@@ -89,46 +96,48 @@ class Lockdown:
                     self.operator,
                     CustodyAction.EXPORT,
                     timestamp=self._now(),
-                    details={"action": "lockdown", "reason": reason},
+                    details={"action": "lockdown", "reason": reason, "encrypted": passphrase is not None},
                 )
-            vault.seal(self.workspace, passphrase, names)
+            if passphrase is not None:
+                vault.seal(self.workspace, passphrase, names)
         except Exception:
-            write_state(self.workspace, self.operator, previous,
-                        self._now().iso_utc, "lock aborted")
+            write_state(self.workspace, self.operator, previous, self._now().iso_utc, "lock aborted")
             raise
-        self._remove(names)
-        record = read_state(self.workspace)
-        merged = {**record.details,
-                  "blob": vault.VAULT_BLOB_FILENAME, "included": names}
-        return replace(record, details=merged)
+
+        if passphrase is not None:
+            self._remove(names)
+            record = read_state(self.workspace)
+            merged = {**record.details, "blob": vault.VAULT_BLOB_FILENAME, "included": names}
+            return replace(record, details=merged)
+        
+        return read_state(self.workspace)
 
     def unlock(self, passphrase: str) -> StateRecord:
+        """Verify the lock state, restore the sealed paths and mark the workspace unlocked."""
         if not vault.is_setup(self.workspace):
             raise LockdownError("vault is not set up")
         try:
             current = read_state(self.workspace)
         except StateError as e:
-            raise LockdownNotActiveError(
-                f"workspace is not locked: {e}") from e
+            raise LockdownNotActiveError(f"workspace is not locked: {e}") from e
         if current.state is not LockState.LOCKED:
-            raise LockdownNotActiveError(
-                f"workspace is not locked (state: {current.state.value})")
+            raise LockdownNotActiveError(f"workspace is not locked (state: {current.state.value})")
         try:
             verify_state(current, self.operator.identity)
         except SentinelError as e:
             raise LockdownError(f"lock state signature is invalid: {e}") from e
-        if not vault.has_blob(self.workspace):
-            raise LockdownError("sealed vault blob not found")
-        vault.unseal(self.workspace, passphrase)
-        write_state(self.workspace, self.operator,
-                    LockState.UNLOCKED, self._now().iso_utc, "unlock")
-        self._discard_blob()
+            
+        if vault.has_blob(self.workspace):
+            vault.unseal(self.workspace, passphrase)
+            self._discard_blob()
+            
+        write_state(self.workspace, self.operator, LockState.UNLOCKED, self._now().iso_utc, "unlock")
+        
         custody = self._custody()
         if custody.exists():
             report = custody.verify_chain()
             if not report.valid:
-                raise LockdownError(
-                    f"custody chain is invalid after unlock: {len(report.issues)} issue(s)")
+                raise LockdownError(f"custody chain is invalid after unlock: {len(report.issues)} issue(s)")
             custody.append(
                 self.operator,
                 CustodyAction.UNPACK,

@@ -9,6 +9,8 @@ from sentinel import SentinelError
 from sentinel.integrity.keys import KeyManager
 from sentinel.security import Lockdown, LockState, StateError, read_state
 from sentinel.security.state import STATE_FILENAME
+from sentinel.integrity.baseline import Baseline
+from sentinel.integrity.timestamp import SystemClock
 
 import click
 from rich.console import Console
@@ -211,6 +213,7 @@ def cmd_show_operator(operator_pub: Path) -> None:
         )
     )
 
+
 _WORKSPACE_OPTION = click.option(
     "--workspace",
     type=click.Path(file_okay=False, path_type=Path),
@@ -253,7 +256,8 @@ def lock(workspace: Path, operator_id: str, reason: str, passphrase: str) -> Non
     except (SentinelError, ValueError) as e:
         err_console.print(f"[red]error:[/red] {e}")
         sys.exit(2)
-    console.print(f"[red]locked[/red] at {record.changed_at} ({record.reason})")
+    console.print(
+        f"[red]locked[/red] at {record.changed_at} ({record.reason})")
 
 
 @main.command("unlock")
@@ -288,6 +292,31 @@ def status(workspace: Path) -> None:
     console.print(f"changed:  {record.changed_at}")
     console.print(f"reason:   {record.reason}")
     console.print(f"operator: [cyan]{record.operator_id}[/cyan]")
+
+    @main.group(name="baseline")
+def baseline_group() -> None:
+    pass
+
+
+@baseline_group.command("create")
+@click.option("--workspace", type=click.Path(file_okay=False, path_type=Path), required=True)
+@click.option("--operator-id", required=True, help="Operator signing the baseline.")
+def baseline_create(workspace: Path, operator_id: str) -> None:
+
+    try:
+        km = KeyManager.load(operator_id, operator_id)
+        ts = SystemClock().now()
+        bl = Baseline.create(km, workspace, ts)
+        out_path = workspace / "baseline.json"
+        bl.save(out_path)
+    except Exception as e:
+        err_console.print(f"[red]error:[/red] {e}")
+        sys.exit(2)
+
+    console.print(f"[green]Baseline created successfully[/green]")
+    console.print(f"Signed by: {operator_id}")
+    console.print(f"Files tracked: {len(bl.files)}")
+    console.print(f"Saved to: {out_path}")
 
 
 if __name__ == "__main__":
