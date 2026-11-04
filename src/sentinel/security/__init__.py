@@ -34,8 +34,8 @@ from sentinel.security.vault import (
 )
 
 __all__ = [
-    "AutoResponder",
     "DEFAULT_LOCK_INCLUDE",
+    "AutoResponder",
     "LockState",
     "Lockdown",
     "LockdownActiveError",

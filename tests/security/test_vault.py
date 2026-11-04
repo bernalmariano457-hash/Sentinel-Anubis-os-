@@ -4,7 +4,6 @@ import shutil
 from pathlib import Path
 
 import pytest
-
 from sentinel.security import vault
 from sentinel.security.vault import (
     VAULT_BLOB_FILENAME,

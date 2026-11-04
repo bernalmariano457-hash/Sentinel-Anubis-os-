@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sentinel.custody.log import CustodyLog
@@ -40,7 +40,7 @@ def generate_report(
 
     entries = custody_log.read_all()
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     metadata = ReportMetadata(
         report_id=f"REP-{datetime.now().strftime('%Y%m%d%H%M%S')}",
         generated_at=now,

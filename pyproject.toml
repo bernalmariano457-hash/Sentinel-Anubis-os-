@@ -1,10 +1,6 @@
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-requires-python = ">=3.11"
-license = { text = "MIT" }
-authors = [{ name = "Mariano Bernal" }]
-
 
 #  APEX SENTINEL — pyproject.toml
 #  Auditado y actualizado tras refactorización rf_source / AircraftMonitor
@@ -13,6 +9,7 @@ authors = [{ name = "Mariano Bernal" }]
 #    base      → import duro en cualquier ruta de arranque
 #    optional  → dentro de try/except o detrás de importlib.import_module
 #    extra     → solo en submódulos no cargados hasta que el usuario los pida
+
 
 [project]
 name        = "sentinel-anubis-os"
@@ -23,17 +20,6 @@ license     = { file = "LICENSE" }
 authors     = [{ name = "AnubisOS" }]
 requires-python = ">=3.11"
 
-[project]
-name = "sentinel-anubis"
-version = "0.1.0"
-description = "Forensic subsystem for Sentinel-Anubis OS"
-readme = "README.md"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-
 # ── Dependencias base (import duro — siempre necesarias) ──────────────
 dependencies = [
     "rich>=13.7,<15",             # UI de terminal — pin de major porque cambia API
@@ -41,54 +27,18 @@ dependencies = [
     "urllib3>=2.2,<3",            # Pool HTTP para CVEMatcher (requests ya la incluye,
                                   # pero CVEMatcher importa urllib3.util.retry directo)
     "bcrypt>=4.1,<5",             # Hashing de contraseñas (auth.py)
-    "cryptography>=42,<44",       # Fernet — cifrado de evidencias (Security.py)
+    "cryptography>=44,<46",       # Fernet (Security.py) + Argon2id (sentinel.security.vault)
     "Pillow>=10.2,<12",           # EXIF + NOAADecoder image output
     "piexif>=1.1,<2",             # EXIF writer — ExifAnalyzer.py (import duro)
     "python-whois>=0.9,<1",       # WHOIS lookups (OSINTEngine)
     "python-dotenv>=1.0,<2",      # Variables de entorno
     "fpdf2>=2.7,<3",              # Reportes PDF (ReportGenerator, import duro)
                                   # ⚠ paquete: fpdf2  →  módulo: fpdf  (drop-in de fpdf1)
-    dependencies = [
-    "cryptography>=42.0",
-    "click>=8.1",
-    "rich>=13.0",
-    "keyring>=24.0",
-    "portalocker>=3.0",
-    "jsonschema>=4.20",
-    "reportlab>=3.6,<4"
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-cov>=5.0",
-    "ruff>=0.5",
-    "mypy>=1.10",
-    "bandit>=1.7",
-    "pip-audit>=2.7",
-    
-]
-
-[project.scripts]
-sentinel = "sentinel.cli:main"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/sentinel"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-v --cov=sentinel --cov-report=term-missing --cov-fail-under=90"
-
-[tool.ruff]
-line-length = 100
-target-version = "py311"
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "S"]
-
-[tool.mypy]
-python_version = "3.11"
-strict = true                              
+    "click>=8.1",                 # CLI del subsistema forense (sentinel.cli)
+    "keyring>=24.0",              # Custodia de claves privadas (sentinel.integrity.keys)
+    "portalocker>=3.0",           # Locking del custody log (sentinel.custody.log)
+    "jsonschema>=4.20",           # Validación de esquemas (sentinel.schemas)
+    "reportlab>=3.6,<4",          # Reportes PDF forenses (sentinel.reporting.pdf_report)
 ]
 
 [project.urls]
@@ -206,12 +156,11 @@ all = [
 [project.scripts]
 sentinel = "Main:main"
 
-# ══════════════════════════════════════════════════════════════════════
+
 #  HATCH — build config
-# ══════════════════════════════════════════════════════════════════════
 
 [tool.hatch.build.targets.wheel]
-packages = ["core", "modules", "plugins", "tools"]
+packages = ["core", "modules", "plugins", "tools", "src/sentinel"]
 exclude = [
     "__pycache__",
     "**/__pycache__",
@@ -221,9 +170,7 @@ exclude = [
     "*.bak",
 ]
 
-# ══════════════════════════════════════════════════════════════════════
 #  RUFF — linter y formatter
-# ══════════════════════════════════════════════════════════════════════
 
 [tool.ruff]
 target-version = "py311"    # bajado de 313 → mínimo real del proyecto
@@ -256,9 +203,7 @@ known-first-party = ["core", "modules", "plugins", "tools"]
 quote-style  = "double"
 indent-style = "space"
 
-# ══════════════════════════════════════════════════════════════════════
 #  PYTEST
-# ══════════════════════════════════════════════════════════════════════
 
 [tool.pytest.ini_options]
 testpaths    = ["tests"]
@@ -289,7 +234,5 @@ show_missing = true
 skip_covered = false
 fail_under   = 60
 
-# ══════════════════════════════════════════════════════════════════════
 #  PYRIGHT — type checker
 #  Nota: pyrightconfig.json tiene precedencia; mantenido aquí para CI.
-# ══════════════════════════════════════════════════════════════════════

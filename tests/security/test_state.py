@@ -5,7 +5,6 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from sentinel.integrity.keys import InvalidSignatureError, KeyManager
 from sentinel.integrity.timestamp import Timestamp
 from sentinel.security.state import (

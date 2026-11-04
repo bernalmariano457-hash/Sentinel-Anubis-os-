@@ -262,7 +262,33 @@ class CVEMatcher:
                 "query":    query,
                 "total":    len(records),
                 "critical": sum(1 for r in records if r.is_critical),
+
+
             },
+            import json
+            import tempfile
+            from pathlib import Path
+            from dataclasses import asdict
+            from core.evidence_hooks import firmar_resultados_cve
+
+            try:
+            temp_file=Path(tempfile.gettempdir()) /
+            f"cve_scan_{query.replace(' ', '_')}.json"
+            temp_file.write_text(
+                json.dumps([asdict(r) for r in records],
+                           indent=2, ensure_ascii=False),
+                encoding="utf-8"
+            )
+            firmar_resultados_cve(
+                sentinel=self.sentinel,
+                temp_json_path=temp_file,
+                query=query,
+                total_cves=len(records),
+                critical_count=sum(1 for r in records if r.is_critical),
+                high_count=sum(1 for r in records if r.is_high)
+            )
+            except Exception as e:
+            self.console.print(f"[yellow][!] Firmado CVE falló: {e}[/yellow]")
         )
 
     def _render_cve_table(self, records: list[CVERecord], query: str) -> None:

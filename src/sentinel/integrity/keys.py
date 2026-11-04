@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 import warnings
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Final
 
 import keyring
@@ -146,6 +148,22 @@ class OperatorIdentity:
         except KeyError as e:
             raise SentinelKeyError(f"missing required field: {e}") from e
 
+    def save(self, path: Path | str) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(self.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    @classmethod
+    def load(cls, path: Path | str) -> OperatorIdentity:
+        raw = Path(path).read_text(encoding="utf-8")
+        try:
+            d = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise SentinelKeyError(f"malformed operator file {path}: {e}") from e
+        return cls.from_dict(d)
+
     def to_public_key(self) -> Ed25519PublicKey:
         raw = base64.b64decode(self.pubkey_b64, validate=True)
         if len(raw) != _PUBKEY_RAW_LEN:
@@ -200,7 +218,7 @@ def _warn_if_insecure_backend() -> None:
         pass
 
 
-@dataclass
+@dataclass(kw_only=True)
 class KeyManager:
 
     identity: OperatorIdentity
@@ -310,6 +328,74 @@ class KeyManager:
         )
         return cls(identity=identity, service=service, _private_key=private_key)
 
+    def export_private_encrypted(self, password: str) -> bytes:
+        if not password:
+            raise ValueError("password must be non-empty")
+        return self._private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.BestAvailableEncryption(
+                password.encode("utf-8")
+            ),
+        )
+
+    @classmethod
+    def import_private_encrypted(
+        cls,
+        pem: bytes,
+        password: str,
+        operator_id: str,
+        display_name: str,
+        service: str = DEFAULT_SERVICE,
+        created_at: str | None = None,
+    ) -> KeyManager:
+        try:
+            private_key = serialization.load_pem_private_key(
+                pem, password=password.encode("utf-8")
+            )
+        except (ValueError, TypeError) as e:
+            raise SentinelKeyError(f"cannot decrypt private key: {e}") from e
+        if not isinstance(private_key, Ed25519PrivateKey):
+            raise SentinelKeyError("PEM does not contain an Ed25519 private key")
+
+        try:
+            existing = keyring.get_password(service, _keyring_username(operator_id))
+        except keyring.errors.KeyringError as e:
+            raise KeyringUnavailableError(f"keyring read failed: {e}") from e
+        if existing is not None:
+            raise RotationError(
+                f"operator_id {operator_id!r} already exists in keyring "
+                f"service {service!r}"
+            )
+
+        priv_raw = private_key.private_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PrivateFormat.Raw,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        pub_raw = private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+
+        try:
+            keyring.set_password(
+                service,
+                _keyring_username(operator_id),
+                base64.b64encode(priv_raw).decode("ascii"),
+            )
+        except keyring.errors.KeyringError as e:
+            raise KeyringUnavailableError(f"keyring write failed: {e}") from e
+
+        identity = OperatorIdentity(
+            operator_id=operator_id,
+            display_name=display_name.strip(),
+            pubkey_b64=base64.b64encode(pub_raw).decode("ascii"),
+            pubkey_fingerprint=_fingerprint(pub_raw),
+            created_at=created_at or _now_utc_iso(),
+        )
+        return cls(identity=identity, service=service, _private_key=private_key)
+
     def sign(self, data: bytes) -> SignatureBundle:
 
         if not isinstance(data, (bytes, bytearray, memoryview)):
@@ -363,3 +449,10 @@ class KeyManager:
                 f"stored private key does not match public key for "
                 f"operator {self.identity.operator_id!r}"
             )
+
+    def save_public(self, path: Path | str) -> None:
+        OperatorIdentity.save(self.identity, path)
+
+    @staticmethod
+    def load_public(path: Path | str) -> OperatorIdentity:
+        return OperatorIdentity.load(path)

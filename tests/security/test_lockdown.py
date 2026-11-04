@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from sentinel.custody.log import CustodyAction, CustodyLog
 from sentinel.integrity.keys import KeyManager
 from sentinel.integrity.timestamp import Timestamp
@@ -176,6 +175,68 @@ class TestUnlock:
         ready.lock(passphrase)
         with pytest.raises(LockdownError):
             Lockdown(workspace, bob).unlock(passphrase)
+
+
+class TestFailsafeLock:
+    def test_marks_locked_without_encrypting(
+        self, ready: Lockdown, workspace: Path
+    ) -> None:
+        before = _snapshot(workspace)
+        record = ready.lock(reason="auto-response")
+        assert record.state is LockState.LOCKED
+        assert ready.is_locked()
+        assert _snapshot(workspace) == before
+        assert (workspace / "evidence").exists()
+        assert (workspace / "config").exists()
+        assert not (workspace / VAULT_BLOB_FILENAME).exists()
+
+    def test_requires_setup(self, lockdown: Lockdown) -> None:
+        with pytest.raises(LockdownError):
+            lockdown.lock()
+
+    def test_double_lock_rejected(self, ready: Lockdown) -> None:
+        ready.lock()
+        with pytest.raises(LockdownActiveError):
+            ready.lock()
+
+    def test_persists_state_without_blob_details(
+        self, ready: Lockdown, workspace: Path, alice: KeyManager
+    ) -> None:
+        ready.lock(reason="auto-response", details={"case": "C-1"})
+        persisted = read_state(workspace)
+        assert persisted.state is LockState.LOCKED
+        assert persisted.reason == "auto-response"
+        assert persisted.details == {"case": "C-1"}
+        verify_state(persisted, alice.identity)
+
+    def test_records_custody_entry_as_unencrypted(
+        self, ready: Lockdown, workspace: Path, alice: KeyManager, ts: Timestamp
+    ) -> None:
+        log = CustodyLog(workspace / "custody.log")
+        log.append(alice, CustodyAction.CREATE, timestamp=ts)
+        ready.lock()
+        entries = log.read_all()
+        assert entries[-1]["details"]["encrypted"] is False
+        assert log.verify_chain().valid
+
+    def test_unlock_restores_normal_state_without_passphrase_check(
+        self, ready: Lockdown, workspace: Path
+    ) -> None:
+        before = _snapshot(workspace)
+        ready.lock()
+        record = ready.unlock(WRONG)
+        assert record.state is LockState.UNLOCKED
+        assert not ready.is_locked()
+        assert _snapshot(workspace) == before
+
+    def test_then_real_lock_still_encrypts(
+        self, ready: Lockdown, workspace: Path, passphrase: str
+    ) -> None:
+        ready.lock()
+        ready.unlock(passphrase)
+        ready.lock(passphrase)
+        assert not (workspace / "evidence").exists()
+        assert (workspace / VAULT_BLOB_FILENAME).exists()
 
 
 class TestCycle:

@@ -21,14 +21,13 @@ from rich.prompt import Prompt
 from rich.rule import Rule
 
 from core.command_handler import CommandHandler
+
+from core.forensic_bridge import is_system_locked, start_integrity_monitor
 from core.log_sistema import LogSistema
 from core.ModuleRegistry import ModuleRegistry
 from core.sdr_broker import SDRBroker
 from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
 from core.vendor_resolver import VendorResolver
-
-# Integración con el módulo forense
-from core.forensic_bridge import is_system_locked, start_integrity_monitor
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:

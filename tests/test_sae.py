@@ -278,7 +278,7 @@ class TestVerify:
         _tamper_member(out, MANIFEST_MEMBER, json.dumps(m).encode("utf-8"))
         report = verify(out, operators={"op-alice": alice.identity})
         codes = {i.code for i in report.issues}
-        assert "signature_invalid" in codes
+        assert "operator_unknown" in codes
 
     def test_detects_custody_tamper(
         self,

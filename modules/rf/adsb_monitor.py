@@ -586,9 +586,37 @@ class AircraftMonitor:
             self._pipeline = None
 
     def _configure_receiver(self) -> None:
+        from rich.prompt import FloatPrompt, IntPrompt
 
-        raise NotImplementedError(
-            "_configure_receiver: pendiente de implementar")
+        self._console.print(Panel(
+            f"lat: {self._rx_lat}\n"
+            f"lon: {self._rx_lon}\n"
+            f"gain_db: {self._gain_db}\n"
+            f"sample_rate: {self._sample_rate}\n"
+            f"ppm_correction: {self._ppm_corr}\n"
+            f"device_index: {self._device_index}",
+            title="[bold cyan]Configuración actual[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        self._rx_lat = FloatPrompt.ask(
+            "lat", default=self._rx_lat, console=self._console)
+        self._rx_lon = FloatPrompt.ask(
+            "lon", default=self._rx_lon, console=self._console)
+        self._gain_db = FloatPrompt.ask(
+            "gain_db", default=self._gain_db, console=self._console)
+        self._sample_rate = IntPrompt.ask(
+            "sample_rate", default=self._sample_rate, console=self._console)
+        self._ppm_corr = IntPrompt.ask(
+            "ppm_correction", default=self._ppm_corr, console=self._console)
+        self._device_index = IntPrompt.ask(
+            "device_index", default=self._device_index, console=self._console)
+
+        self._log_info(
+            f"Receptor actualizado: lat={self._rx_lat} lon={self._rx_lon} "
+            f"gain_db={self._gain_db} sample_rate={self._sample_rate} "
+            f"ppm={self._ppm_corr} device_index={self._device_index}"
+        )
 
     def cerrar(self) -> None:
 

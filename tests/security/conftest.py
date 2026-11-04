@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from sentinel.integrity.keys import KeyManager
 from sentinel.integrity.timestamp import TimeSource, Timestamp
 from sentinel.security import Lockdown, vault

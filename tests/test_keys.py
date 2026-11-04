@@ -164,7 +164,7 @@ class TestSignVerify:
             value=sig.value,
             pubkey_fingerprint=b.identity.pubkey_fingerprint,
         )
-        with pytest.raises(InvalidSignatureError, match="fingerprint"):
+        with pytest.raises(InvalidSignatureError, match="verification failed"):
             b.verify(b"payload", forged)
 
     def test_sign_rejects_non_bytes(self, memory_keyring) -> None:

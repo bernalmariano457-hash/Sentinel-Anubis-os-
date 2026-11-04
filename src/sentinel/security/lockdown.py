@@ -80,15 +80,15 @@ class Lockdown:
             raise LockdownActiveError("workspace is already locked")
         if vault.has_blob(self.workspace):
             raise LockdownActiveError("a sealed vault blob already exists")
-        
+
         names = list(include)
         vault.validate_include(names)
         if passphrase is not None:
             vault.verify_passphrase(self.workspace, passphrase)
-            
+
         previous = self._previous_state()
         write_state(self.workspace, self.operator, LockState.LOCKED, self._now().iso_utc, reason, details)
-        
+
         try:
             custody = self._custody()
             if custody.exists():
@@ -109,7 +109,7 @@ class Lockdown:
             record = read_state(self.workspace)
             merged = {**record.details, "blob": vault.VAULT_BLOB_FILENAME, "included": names}
             return replace(record, details=merged)
-        
+
         return read_state(self.workspace)
 
     def unlock(self, passphrase: str) -> StateRecord:
@@ -126,13 +126,13 @@ class Lockdown:
             verify_state(current, self.operator.identity)
         except SentinelError as e:
             raise LockdownError(f"lock state signature is invalid: {e}") from e
-            
+
         if vault.has_blob(self.workspace):
             vault.unseal(self.workspace, passphrase)
             self._discard_blob()
-            
+
         write_state(self.workspace, self.operator, LockState.UNLOCKED, self._now().iso_utc, "unlock")
-        
+
         custody = self._custody()
         if custody.exists():
             report = custody.verify_chain()

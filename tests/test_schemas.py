@@ -138,6 +138,7 @@ class TestPackageManifestSchema:
         d = tmp_path / "art-1"
         d.mkdir()
         (d / "data.bin").write_bytes(b"iq" * 500)
+        (d / "data.sigmf-meta").write_text("{}", encoding="utf-8")
         manifest: dict[str, Any] = {
             "schema_version": "1.0",
             "artifact_id": "6f8a2c1e-4b3d-4e9a-9c7f-1a2b3c4d5e6f",

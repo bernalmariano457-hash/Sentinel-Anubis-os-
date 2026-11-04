@@ -4,36 +4,33 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
-from sentinel.reporting.json_report import generate_report
-from sentinel.reporting.pdf_report import generate_pdf_report
-from sentinel.packaging.sae import pack
-
-from sentinel import SentinelError
-from sentinel.integrity.keys import KeyManager
-from sentinel.security import Lockdown, LockState, StateError, read_state
-from sentinel.security.state import STATE_FILENAME
-from sentinel.integrity.baseline import Baseline
-from sentinel.integrity.timestamp import SystemClock
 
 import click
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from sentinel import __version__
+from sentinel import SentinelError, __version__
+from sentinel.integrity.baseline import Baseline
 from sentinel.integrity.keys import (
     DEFAULT_SERVICE,
     KeyManager,
     OperatorIdentity,
     SentinelKeyError,
 )
+from sentinel.integrity.timestamp import SystemClock
 from sentinel.packaging.sae import (
     SAEError,
     SAEVerificationReport,
+    pack,
 )
 from sentinel.packaging.sae import (
     verify as verify_sae,
 )
+from sentinel.reporting.json_report import generate_report
+from sentinel.reporting.pdf_report import generate_pdf_report
+from sentinel.security import Lockdown, LockState, StateError, read_state
+from sentinel.security.state import STATE_FILENAME
 
 console = Console()
 err_console = Console(stderr=True)
@@ -236,7 +233,6 @@ _STATE_STYLES = {
 @click.option("--operator-id", required=True, help="Operator that owns the vault.")
 @click.option("--passphrase", prompt=True, hide_input=True, confirmation_prompt=True)
 def vault_setup(workspace: Path, operator_id: str, passphrase: str) -> None:
-    """Initialise the evidence vault for a workspace."""
     try:
         km = KeyManager.load(operator_id, operator_id)
         Lockdown(workspace, km).setup(passphrase)
@@ -268,7 +264,6 @@ def lock(workspace: Path, operator_id: str, reason: str, passphrase: str) -> Non
 @click.option("--operator-id", required=True, help="Operator that signed the lock.")
 @click.option("--passphrase", prompt=True, hide_input=True)
 def unlock(workspace: Path, operator_id: str, passphrase: str) -> None:
-    """Decrypt and restore evidence into the workspace."""
     try:
         km = KeyManager.load(operator_id, operator_id)
         record = Lockdown(workspace, km).unlock(passphrase)
@@ -281,7 +276,6 @@ def unlock(workspace: Path, operator_id: str, passphrase: str) -> None:
 @main.command("status")
 @_WORKSPACE_OPTION
 def status(workspace: Path) -> None:
-    """Show the current lock state of a workspace."""
     if not (workspace / STATE_FILENAME).exists():
         console.print("no state file (normal)")
         return
@@ -296,7 +290,8 @@ def status(workspace: Path) -> None:
     console.print(f"reason:   {record.reason}")
     console.print(f"operator: [cyan]{record.operator_id}[/cyan]")
 
-    @main.group(name="baseline")
+
+@main.group(name="baseline")
 def baseline_group() -> None:
     pass
 
@@ -316,7 +311,7 @@ def baseline_create(workspace: Path, operator_id: str) -> None:
         err_console.print(f"[red]error:[/red] {e}")
         sys.exit(2)
 
-    console.print(f"[green]Baseline created successfully[/green]")
+    console.print("[green]Baseline created successfully[/green]")
     console.print(f"Signed by: {operator_id}")
     console.print(f"Files tracked: {len(bl.files)}")
     console.print(f"Saved to: {out_path}")
@@ -344,8 +339,11 @@ def cmd_report(workspace: Path, operator_id: str) -> None:
 @main.command("pack")
 @click.option("--workspace", type=click.Path(file_okay=False, path_type=Path), required=True)
 @click.option("--operator-id", required=True, help="Operator signing the package.")
+@click.option("--operation-id", required=True, help="Operation this package belongs to.")
 @click.option("--output", type=click.Path(file_okay=True, path_type=Path), required=True, help="Output .sae file.")
-def cmd_pack(workspace: Path, operator_id: str, output: Path) -> None:
+def cmd_pack(
+    workspace: Path, operator_id: str, operation_id: str, output: Path
+) -> None:
     try:
         km = KeyManager.load(operator_id, operator_id)
 
@@ -355,15 +353,9 @@ def cmd_pack(workspace: Path, operator_id: str, output: Path) -> None:
         ) if d.is_dir()] if evidence_dir.exists() else []
 
         if not artifact_dirs:
-            console.print(
-                "[yellow]No artifact directories found. Packaging only custody log and metadata.[/yellow]")
-
-            dummy = workspace / "dummy_art"
-            dummy.mkdir(exist_ok=True)
-            (dummy / "data.bin").write_bytes(b"test")
-
-            console.print(
-                "[red]Cannot pack without valid artifact directories.[/red]")
+            err_console.print(
+                "[red]No artifact directories found in data/evidence — "
+                "cannot pack without valid artifacts.[/red]")
             sys.exit(2)
 
         custody_path = workspace / "custody.log"
@@ -377,7 +369,7 @@ def cmd_pack(workspace: Path, operator_id: str, output: Path) -> None:
         manifest = pack(
             output_path=output,
             operator=km,
-            operation_id="OP-001",
+            operation_id=operation_id,
             artifact_dirs=artifact_dirs,
             custody_log_path=custody_path
         )

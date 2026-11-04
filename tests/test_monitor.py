@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from sentinel.integrity.baseline import Baseline
 from sentinel.integrity.keys import KeyManager
 from sentinel.integrity.monitor import IntegrityEvent, IntegrityMonitor

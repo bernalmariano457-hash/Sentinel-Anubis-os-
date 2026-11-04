@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from sentinel.integrity.baseline import (
     BASELINE_MEMBER,
     BASELINE_SIG_MEMBER,

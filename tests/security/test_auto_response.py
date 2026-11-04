@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
-from sentinel.integrity.baseline import BaselineReport, BaselineIssue
+from sentinel.integrity.baseline import BaselineIssue, BaselineReport
 from sentinel.integrity.monitor import IntegrityEvent
 from sentinel.security.auto_response import AutoResponder
 from sentinel.security.lockdown import Lockdown
@@ -49,25 +49,24 @@ class TestAutoResponder:
     ) -> None:
         ld = Lockdown(workspace, alice)
         ld.setup("correct-horse-battery-staple")
-        
+
         responder = AutoResponder(lockdown=ld)
         assert not responder.handle_event(event_clean)
-        
-        # Debe estar en NORMAL, no LOCKED
-        try:
+
+        # Debe estar en NORMAL, no LOCKED. Si el archivo de estado no
+        # existe, está normal por defecto.
+        with contextlib.suppress(Exception):
             assert read_state(workspace).state is not LockState.LOCKED
-        except Exception:
-            pass # Si el archivo de estado no existe, está normal por defecto
 
     def test_locks_on_tampered_event(
         self, workspace: Path, alice: Any, event_tampered: IntegrityEvent
     ) -> None:
         ld = Lockdown(workspace, alice)
         ld.setup("correct-horse-battery-staple")
-        
+
         responder = AutoResponder(lockdown=ld)
         assert responder.handle_event(event_tampered)
-        
+
         record = read_state(workspace)
         assert record.state is LockState.LOCKED
         assert record.reason.startswith("auto-lockdown:")
@@ -77,7 +76,7 @@ class TestAutoResponder:
     ) -> None:
         ld = Lockdown(workspace, alice)
         ld.setup("correct-horse-battery-staple")
-        
+
         responder = AutoResponder(lockdown=ld)
         assert responder.handle_event(event_baseline_invalid)
         assert read_state(workspace).state is LockState.LOCKED
@@ -87,10 +86,10 @@ class TestAutoResponder:
     ) -> None:
         ld = Lockdown(workspace, alice)
         ld.setup("correct-horse-battery-staple")
-        
+
         responder = AutoResponder(lockdown=ld)
         assert responder.handle_event(event_tampered)
-        
+
         # El segundo evento debe ser ignorado porque ya está bloqueado
         assert not responder.handle_event(event_tampered)
 
@@ -99,9 +98,9 @@ class TestAutoResponder:
     ) -> None:
         ld = Lockdown(workspace, alice)
         ld.setup("correct-horse-battery-staple")
-        
+
         callback_mock = MagicMock()
         responder = AutoResponder(lockdown=ld, on_lock_callback=callback_mock)
-        
+
         responder.handle_event(event_tampered)
         callback_mock.assert_called_once_with(event_tampered)

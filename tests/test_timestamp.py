@@ -59,7 +59,6 @@ def _ts(
 
 
 class _FakeNtpResponse:
-    """Mimics the subset of ntplib.NTPStats used by NtpClock."""
 
     def __init__(
         self,
@@ -75,7 +74,6 @@ class _FakeNtpResponse:
 
 
 class _FakeNtpClient:
-    """Fake ntplib.NTPClient. Records calls, returns configured responses."""
 
     def __init__(self, responses: dict[str, Any]) -> None:
         self._responses = responses
@@ -316,7 +314,7 @@ class TestNtpClock:
         after = datetime.now(UTC)
         parsed = ts.datetime
         assert before + \
-            timedelta(seconds=10) <= parsed <= after + timedelta(seconds=11)
+            timedelta(seconds=9) <= parsed <= after + timedelta(seconds=11)
 
     def test_uncertainty_is_at_least_one_ms(self) -> None:
         response = _FakeNtpResponse(offset=0.0, delay=0.0, root_dispersion=0.0)

@@ -3,9 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from core._base import _DomainBase
-from core.validators import Validador
 from core.evidence_bridge import register_evidence
-from core.hardware_guard import HardwareGuard
+from core.validators import Validador
 
 
 class RFCommands(_DomainBase):
@@ -138,7 +137,7 @@ class RFCommands(_DomainBase):
                                  "duration_s": duracion}
                     )
                     self.console.print(
-                        f"[green][+] Audio guardado y registrado en custodia.[/green]")
+                        "[green][+] Audio guardado y registrado en custodia.[/green]")
                     self.console.print(
                         f"[dim]    Ubicación: {final_dir}[/dim]")
                 except Exception as e:
@@ -180,7 +179,7 @@ class RFCommands(_DomainBase):
                         details={"freq_mhz": freq, "duration_s": duracion}
                     )
                     self.console.print(
-                        f"[green][+] Grabación IQ registrada en custodia.[/green]")
+                        "[green][+] Grabación IQ registrada en custodia.[/green]")
                     self.console.print(
                         f"[dim]    Ubicación: {final_dir}[/dim]")
                 except Exception as e:

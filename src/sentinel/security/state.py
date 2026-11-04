@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final
 
@@ -17,7 +17,7 @@ DOMAIN_STATE: Final = b"sentinel-anubis:lock-state:v1:"
 STATE_FILENAME: Final = ".sentinel-state.json"
 
 
-class LockState(str, Enum):
+class LockState(StrEnum):
 
     NORMAL = "normal"
     LOCKED = "locked"

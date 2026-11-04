@@ -35,16 +35,6 @@ from sentinel.integrity.signing import (
 
 
 @pytest.fixture
-def alice(memory_keyring) -> KeyManager:
-    return KeyManager.generate("Alice", operator_id="op-alice")
-
-
-@pytest.fixture
-def bob(memory_keyring) -> KeyManager:
-    return KeyManager.generate("Bob", operator_id="op-bob")
-
-
-@pytest.fixture
 def artifact_manifest() -> dict:
     return {
         "schema_version": "1.0",

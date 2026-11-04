@@ -219,8 +219,9 @@ class NtpClock:
         timeout_s: float = 2.0,
         client: Any | None = None,
     ) -> None:
-        self.servers: tuple[str, ...] = tuple(
-            servers) if servers else DEFAULT_NTP_SERVERS
+        self.servers: tuple[str, ...] = (
+            tuple(servers) if servers is not None else DEFAULT_NTP_SERVERS
+        )
         if not self.servers:
             raise ValueError("servers must be non-empty")
         self.timeout_s = timeout_s

@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import time
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -204,10 +205,15 @@ class CustodyLog:
         return open(self.path, encoding="utf-8", newline="\n")
 
     def _locked(self, fh: Any, mode: int) -> None:
-        try:
-            portalocker.lock(fh, mode, timeout=self.lock_timeout_s)
-        except portalocker.LockException as e:
-            raise CustodyIOError(f"cannot lock {self.path}: {e}") from e
+        deadline = time.monotonic() + self.lock_timeout_s
+        while True:
+            try:
+                portalocker.lock(fh, mode | portalocker.LOCK_NB)
+                return
+            except portalocker.LockException as e:
+                if time.monotonic() >= deadline:
+                    raise CustodyIOError(f"cannot lock {self.path}: {e}") from e
+                time.sleep(0.05)
 
     def _unlock(self, fh: Any) -> None:
         with contextlib.suppress(portalocker.LockException):

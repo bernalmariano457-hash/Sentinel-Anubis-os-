@@ -369,12 +369,21 @@ class OSINTEngine:
         seguro = objetivo.replace(".", "_").replace("/", "_")[:40]
         destino = _EVIDENCE_DIR / f"{tipo}_{seguro}_{ts}.json"
 
-        import json  # importación diferida — solo cuando se necesita
+        import json
         destino.write_text(
             json.dumps(datos, indent=2, ensure_ascii=False, default=str),
             encoding="utf-8",
         )
         log.info("OSINT exportado: %s", destino)
+
+        from core.evidence_hooks import firmar_reporte_osint
+        firmar_reporte_osint(
+            sentinel=self._s,
+            json_path=destino,
+            objetivo=objetivo,
+            tipo=tipo,
+            campos=list(datos.keys())
+        )
 
         gp = getattr(self._s, "gp", None)
         if gp and gp.proyecto_activo:

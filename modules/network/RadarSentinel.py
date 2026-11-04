@@ -25,33 +25,30 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-# Scapy (opcional: modo demo funciona sin él)
 try:
     from scapy.all import Dot11, Dot11Elt
     from scapy.all import sniff as scapy_sniff
 
-    # FIX (ALTO): import movido al nivel de módulo; ya no se repite por paquete
     from scapy.layers.inet import IP as ScapyIP
     _SCAPY_OK = True
 except ImportError:
     _SCAPY_OK = False
-    ScapyIP = None  # type: ignore[assignment,misc]
+    ScapyIP = None
 
-# GeoIP2 local (opcional)
 try:
-    import geoip2.database  # type: ignore[import]
+    import geoip2.database
     _GEOIP2_OK = True
 except ImportError:
     _GEOIP2_OK = False
 
 # CONSTANTES
 
-TIMEOUT_TARGET = 30       # segundos sin ver un dispositivo → lo elimina
-GEO_CACHE_TTL = 3600     # segundos antes de volver a geolocalizar la misma IP
-MAX_LOG_LINES = 8        # líneas visibles en el panel de log
-RADAR_RADIUS = 14       # radio del radar ASCII (celdas)
-MAP_ANCHO = 72       # columnas del mapa ASCII
-MAP_ALTO = 24       # filas del mapa ASCII
+TIMEOUT_TARGET = 30
+GEO_CACHE_TTL = 3600
+MAX_LOG_LINES = 8
+RADAR_RADIUS = 14
+MAP_ANCHO = 72
+MAP_ALTO = 24
 
 WORLD_MAP = [
     "                                                                        ",
@@ -80,8 +77,6 @@ WORLD_MAP = [
     "                                                                        ",
 ]
 
-# DATACLASSES
-
 
 @dataclass
 class Dispositivo:
@@ -94,7 +89,7 @@ class Dispositivo:
     first_seen:     float = field(default_factory=time.time)
     last_seen:      float = field(default_factory=time.time)
     paquetes:       int = 0
-    mac_aleatoria:  bool = False   # NUEVA: bit LA detectado
+    mac_aleatoria:  bool = False
 
     @property
     def activo(self) -> bool:
@@ -129,14 +124,12 @@ class GeoIP:
     lon:    float = 0.0
     org:    str = ""
     isp:    str = ""
-    tipo:   str = "active"   # active | warn | danger
+    tipo:   str = "active"
     ts:     float = field(default_factory=time.time)
 
     @property
     def expirado(self) -> bool:
         return (time.time() - self.ts) > GEO_CACHE_TTL
-
-# FABRICANTES OUI (prefijos MAC)
 
 
 OUI: dict[str, str] = {
@@ -151,14 +144,12 @@ OUI: dict[str, str] = {
     "78:02:F8": "OnePlus",      "AC:37:43": "HTC",
 }
 
-# TOKEN BUCKET — rate-limiter para ip-api.com
-
 
 class TokenBucket:
     def __init__(self, rate: float = 45, per: float = 60.0):
         self._capacity = rate
         self._tokens = rate
-        self._rate = rate / per        # tokens por segundo
+        self._rate = rate / per
         self._ts = time.monotonic()
         self._lock = threading.Lock()
 
@@ -180,11 +171,8 @@ class TokenBucket:
                 return False
             time.sleep(min(0.1, remaining))
 
-# GEOLOCALIZADOR DE IPs
-
 
 class GeoLocalizador:
-    # FIX: HTTPS en lugar de HTTP
     _API = "https://ip-api.com/json/{ip}?fields=status,city,country,countryCode,lat,lon,org,isp,query"
 
     def __init__(self, mmdb_path: str | None = None):
@@ -192,7 +180,6 @@ class GeoLocalizador:
         self._lock = threading.Lock()
         self._bucket = TokenBucket(rate=45, per=60.0)
 
-        # GeoLite2 local (opcional)
         self._reader = None
         if mmdb_path and _GEOIP2_OK:
             path = Path(mmdb_path)
@@ -202,7 +189,6 @@ class GeoLocalizador:
                 except Exception:
                     self._reader = None
 
-    # FIX (ALTO): usa ipaddress stdlib → cubre todo RFC-1918 sin excepciones
     @staticmethod
     def es_publica(ip: str) -> bool:
 
@@ -228,7 +214,6 @@ class GeoLocalizador:
         return self._cache.get(ip)
 
     def _fetch(self, ip: str) -> None:
-        # Intentar primero con base local (sin red, sin rate-limit)
         if self._reader is not None:
             geo = self._fetch_local(ip)
             if geo:
@@ -236,7 +221,6 @@ class GeoLocalizador:
                     self._cache[ip] = geo
                 return
 
-        # Fallback: ip-api.com con HTTPS y token-bucket
         if not self._bucket.consume():
             return
         try:
@@ -260,7 +244,7 @@ class GeoLocalizador:
 
     def _fetch_local(self, ip: str) -> GeoIP | None:
         try:
-            resp = self._reader.city(ip)  # type: ignore[union-attr]
+            resp = self._reader.city(ip)
             return GeoIP(
                 ip=ip,
                 ciudad=resp.city.name or "?",
@@ -287,8 +271,6 @@ class GeoLocalizador:
         with self._lock:
             return dict(self._cache)
 
-# ALERTAS SONORAS
-
 
 def _beep(n: int = 1) -> None:
     for _ in range(n):
@@ -301,8 +283,6 @@ def _beep(n: int = 1) -> None:
         except Exception:
             print("\a", end="", flush=True)
 
-# EXPORTADOR DE SESIÓN
-
 
 class ExportadorSesion:
     @staticmethod
@@ -311,7 +291,6 @@ class ExportadorSesion:
         ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
         base = Path(f"sentinel_sesion_{ts}")
 
-        # JSON
         datos = {
             "timestamp": ts,
             "dispositivos": [
@@ -346,7 +325,6 @@ class ExportadorSesion:
         json_path = base.with_suffix(".json")
         json_path.write_text(json.dumps(datos, ensure_ascii=False, indent=2))
 
-        # CSV dispositivos
         csv_path = base.with_suffix(".csv")
         with csv_path.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(
@@ -365,12 +343,11 @@ class ExportadorSesion:
 
         return json_path, csv_path
 
-# RENDERIZADORES
-
 
 class RenderRadar:
 
-    SIMBOLO: ClassVar[dict[str, str]] = {"CRITICO": "◉", "ALTO": "●", "MEDIO": "○", "BAJO": "·"}
+    SIMBOLO: ClassVar[dict[str, str]] = {
+        "CRITICO": "◉", "ALTO": "●", "MEDIO": "○", "BAJO": "·"}
 
     def __init__(self, radius: int = RADAR_RADIUS):
         self.radius = radius
@@ -446,8 +423,10 @@ class RenderRadar:
 
 class RenderMapa:
 
-    SIMBOLO_TIPO: ClassVar[dict[str, str]] = {"active": "●", "warn": "◆", "danger": "◉"}
-    COLOR_TIPO: ClassVar[dict[str, str]] = {"active": "green", "warn": "yellow", "danger": "red"}
+    SIMBOLO_TIPO: ClassVar[dict[str, str]] = {
+        "active": "●", "warn": "◆", "danger": "◉"}
+    COLOR_TIPO: ClassVar[dict[str, str]] = {
+        "active": "green", "warn": "yellow", "danger": "red"}
 
     def __init__(self, ancho: int = MAP_ANCHO, alto: int = MAP_ALTO):
         self.ancho = ancho
@@ -522,7 +501,6 @@ class RenderTablaDispositivos:
         tabla.add_column("Vendor", style="cyan",      min_width=12)
         tabla.add_column("dBm",    justify="right",   min_width=5)
         tabla.add_column("Nivel",  min_width=8)
-        # NUEVA columna: indica MAC aleatorizada
         tabla.add_column("Rand",   justify="center",  min_width=4)
         tabla.add_column("Pkts",   justify="right",   min_width=4)
 
@@ -621,8 +599,6 @@ class RenderLog:
             box=box.HEAVY,
         )
 
-# MOTOR PRINCIPAL
-
 
 class RadarSentinel:
     def __init__(
@@ -655,7 +631,6 @@ class RadarSentinel:
 
         self._paquetes = 0
 
-    # Detección de MAC aleatorizada
     @staticmethod
     def _es_mac_aleatoria(mac: str) -> bool:
         try:
@@ -664,13 +639,11 @@ class RadarSentinel:
         except (ValueError, IndexError):
             return False
 
-    # Identificación de fabricante
     @staticmethod
     def _vendor(mac: str) -> str:
         prefix = mac.upper()[:8]
         return OUI.get(prefix, "Desconocido")
 
-    # Registro de dispositivo (thread-safe)
     def _registrar(self, mac: str, rssi: int, ssid: str) -> None:
         es_rand = self._es_mac_aleatoria(mac)
         with self._lock:
@@ -689,7 +662,6 @@ class RadarSentinel:
                     f"Nuevo: {mac}{rand_tag}  {ssid}  ({dev.vendor})",
                     nivel_log,
                 )
-                # NUEVA: beep si es crítico
                 if self.beep and dev.nivel_amenaza == "CRITICO":
                     threading.Thread(target=_beep, args=(2,),
                                      daemon=True).start()
@@ -701,7 +673,6 @@ class RadarSentinel:
                     self._targets[mac].ssid = ssid
         self._paquetes += 1
 
-    # Callback Scapy
     def _packet_callback(self, pkt) -> None:
         if not pkt.haslayer(Dot11):
             return
@@ -718,7 +689,6 @@ class RadarSentinel:
                 ssid = pkt.info.decode("utf-8", errors="ignore") or "Oculto"
         self._registrar(mac, rssi, ssid)
 
-        # FIX (ALTO): ScapyIP ya está importado a nivel de módulo
         try:
             if ScapyIP and pkt.haslayer(ScapyIP):
                 src_ip = pkt[ScapyIP].src
@@ -735,17 +705,14 @@ class RadarSentinel:
         except Exception:
             pass
 
-    # Modo demo
     def _demo_worker(self) -> None:
         macs_demo = [
-            # (mac_completa,   oui,       ssid,             rssi)
             ("AA:BB:CC:DD:EE:01", "8C:64:A2", "iPhone_de_Casa", -45),
             ("AA:BB:CC:DD:EE:02", "58:CB:52", "Galaxy_S24",      -62),
             ("AA:BB:CC:DD:EE:03", "D8:24:BD", "Router_Huawei",   -38),
             ("AA:BB:CC:DD:EE:04", "B8:27:EB", "RaspberryPi-AP",  -71),
             ("AA:BB:CC:DD:EE:05", "64:16:7F", "IntelNUC",        -55),
             ("AA:BB:CC:DD:EE:06", "FC:EC:DA", "Xiaomi_TV",       -80),
-            # MAC aleatorizada de ejemplo (bit LA activo: 0x02)
             ("02:AB:CD:EF:01:23", "02:AB:CD", "iPhone_rand",     -67),
         ]
         ips_demo = [
@@ -767,7 +734,6 @@ class RadarSentinel:
             idx += 1
             time.sleep(0.8 + random.random())
 
-    # Sniffer real
     def _sniffer_worker(self) -> None:
         self._log.agregar(f"Sniffing en {self.interface}...", "INFO")
         try:
@@ -780,7 +746,6 @@ class RadarSentinel:
         except Exception as e:
             self._log.agregar(f"Error sniffer: {e}", "DANGER")
 
-    # Purga de objetivos viejos
     def _purge_worker(self) -> None:
         while not self._stop.is_set():
             time.sleep(10)
@@ -793,7 +758,6 @@ class RadarSentinel:
                 self._log.agregar(
                     f"Purgados {eliminados} dispositivos inactivos", "DEBUG")
 
-    # Construcción del layout Rich (FIX ALTO: respeta self.modo)
     def _build_layout(self) -> Layout:
         layout = Layout()
         layout.split_column(
@@ -812,7 +776,7 @@ class RadarSentinel:
                 Layout(name="mapa",      ratio=2),
                 Layout(name="tabla_geo", ratio=3),
             )
-        else:  # dual
+        else:
             layout["main"].split_row(
                 Layout(name="izquierda", ratio=2),
                 Layout(name="derecha",   ratio=3),
@@ -842,7 +806,6 @@ class RadarSentinel:
         txt.append(f"  {ts}", style="dim")
         return Panel(txt, border_style="green", box=box.HEAVY)
 
-    # Actualización del layout según modo
     def _update_layout(
         self,
         layout: Layout,
@@ -864,7 +827,6 @@ class RadarSentinel:
             layout["mapa"].update(self._r_mapa.render(geo_snap))
             layout["tabla_geo"].update(self._r_geo.render(geo_snap))
 
-    # Exportación asíncrona
     def _do_export(self) -> None:
         with self._lock:
             t_snap = dict(self._targets)
@@ -873,10 +835,16 @@ class RadarSentinel:
             jpath, cpath = self._exportador.exportar(t_snap, g_snap)
             self._log.agregar(
                 f"Exportado → {jpath.name}  {cpath.name}", "INFO")
+
+            sentinel = getattr(self, "sentinel", None)
+            if sentinel:
+                from core.evidence_hooks import firmar_archivos_radar
+                firmar_archivos_radar(
+                    sentinel, jpath, cpath, len(t_snap), len(g_snap))
+
         except Exception as e:
             self._log.agregar(f"Error al exportar: {e}", "DANGER")
 
-    # Punto de entrada
     def run(self) -> None:
         console = Console()
         layout = self._build_layout()
@@ -897,7 +865,6 @@ class RadarSentinel:
 
                     self._update_layout(layout, targets_snap, geo_snap)
 
-                    # NUEVA: exportar si se pulsó 'E'
                     if self._export_flag.is_set():
                         self._export_flag.clear()
                         threading.Thread(
@@ -910,7 +877,6 @@ class RadarSentinel:
             console.print(
                 "\n[bold green][ RadarSentinel detenido ][/bold green]")
 
-    # API para integración con el resto de Sentinel
     def render_radar(self) -> Panel:
         with self._lock:
             snap = dict(self._targets)
@@ -928,10 +894,7 @@ class RadarSentinel:
         return self._geo.cache
 
     def trigger_export(self) -> None:
-        """API externa para disparar la exportación de sesión."""
         self._export_flag.set()
-
-# PUNTO DE ENTRADA DIRECTO
 
 
 def _parse_args() -> argparse.Namespace:
