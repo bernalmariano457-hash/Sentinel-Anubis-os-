@@ -1,4 +1,17 @@
 from __future__ import annotations
+from core.vendor_resolver import VendorResolver
+
+from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
+from core.sdr_broker import SDRBroker
+from core.ModuleRegistry import ModuleRegistry
+from core.log_sistema import LogSistema
+from core.forensic_bridge import is_system_locked, start_integrity_monitor
+from core.command_handler import CommandHandler
+from rich.rule import Rule
+from rich.prompt import Prompt
+from rich.panel import Panel
+from rich.markup import escape as _esc
+from rich.console import Console
 
 import contextlib
 import json
@@ -14,24 +27,13 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
-from rich.console import Console
-from rich.markup import escape as _esc
-from rich.panel import Panel
-from rich.prompt import Prompt
-from rich.rule import Rule
-
-from core.command_handler import CommandHandler
-
-from core.forensic_bridge import is_system_locked, start_integrity_monitor
-from core.log_sistema import LogSistema
-from core.ModuleRegistry import ModuleRegistry
-from core.sdr_broker import SDRBroker
-from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
-from core.vendor_resolver import VendorResolver
-
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
+
+_SRC_DIR = _HERE / "src"
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 
 try:
@@ -54,17 +56,16 @@ except ImportError:
         c.print(
             Rule(f"[bold steel_blue1]{nombre} v{version}[/bold steel_blue1]"))
 
-    def mostrar_ayuda(c: Console, version: str,
-                      cmds: dict[str, Any] | None = None,
-                      filtro: str | None = None) -> None:
+    def mostrar_ayuda(c: Console, version: str, cmds: dict[str, Any] | None = None, filtro: str | None = None) -> None:
         c.print(Panel("[dim]Sin ayuda.[/dim]", title="AYUDA"))
 
 try:
     from core.auth import GestorAuth
 except ImportError:
-    class GestorAuth:  # type: ignore[misc]
+    class GestorAuth:
         def __init__(self, *a: Any, **kw: Any) -> None: pass
         def solicitar_acceso(self) -> bool: return True
+
 
 ManejadorComando = Callable[[list[str]], None]
 
