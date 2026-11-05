@@ -36,7 +36,7 @@ except ImportError:
 
 
 _ANCHO_MINIMO_COMPLETO: int = 80
-_ANCHO_ARTE: int = 34
+_ANCHO_ARTE: int = 29
 _ANCHO_BARRA_NORMAL: int = 26
 _ANCHO_BARRA_COMPACTA: int = 14
 
@@ -72,39 +72,20 @@ ESTILOS_LOG: dict[str, tuple[str, str]] = {
     "DEBUG":   (C_MUTED,             "·"),
 }
 
-_ARTE_ANUBIS_FILAS: list[tuple[str, str, str]] = [
-    ("    ▄▄███████████████████▄▄     ", "", ""),
-    ("   █▀    ╔═══════════╗    ▀█    ", "", ""),
-    ("   █     ║  ", "◢█▙   ▟█◣", " ║     █   "),
-    ("   █     ║  ▀▀     ▀▀ ║     █   ", "", ""),
-    ("   █     ║    ╲   ╱   ║     █   ", "", ""),
-    ("   █     ║     ╲_╱    ║     █   ", "", ""),
-    ("   █     ║   ◢▀▀▀▀▀▙  ║     █   ", "", ""),
-    ("   █     ║  ╱ ╱ │ ╲ ╲ ║     █   ", "", ""),
-    ("   █     ║ ╱_╱__│__╲_╲║     █   ", "", ""),
-    ("   █▄    ╚═══════════╝    ▄█    ", "", ""),
-    ("    ▀▀███████████████████▀▀     ", "", ""),
-]
-
-ANUBIS_ART = "\n".join(
-    izq + ojos + der for izq, ojos, der in _ARTE_ANUBIS_FILAS
-)
+ANUBIS_ART = "\n".join([
+    r"   ▄████████████████████▄",
+    r"   █  ╔═══════════════╗  █",
+    r"   █  ║   /\     /\   ║  █",
+    r"   █  ║  (  \   /  )  ║  █",
+    r"   █  ║   \  \_/  /   ║  █",
+    r"   █  ║   /  ___  \   ║  █",
+    r"   █  ║  / / | | \ \  ║  █",
+    r"   █  ║ /_/__|_|__\_\ ║  █",
+    r"   █  ╚═══════════════╝  █",
+    r"   ▀████████████████████▀",
+])
 
 ANUBIS = ANUBIS_ART
-
-
-def _arte_anubis(color_marco: str = C_ACENTO, color_ojos: str = C_ALERTA) -> Text:
-
-    texto = Text()
-    for i, (izq, ojos, der) in enumerate(_ARTE_ANUBIS_FILAS):
-        if i:
-            texto.append("\n")
-        texto.append(izq, style=f"bold {color_marco}")
-        if ojos:
-            texto.append(ojos, style=f"bold {color_ojos}")
-            texto.append(der, style=f"bold {color_marco}")
-    return texto
-
 
 MODULOS_BOOT: list[tuple[str, str]] = [
     ("HydraModule",       "Fuerza bruta / auditoría"),
@@ -484,7 +465,8 @@ def _panel_hero(
             Layout(name="arte", size=_ANCHO_ARTE),
             Layout(name="info", ratio=1),
         )
-        layout["arte"].update(Align.center(_arte_anubis(), vertical="middle"))
+        layout["arte"].update(Align.center(
+            Text(ANUBIS_ART, style="bold steel_blue1"), vertical="middle"))
         layout["info"].update(Align.left(tabla, vertical="middle"))
         alto = 14
         relleno = (1, 3)
@@ -497,48 +479,6 @@ def _panel_hero(
         box=_CAJA,
         padding=relleno,
         height=alto,
-    )
-
-
-_RASTRO_NORMAL: int = 5
-_RASTRO_COMPACTO: int = 2
-
-
-def _cuadro_boot(
-    idx: int,
-    total: int,
-    nombre_mod: str,
-    activo: bool,
-    compacto: bool,
-    rastro: list[tuple[str, bool]] | None = None,
-) -> Panel:
-    ancho_barra = _ANCHO_BARRA_COMPACTA if compacto else _ANCHO_BARRA_NORMAL
-    barra = _linea_barra(idx, total, ancho_barra)
-
-    estado = "activo" if activo else "caido"
-    simbolo, color = _SIMBOLOS_ESTADO[estado], _ESTILOS_ESTADO[estado]
-    etiqueta = "OK" if activo else "FALLO"
-    estado_txt = f"[{color}]{simbolo} {etiqueta}[/{color}]"
-    nombre_fmt = nombre_mod if compacto else f"{nombre_mod:<24}"
-
-    lineas_rastro = ""
-    limite = _RASTRO_COMPACTO if compacto else _RASTRO_NORMAL
-    for nombre_prev, activo_prev in (rastro or [])[-limite:]:
-        s = _SIMBOLOS_ESTADO["activo" if activo_prev else "caido"]
-        lineas_rastro += f"  [grey42]{s}[/grey42] [grey42]{nombre_prev}[/grey42]\n"
-
-    contenido = (
-        f"\n  {barra}\n\n"
-        f"{lineas_rastro}"
-        f"  [grey58]{nombre_fmt}[/grey58]  {estado_txt}\n"
-    )
-    return Panel(
-        contenido,
-        title=_titulo_hud(compacto),
-        subtitle=f"[grey58]Verificando módulos — {idx}/{total}[/grey58]",
-        border_style="steel_blue",
-        box=_CAJA,
-        padding=(0, 2) if not compacto else (0, 1),
     )
 
 
@@ -589,8 +529,7 @@ def _panel_hud(
     tabla.add_row("ESTADO", "[bold sea_green3]● EN LÍNEA[/bold sea_green3]")
     if unidad:
         etiqueta = f"{unidad}  [grey58]v{version}[/grey58]" if version else unidad
-        tabla.add_row(
-            "UNIDAD", f"[bold steel_blue1]{etiqueta}[/bold steel_blue1]")
+        tabla.add_row("UNIDAD", f"[bold steel_blue1]{etiqueta}[/bold steel_blue1]")
     if iface:
         tabla.add_row("IFAZ", f"[white]{iface}[/white]")
     tabla.add_row("IP", f"[white]{ip}[/white]")
@@ -614,77 +553,28 @@ def _limpiar() -> None:
         subprocess.run(["clear"], check=False)
 
 
-def _gauge(etiqueta: str, valor_pct: float, ancho: int, color: str = C_ACENTO) -> str:
-    valor_pct = max(0.0, min(100.0, valor_pct))
-    llenos = int(ancho * valor_pct / 100)
-    barra = "█" * llenos + "░" * (ancho - llenos)
-    return (
-        f"[grey58]{etiqueta:<6}[/grey58] "
-        f"[grey58][[/grey58][bold {color}]{barra}[/bold {color}]"
-        f"[grey58]][/grey58] [bold {color}]{valor_pct:>5.1f}%[/bold {color}]"
+def _cuadro_boot(idx: int, total: int, nombre_mod: str, activo: bool, compacto: bool) -> Panel:
+    ancho_barra = _ANCHO_BARRA_COMPACTA if compacto else _ANCHO_BARRA_NORMAL
+    barra = _linea_barra(idx, total, ancho_barra)
+
+    estado = "activo" if activo else "caido"
+    simbolo, color = _SIMBOLOS_ESTADO[estado], _ESTILOS_ESTADO[estado]
+    etiqueta = "OK" if activo else "FALLO"
+    estado_txt = f"[{color}]{simbolo} {etiqueta}[/{color}]"
+    nombre_fmt = nombre_mod if compacto else f"{nombre_mod:<24}"
+
+    contenido = (
+        f"\n  {barra}\n\n"
+        f"  [grey58]{nombre_fmt}[/grey58]  {estado_txt}\n"
     )
-
-
-def _panel_diagnostico(
-    snap: SnapshotSistema, compacto: bool, progreso: float
-) -> Panel:
-    ancho = _ANCHO_BARRA_COMPACTA if compacto else _ANCHO_BARRA_NORMAL
-    p = max(0.0, min(1.0, progreso))
-
-    lineas = [
-        _gauge("CPU", snap.cpu_pct * p, ancho),
-        _gauge("RAM", snap.ram_pct * p, ancho),
-        _gauge("DISCO", snap.disco_pct * p, ancho),
-    ]
-    if snap.temperatura_c is not None:
-        temp_color = C_ALERTA if snap.temperatura_c >= 70 else C_ACENTO
-        lineas.append(_gauge(
-            "TEMP", min(snap.temperatura_c, 100.0) * p, ancho, color=temp_color))
-
-    contenido = "\n" + "\n".join(lineas) + "\n"
     return Panel(
         contenido,
         title=_titulo_hud(compacto),
-        subtitle="[grey58]Diagnóstico del sistema[/grey58]",
+        subtitle=f"[grey58]Verificando módulos — {idx}/{total}[/grey58]",
         border_style="steel_blue",
         box=_CAJA,
-        padding=(1, 2) if not compacto else (0, 1),
+        padding=(0, 2) if not compacto else (0, 1),
     )
-
-
-async def _fase_diagnostico(console: Console, compacto: bool) -> None:
-    snap = MonitorTelemetria().snapshot()
-    pasos = 10
-    with Live(console=console, refresh_per_second=30, screen=False) as live:
-        for paso in range(1, pasos + 1):
-            live.update(_panel_diagnostico(snap, compacto, paso / pasos))
-            await asyncio.sleep(0.03)
-        await asyncio.sleep(0.15)
-
-
-async def _fase_arte(console: Console, compacto: bool) -> None:
-    if compacto:
-        return
-    total_filas = len(_ARTE_ANUBIS_FILAS)
-    with Live(console=console, refresh_per_second=30, screen=False) as live:
-        for n in range(1, total_filas + 1):
-            parcial = Text()
-            for i, (izq, ojos, der) in enumerate(_ARTE_ANUBIS_FILAS[:n]):
-                if i:
-                    parcial.append("\n")
-                parcial.append(izq, style=f"bold {C_ACENTO}")
-                if ojos:
-                    parcial.append(ojos, style=f"bold {C_ALERTA}")
-                    parcial.append(der, style=f"bold {C_ACENTO}")
-            live.update(Panel(
-                Align.center(parcial),
-                title=_titulo_hud(compacto),
-                border_style="steel_blue",
-                box=_CAJA,
-                padding=(1, 2),
-            ))
-            await asyncio.sleep(0.025)
-        await asyncio.sleep(0.2)
 
 
 async def _ejecutar_boot(
@@ -693,19 +583,13 @@ async def _ejecutar_boot(
     estados_modulos: dict[str, bool] | None,
     compacto: bool,
 ) -> None:
-    await _fase_arte(console, compacto)
-    await _fase_diagnostico(console, compacto)
-
     total = len(modulos)
-    rastro: list[tuple[str, bool]] = []
     with Live(console=console, refresh_per_second=24, screen=False) as live:
         for idx, nombre_mod in enumerate(modulos, 1):
             activo = estados_modulos is None or estados_modulos.get(
                 nombre_mod, True)
-            live.update(_cuadro_boot(
-                idx, total, nombre_mod, activo, compacto, rastro))
+            live.update(_cuadro_boot(idx, total, nombre_mod, activo, compacto))
             await asyncio.sleep(0.035)
-            rastro.append((nombre_mod, activo))
 
 
 def mostrar_bootloader(
