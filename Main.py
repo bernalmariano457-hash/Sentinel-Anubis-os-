@@ -7,6 +7,8 @@ from core.ModuleRegistry import ModuleRegistry
 from core.log_sistema import LogSistema
 from core.forensic_bridge import is_system_locked, start_integrity_monitor
 from core.command_handler import CommandHandler
+from core.async_runtime import AsyncRuntime
+from core.soc_manager import SOCManager
 from rich.rule import Rule
 from rich.prompt import Prompt
 from rich.panel import Panel
@@ -232,6 +234,8 @@ class ApexSentinel:
         self.log = LogSistema(self.console)
 
         self.workspace = Path.cwd()
+        self._async_runtime = AsyncRuntime()
+        self.soc = SOCManager(self, self._async_runtime)
         self.operator_id = "op-mariano"
         self.baseline_path = self.workspace / "baseline.json"
 
@@ -568,6 +572,17 @@ class ApexSentinel:
         def _locate(args: list[str]) -> None:
             (c.locate_p if "-p" in args else c.locate)()
 
+         def _soc(args: list[str]) -> None:
+            sub = args[0] if args else "status"
+            if sub in ("start", "iniciar", "on"):
+                simular = "--simulate" in args or "-s" in args
+                live = "--live" in args
+                self.soc.iniciar(dry_run=not live, simular=simular)
+            elif sub in ("stop", "detener", "off"):
+                self.soc.detener()
+            else:
+                self.soc.estado()
+
         return {
             "help": lambda args: mostrar_ayuda(
                 self.console, self.version, COMANDOS_HELP,
@@ -576,6 +591,7 @@ class ApexSentinel:
                 self.console, self.version, COMANDOS_HELP,
                 " ".join(args) if args else None),
             "status": lambda args: c.status(),
+            "soc":         _soc,
             "hora": lambda args: self.console.print(
                 f"[steel_blue1]Hora:[/steel_blue1] {time.strftime('%H:%M:%S')}"),
             "clear":       _banner,

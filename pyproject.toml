@@ -38,7 +38,7 @@ dependencies = [
     "keyring>=24.0",              # Custodia de claves privadas (sentinel.integrity.keys)
     "portalocker>=3.0",           # Locking del custody log (sentinel.custody.log)
     "jsonschema>=4.20",           # Validación de esquemas (sentinel.schemas)
-    "reportlab>=3.6,<4",          # Reportes PDF forenses (sentinel.reporting.pdf_report)
+    "reportlab>=4.0,<5",          # Reportes PDF forenses (sentinel.reporting.pdf_report)
 ]
 
 [project.urls]
