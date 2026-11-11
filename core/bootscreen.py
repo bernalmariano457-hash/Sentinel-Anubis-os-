@@ -118,13 +118,19 @@ MODULOS_BOOT: list[tuple[str, str]] = [
     ("SpectrumAnalyzer",  "Análisis de espectro RF"),
     ("ADS-B pyModeS",     "Tráfico aéreo 1090 MHz"),
     ("NOAADecoder",       "Imágenes satelitales APT"),
+    # NUEVOS MÓDULOS DEL SOC
+    ("SOCManager",        "Orquestación de respuesta (SOAR)"),
+    ("TacticalSOC",       "Detección de intrusos (Suricata)"),
+    ("AsyncRuntime",      "Motor asíncrono compartido"),
+    ("ForensicBridge",    "Puente de evidencia criptográfica"),
 ]
 
 _GRUPOS_MODULOS: dict[str, list[str]] = {
     "Red":        ["RadarSentinel", "TacticalSniffer", "BluetoothModule", "Network",
                    "AdvancedScanner", "SweepModule", "WifiAttack", "WiFi Triangulation"],
     "RF":         ["RFModuleIntegrado", "SpectrumAnalyzer", "ADS-B pyModeS", "NOAADecoder"],
-    "Forense":    ["ExifAnalyzer", "ForensicReader", "MobileSentinel", "StealthModule"],
+    "Forense":    ["ExifAnalyzer", "ForensicReader", "MobileSentinel", "StealthModule", "ForensicBridge"],
+    "SOC":        ["SOCManager", "TacticalSOC", "AsyncRuntime"],  # NUEVO GRUPO
     "Acceso":     ["HydraModule", "DuckyModule"],
     "Geo":        ["GeoPrecise", "LocatorModule", "GeomapSentinel"],
     "OSINT":      ["OSINTEngine", "CVEMatcher"],
@@ -143,6 +149,12 @@ COMANDOS_HELP: dict[str, list[tuple[str, str]]] = {
         ("files",            "Explorar directorio actual"),
         ("clear / cls",      "Limpiar pantalla y mostrar banner"),
         ("exit",             "Cerrar Sentinel"),
+    ],
+    "SOC (RESPUESTA)": [
+        ("soc start",        "Iniciar monitor de red (modo simulación)"),
+        ("soc start --live", "Iniciar monitor de red (bloqueo real iptables)"),
+        ("soc stop",         "Detener el monitor de red"),
+        ("soc status",       "Ver estado del SOC táctico"),
     ],
     "RED": [
         ("scan",             "Escaneo ARP de red local"),
@@ -529,7 +541,8 @@ def _panel_hud(
     tabla.add_row("ESTADO", "[bold sea_green3]● EN LÍNEA[/bold sea_green3]")
     if unidad:
         etiqueta = f"{unidad}  [grey58]v{version}[/grey58]" if version else unidad
-        tabla.add_row("UNIDAD", f"[bold steel_blue1]{etiqueta}[/bold steel_blue1]")
+        tabla.add_row(
+            "UNIDAD", f"[bold steel_blue1]{etiqueta}[/bold steel_blue1]")
     if iface:
         tabla.add_row("IFAZ", f"[white]{iface}[/white]")
     tabla.add_row("IP", f"[white]{ip}[/white]")
@@ -754,6 +767,23 @@ def mostrar_ayuda(
                 "[bold steel_blue1]exit[/bold steel_blue1] [grey58]para salir[/grey58]"
             )
         )
+        console.print()
+    console.print(Rule(style="grey58"))
+    if filtro:
+        console.print(
+            Align.center(
+                f"[grey58]Resultados para[/grey58] [bold steel_blue1]'{filtro}'[/bold steel_blue1]  ·  "
+                "[grey58]escribe[/grey58] [bold steel_blue1]help[/bold steel_blue1] "
+                "[grey58]para ver todo[/grey58]"
+            )
+        )
+    else:
+        console.print(
+            Align.center(
+                "[bold steel_blue1]help <categoría|palabra>[/bold steel_blue1] [grey58]filtra[/grey58]  ·  "
+                "[bold steel_blue1]exit[/bold steel_blue1] [grey58]para salir[/grey58]"
+            )
+        )
     console.print(Rule(style="grey58"))
     console.print()
 
@@ -772,11 +802,11 @@ if __name__ == "__main__":
         "PowerManager": True,   "ADS-B pyModeS": False,
     }
     try:
-        mostrar_bootloader(_con, "Sentinel", "2.3", "wlan0mon", estados_demo)
+        mostrar_bootloader(_con, "Sentinel", "2.4", "wlan0mon", estados_demo)
         input("AnubisOS@Sentinel~# ")
-        mostrar_banner(_con, "Sentinel", "2.3", "wlan0mon",
+        mostrar_banner(_con, "Sentinel", "2.4", "wlan0mon",
                        proyecto="Operacion-Alpha")
         input("AnubisOS@Sentinel~# ")
-        mostrar_ayuda(_con, "2.3")
+        mostrar_ayuda(_con, "2.4")
     except KeyboardInterrupt:
         _con.print("\n[grey58][!] Cancelado.[/grey58]")

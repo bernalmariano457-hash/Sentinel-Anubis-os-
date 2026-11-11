@@ -13,7 +13,7 @@ build-backend = "hatchling.build"
 
 [project]
 name        = "sentinel-anubis-os"
-version     = "2.3.0"
+version     = "2.4.0"
 description = "Tactical terminal OS for field security operations — uConsole / Kali / Termux"
 readme      = "README.md"
 license     = { file = "LICENSE" }

@@ -11,7 +11,7 @@
 
 ```text
 ╔══════════════════════════════════════════════════════════════════╗
-║          APEX SENTINEL  v2.3  —  ANUBIS OS                       ║
+║          APEX SENTINEL  v2.4  —  ANUBIS OS                       ║
 ║          Sistema Operativo Táctico  ·  uConsole Edition          ║
 ╚══════════════════════════════════════════════════════════════════╝
 
@@ -19,338 +19,174 @@
 
   MÓDULOS           ESTADO
   ──────────────────────────────────────────
+  SOC Táctico       DRY-RUN  ·  vigilando red
   RF / SDR          RTL-SDR V3  ·  1246 MHz
   Network           wlan0mon  ·  activo
   Bluetooth         BLE  ·  disponible
-  Geo               GeoPrecise  ·  disponible
-  Forense           disponible
+  Forense           Ed25519  ·  cadena custodia activa
   OSINT             disponible
-  Proyectos         sin proyecto activo
   Power             SoC 45°C  ·  Bat 78%  ·  Duty 100%
 
-  AnubisOS@Sentinel~# (): rfscan
-  [*] Escaneando espectro 88–108 MHz...
-  ████████████████░░░░  80%  0:00:04
+  AnubisOS@Sentinel~# (): soc start --simulate
+  [+] SOC táctico activo — modo: DRY-RUN (simulando bloqueo)
 
-  [SEÑAL] 101.3 MHz  ·  FM Estéreo  ·  –42 dBm
-  [SEÑAL] 104.1 MHz  ·  FM Estéreo  ·  –51 dBm
-```
-
-## ¿Qué es esto?
-
-Una herramienta de seguridad portátil construida para la **ClockworkPi uConsole** — consola clamshell con teclado físico que cabe en una mochila. El objetivo era algo que arrancara rápido, no dependiera de entorno gráfico y tuviera integración real con hardware SDR sin adaptadores.
+  ⚠️ [SOC] ALERTA CRÍTICA: ET SCAN Potential SSH Scan desde 192.168.1.100
+  [*] Evidencia firmada y sellada en custodia (Ed25519).
+¿Qué es esto?
+Una herramienta de seguridad portátil construida para la ClockworkPi uConsole — consola clamshell con teclado físico que cabe en una mochila. El objetivo era algo que arrancara rápido, no dependiera de entorno gráfico y tuviera integración real con hardware SDR sin adaptadores.
 
 Anubis OS no es un wrapper de Kali. Es un sistema con su propio ciclo de autenticación, su propia interfaz de terminal construida con Rich, y módulos de dominio independientes que se cargan al arranque según el hardware disponible.
 
-Corre nativamente en la uConsole, en Kali / Debian, y en Termux en Android.
+Novedad v2.4: Integración del Tactical SOC (SOAR) y la Cadena de Custodia Criptográfica. Ahora el sistema no solo captura datos; detecta ataques en tiempo real, responde autónomamente y sella la evidencia con firmas Ed25519 para que sea legalmente defendible en un peritaje.
 
-## Arquitectura
+Corre nativamente en la uConsole, en Kali / Debian, en Termux (Android) y ahora también vía Docker.
 
-```text
+Arquitectura
+text
 Main.py (ApexSentinel)
 ├── core/
 │   ├── ModuleRegistry       ← carga declarativa de módulos en runtime
 │   ├── CommandHandler       ← despacho de comandos por dominio (mixins)
-│   ├── auth.py              ← bcrypt · lockout persistente · migración SHA-256
-│   ├── Security.py          ← Fernet · rotación de clave · backups fechados
-│   ├── GestorProyectos      ← workspaces de operación · evidencias · hallazgos
-│   ├── vendor_resolver      ← OUI lookup · caché · API macvendors
+│   ├── async_runtime.py     ← motor asíncrono compartido (hilos y loops)
+│   ├── tactical_soc.py      ← motor de detección y respuesta autónoma (SOAR)
+│   ├── soc_manager.py       ← puente entre el SOC y la interfaz TUI
+│   ├── evidence_bridge.py   ← firma criptográfica y cadena de custodia
+│   ├── forensic_bridge.py   ← monitor de integridad del sistema (baseline)
+│   ├── auth.py              ← bcrypt · lockout persistente
+│   ├── GestorProyectos      ← workspaces de operación · evidencias
 │   ├── sentinel_ui          ← componentes Rich reutilizables
 │   ├── log_sistema          ← logging con niveles · auditoría · rotación
-│   ├── sdr_broker.py        ← broker de acceso único al SDR · time-slicing ponderado
-│   └── power_manager.py     ← gestión térmica · batería · throttling · periféricos
+│   ├── sdr_broker.py        ← broker de acceso único al SDR · time-slicing
+│   └── power_manager.py     ← gestión térmica · batería · throttling
+│
+├── src/sentinel/            ← NÚCLEO FORENSE (Aislado)
+│   ├── integrity/           ← hashing (SHA-256) · firmas (Ed25519) · baseline
+│   ├── custody/             ← cadena de custodia (hash-chain append-only)
+│   ├── security/            ← vault cifrado (Argon2id) · auto-lockdown
+│   ├── packaging/           ← empaquetado de evidencia (.sae)
+│   └── reporting/           ← generación de reportes JSON y PDF
 │
 ├── modules/
-│   ├── rf/                  ← RTL-SDR · FFT · waterfall · ADS-B · NOAA · MockSDR
-│   ├── network/             ← radar Wi-Fi · ARP scan · sniffer · Evil Twin · Bluetooth · triangulación
-│   ├── geo/                 ← GeoPrecise · GeomapSentinel · LocatorModule · KML · GeoJSON
-│   ├── forense/             ← EXIF · triaje móvil · stealth · panic · db_extractor
+│   ├── rf/                  ← RTL-SDR · FFT · waterfall · ADS-B · NOAA
+│   ├── network/             ← radar Wi-Fi · ARP scan · sniffer · Evil Twin
+│   ├── geo/                 ← GeoPrecise · GeomapSentinel · KML · GeoJSON
+│   ├── forense/             ← EXIF · triaje móvil · stealth · panic
 │   ├── osint/               ← CVE lookup · geolocalización · reconocimiento
-│   ├── audit/               ← Rubber Ducky HID · credenciales · diccionarios
-│   └── reporte/             ← generación de reportes · exportación · timeline
+│   ├── audit/               ← Rubber Ducky HID · credenciales
+│   └── reporte/             ← exportación · timeline
 │
 └── plugins/                 ← módulos de terceros · hot-reload
-```
+Características Principales
+🛡️ Tactical SOC (Security Orchestration, Automation and Response)
+Un motor de respuesta autónoma diseñado para operar en el borde (Edge SOAR).
 
-El `ModuleRegistry` carga cada módulo con un `ModuleSpec` declarativo. Si el hardware o la librería no están disponibles, el módulo falla silenciosamente y el sistema arranca igualmente — esencial en un dispositivo embebido donde no todo el hardware está siempre presente.
+Ingesta de eventos: Lee alertas de red (por ejemplo, eve.json de Suricata) mediante un offset para no consumir CPU ni batería de más.
 
-### Broker SDR
+Respuesta autónoma: Si detecta una amenaza crítica, bloquea la IP atacante vía iptables (en modo --live).
 
-El SDR físico solo puede estar sintonizado a una configuración a la vez. `SDRBroker` centraliza el acceso al hardware en una única instancia y hace **time-slicing ponderado** entre suscriptores:
+Guardrails: Cuenta con allowlist para IPs protegidas, cooldown anti-flapping y modo Dry-Run por defecto para evitar falsos positivos.
 
-- Cada consumidor (`SpectrumAnalyzer`, `RFScanner`, `NOAADecoder`, `ADS-B`) se suscribe con su propia configuración y recibe bloques IQ.
-- Reparto por prioridad y `dwellMs` — el suscriptor con menor tiempo virtual acumulado gana el turno.
-- Cuando nadie lo usa durante `idleSleepMs`, el SDR pasa a modo `sleep()`.
-- Todos los módulos RF comparten el mismo proceso dueño del hardware: nunca colisionan.
+Asincronía: Usa un AsyncRuntime compartido para no asfixiar el procesador del CM4.
 
-### Gestión de energía
+⚖️ Cadena de Custodia y Forense Criptográfico
+Hashing en streaming: Cada archivo capturado (audio, IQ, logs) se hashea con SHA-256 durante su escritura sin cargarlo en RAM.
 
-`PowerManager` monitorea la temperatura del SoC con histéresis y el estado de batería, y publica un `dutyCycle()` que el broker respeta:
+Firmas Ed25519: El operador firma cada artefacto. Si alguien modifica un solo byte de la evidencia, la firma se rompe.
 
-| Estado térmico | Duty cycle |
-|---|---|
-| Normal (<60 °C) | 100 % |
-| Warm (≥60 °C) | 70 % |
-| Hot (≥70 °C) | 35 % |
-| Critical (≥80 °C) | 0 % (duerme periféricos) |
+Custody Log: Un registro inmutable (append-only) encadenado por hashes. Cada entrada incluye un prev_hash para detectar si alguien borró o alteró el historial.
 
-Si la temperatura llega a crítico, el broker reduce automáticamente la carga del SDR. Todo configurable vía `PowerConfig`.
+Vault de Evidencia: Cifrado en reposo usando Argon2id (ganador del PHC) y AES-GCM.
 
-## Módulos
+Auto-Lockdown: Si el IntegrityMonitor detecta que los archivos del sistema (baseline) fueron modificados, bloquea la ejecución de comandos automáticamente.
 
-### RF / SDR
-
-Motor propio sobre `pyrtlsdr` con `MockSDR` como fallback para desarrollo sin hardware físico. El acceso al hardware pasa por `SDRBroker`.
-
-- Análisis espectral FFT en tiempo real con vista de cascada (waterfall)
-- `SpectrumAnalyzer` — analizador de espectro interactivo en tiempo real (`spectrum` / `sa`)
-- Detección automática de señales en 35 bandas de frecuencia conocidas
-- Demodulación WFM · NFM · AM · USB · LSB
-- Grabación IQ a archivos `.iq` — compatibles con SDR#, GQRX y GNU Radio
-- Decodificación ADS-B a 1090 MHz con `pyModeS` — seguimiento de aeronaves en vivo con mensajes extendidos
-- Decodificador NOAA APT a 137 MHz — imágenes meteorológicas de satélite en tiempo real
-- Estadísticas de sesión por banda y tipo de señal
-
-### Red
-
-- Escaneo ARP con resolución OUI de fabricantes (caché + API)
-- Escaneo avanzado de puertos TCP con detección de servicios
-- Captura de paquetes con filtros BPF
-- Radar Wi-Fi por RSSI — mapa de señal en tiempo real
-- Triangulación Wi-Fi — estimación de posición por RSSI con suavizado adaptativo
-- Portal cautivo para auditoría wireless
-- `WifiAtack` / `WADecryptor` — auditoría de redes Wi-Fi
-
-### Bluetooth
-
-- Escaneo BLE en tiempo real con `bleak` — descubrimiento de dispositivos y datos de publicidad
-- Monitor continuo con umbral de proximidad (cerca / medio / lejos) por RSSI
-- Resolución OUI de fabricantes para direcciones MAC BLE
-- Mapa BLE en tiempo real — visualización interactiva TUI de dispositivos BLE activos con intensidad de señal, fabricante y coordenadas relativas renderizadas en terminal Rich
-- Registro de evidencias por sesión
-
-### Geo
-
-- `GeoPrecise` — geolocalización por triangulación de redes Wi-Fi cercanas (API externa)
-- `GeomapSentinel` — generación de mapas HTML interactivos con `folium` coloreados por fabricante
-- `LocatorModule` — localización por IP con coordenadas y volcado a evidencias
-- Triangulación híbrida Wi-Fi + BLE — algoritmo de fusión de señales RSSI Wi-Fi y BLE para estimación de posición física con mayor precisión que cualquiera de las dos fuentes de forma independiente
-- Exportación geo avanzada — generación automática de evidencias espaciales en KML (Google Earth / Maps) y GeoJSON (estándar abierto) además de los mapas HTML existentes
-- Resultados guardados en `data/evidence/geo/`
-
-### Forense
-
-- Extracción de coordenadas GPS de EXIF de imágenes
-- Triaje básico y profundo de dispositivos móviles
-- Extractor de bases de datos (`db_extractor`) para análisis de archivos SQLite
-- Verificación de identidad digital (VPN/proxy/exposición)
-- Protocolo de pánico — cifrado de emergencia + purga de historial
-
-### OSINT
-
-- Búsqueda de CVEs por servicio y versión
-- Geolocalización por IP con coordenadas
-- Reconocimiento pasivo de dominios y servicios
-
-### Proyectos
-
-Workspace de operación que agrupa evidencias, hallazgos por severidad y genera reportes al cierre. Cada proyecto tiene su propio directorio y archivo JSON. El motor de reportes exporta en Markdown, texto plano y timeline.
-
-### Energía
-
-- Monitoreo térmico del SoC con histéresis configurable
-- Nivel y estado de batería (compatible con M5PM1 en modelos que lo soportan)
-- Throttling automático del SDR según temperatura
-- Dormir/despertar periféricos registrados en estado crítico
-- Comandos directos: `power`, `temp`, `bat`, `throttle`
-
-## Instalación
-
-### Auto-detect (recomendado)
-
-```bash
+Instalación
+Auto-detect (recomendado)
+bash
 git clone https://github.com/bernalmariano457-hash/Sentinel-Anubis-os.git
 cd Sentinel-Anubis-os
 chmod +x install.sh && ./install.sh
-```
-
 El script detecta la plataforma automáticamente — uConsole, Kali o Termux — e instala únicamente las dependencias disponibles para ese entorno.
 
-### Por plataforma
+Docker (Entornos aislados)
+bash
+# Construir la imagen
+docker build -t anubis-os .
 
-**Linux / Kali / Debian:**
+# Correr en modo interactivo (TUI)
+docker run -it --rm anubis-os
 
-```bash
+# Correr con permisos de red (para probar el SOC o escaneos)
+docker run -it --rm --cap-add=NET_ADMIN --cap-add=NET_RAW --network host anubis-os
+Por plataforma
+Linux / Kali / Debian:
+
+bash
 pip install -e ".[network,rtlsdr]"
 python Main.py
-```
+ClockworkPi uConsole:
 
-**ClockworkPi uConsole:**
-
-```bash
+bash
 pip install -e ".[uconsole]"   # network + RTL-SDR + ADS-B + NOAA
 python Main.py
-```
+Android (Termux):
 
-**Android (Termux):**
-
-```bash
+bash
 pkg install python rtl-sdr
 pip install -e ".[termux]" --break-system-packages
 python Main.py
-```
-
 El primer arranque configura la contraseña maestra. Después va directo a la interfaz.
 
-### Soporte RTL-SDR
+Comandos
+Sistema y Seguridad
+Comando	Descripción
+help / ?	Menú de ayuda completo
+status	Estado del sistema y módulos cargados
+power	Estado de energía: temperatura, batería, SDR
+exit	Cerrar Sentinel
+SOC (Respuesta Autónoma)
+Comando	Descripción
+soc start --simulate	Inicia el SOC en modo prueba (ataques falsos, no bloquea)
+soc start --live	Inicia el SOC real (bloquea IPs vía iptables)
+soc stop	Detiene el monitor de red
+soc status	Muestra si el SOC está vigilando
+Forense y Cadena de Custodia
+Comando	Descripción
+geofoto	Extraer coordenadas GPS de fotos (EXIF)
+mobile / mobile-deep	Triaje de dispositivos móviles
+recover	File carving forense (.dd / .img o /dev/sdX)
+panic	Protocolo de emergencia — cifra todo y sale
+proyecto nuevo	Crear workspace de operación (agrupa evidencia)
+reporte	Generar reporte forense (con firmas criptográficas)
+Red y RF
+Comando	Descripción
+scan / advscan	Escaneo de red (ARP / Nmap)
+radar	Radar Wi-Fi por RSSI en tiempo real
+eviltwin	Portal cautivo para auditoría wireless (con captura forense)
+rfscan	Escaneo de frecuencias con detección de señales
+rfgrabar	Grabar señal IQ a archivo (firmado automáticamente)
+adsb / noaa	Decodificadores de satélites y aeronaves
+Seguridad
+bcrypt con salt autogenerado — migra desde SHA-256 legacy al primer login.
 
-```bash
-# Linux / uConsole
-sudo apt install rtl-sdr librtlsdr-dev
+Argon2id + AES-GCM — cifrado de evidencia en reposo.
 
-# Termux
-pkg install rtl-sdr
-```
+Firmas Ed25519 — autenticidad e integridad de toda la evidencia capturada.
 
-### Arranque automático (systemd)
+Cadena de custodia (hash-chain) — registro inmutable que detecta cualquier alteración.
 
-El servicio systemd arranca Sentinel en modo no-interactivo. Para evitar bloqueos en el prompt de contraseña:
+Auto-Lockdown — si el sistema es comprometido, se congela y bloquea comandos.
 
-```bash
-export SENTINEL_AUTH_MODE=systemd
-```
+Modo systemd — autenticación no-interactiva para arranque desatendido.
 
-Con la contraseña configurada previamente, el arranque es desatendido. Si no hay credencial, el sistema deniega el arranque y lo registra en el log sin quedarse colgado.
-
-## Comandos
-
-### Sistema
-
-| Comando | Descripción |
-|---|---|
-| `help` / `?` | Menú de ayuda completo |
-| `status` | Estado del sistema y módulos cargados |
-| `logs` | Historial de eventos de la sesión |
-| `hora` | Hora del sistema |
-| `files` | Explorar directorio actual |
-| `clear` / `cls` | Limpiar pantalla |
-| `exit` | Cerrar Sentinel |
-
-### Energía
-
-| Comando | Descripción |
-|---|---|
-| `power` | Estado de energía: temperatura, batería, throttling, SDR |
-| `temp` | Temperatura actual del SoC |
-| `bat` | Nivel de batería |
-| `throttle on` | Forzar throttling térmico |
-| `throttle off` | Liberar throttling |
-| `throttle auto` | Restaurar throttling automático |
-
-### Red
-
-| Comando | Descripción |
-|---|---|
-| `scan` | Escaneo ARP — hosts activos en la red local |
-| `advscan` | Escaneo avanzado con detección de SO |
-| `portscan` | Escaneo TCP de puertos de un objetivo |
-| `sweep` | Barrido de hosts por rango CIDR |
-| `sniff` | Captura de paquetes con filtro BPF |
-| `radar` | Radar Wi-Fi por RSSI en tiempo real |
-| `audit` | Auditoría de credenciales |
-| `vulnscan` | Escaneo de vulnerabilidades |
-| `wifi` | Gestión de interfaces wireless |
-| `eviltwin` | Portal cautivo para auditoría wireless |
-| `wifitri` | Triangulación Wi-Fi por RSSI |
-| `btmapa` | Mapa radar BLE en tiempo real (TUI) |
-
-### RF / SDR
-
-| Comando | Descripción |
-|---|---|
-| `spectrum` / `sa` | Analizador de espectro en tiempo real |
-| `rfscan` | Escaneo de frecuencias con detección de señales |
-| `rfmenu` | Menú interactivo de opciones RF |
-| `rfbarrido` | Barrido espectral por rango personalizado |
-| `rfbandas` | Ver 35 bandas de frecuencia conocidas |
-| `radio` | Demodular y escuchar en tiempo real (WFM/NFM/AM/SSB) |
-| `rfgrabar` | Grabar señal IQ a archivo `.iq` |
-| `rfplay` | Reproducir archivo IQ grabado |
-| `rfdb` | Base de datos de señales capturadas |
-| `rfstats` | Estadísticas de sesión RF |
-| `rfstatus` | Estado del hardware SDR |
-| `adsb` | Monitor ADS-B — aeronaves en 1090 MHz (pyModeS) |
-| `noaa` | NOAA APT — imágenes de satélite meteorológico a 137 MHz |
-
-### Forense
-
-| Comando | Descripción |
-|---|---|
-| `geofoto` | Extraer coordenadas GPS de fotos (EXIF) |
-| `mobile` | Triaje básico de dispositivo móvil |
-| `mobile-deep` | Triaje profundo de dispositivo móvil |
-| `view` | Leer archivo forense |
-| `stealth` | Verificar identidad digital y exposición de red |
-| `panic` | Protocolo de emergencia — cifra todo y sale |
-| `recover` | File carving forense (`.dd` / `.img` o `/dev/sdX`) |
-| `recover ver <id>` | Tabla de resultados de un job de carving |
-
-### OSINT
-
-| Comando | Descripción |
-|---|---|
-| `osint` | Reconocimiento pasivo de un objetivo |
-| `cve` | Búsqueda de CVEs por servicio / versión |
-| `locate` | Geolocalización por IP |
-| `locate -p` | Geolocalización de IP pública del operador |
-| `geofoto` | Triangulación híbrida Wi-Fi + BLE con exportación geo |
-
-### Proyectos
-
-| Comando | Descripción |
-|---|---|
-| `proyecto nuevo` | Crear workspace de operación |
-| `proyecto cargar` | Cargar proyecto existente |
-| `proyecto lista` | Listar todos los proyectos |
-| `proyecto estado` | Resumen del proyecto activo |
-| `proyecto cerrar` | Cerrar y guardar proyecto |
-| `reporte` | Generar reporte del proyecto activo |
-
-### Ofensivo
-
-| Comando | Descripción |
-|---|---|
-| `phishing` | Suite de phishing (zphisher) |
-| `ducky` | Ejecutar payload HID (Rubber Ducky) |
-
-### Sistema de tareas y plugins
-
-| Comando | Descripción |
-|---|---|
-| `jobs` | Ver cola de tareas asíncronas activas |
-| `plugins` | Listar plugins cargados |
-| `plugins reload` | Recargar plugins en caliente |
-
-## Seguridad
-
-- **bcrypt con salt autogenerado** — migra desde SHA-256 legacy automáticamente al primer login
-- **Lockout persistente** — bloqueo por intentos fallidos que sobrevive reinicios
-- **Fernet** para cifrado de evidencias con rotación de clave y backups fechados
-- **Credenciales separadas** — nunca en `config.json`, siempre en `data/security/`
-- **Auditoría completa** — cada acción sensible queda registrada con timestamp y módulo
-- **Modo systemd** — autenticación no-interactiva para arranque desatendido
-
-## Hardware objetivo
-
-**ClockworkPi uConsole + RTL-SDR V3**
+Hardware objetivo
+ClockworkPi uConsole + RTL-SDR V3
 
 La uConsole es la razón por la que este proyecto tiene la forma que tiene. Terminal puro, teclado físico, cabe en una mochila. El puerto de expansión acepta el RTL-SDR directamente — sin adaptadores, sin hubs — lo que hace que el módulo RF corra en hardware real sin fricción.
 
-Desarrollo actual: Termux en Android con `MockSDR` para la parte RF y hardware real para todo lo demás.
+Desarrollo actual: Termux / Windows con MockSDR y FeedSimulado para la parte RF y de red, esperando el hardware final.
 
-## Desarrollo
-
-```bash
+Desarrollo y Tests
+bash
 # Setup completo para desarrollo
 git clone https://github.com/bernalmariano457-hash/Sentinel-Anubis-os.git
 cd Sentinel-Anubis-os
@@ -360,84 +196,24 @@ pip install -e ".[all]"
 make test          # tests sin hardware
 make check         # lint + tipos + tests — idéntico al CI
 make format        # corrige y formatea con ruff
-make test-hardware # requiere RTL-SDR conectado
 make run           # arrancar Sentinel
-```
-
-El CI corre automáticamente en cada push a `main` y en cada PR — lint con `ruff`, type checking con `pyright` y tests excluyendo hardware físico.
-
-### Estructura de tests
-
-```text
-tests/
-├── test_auth_security.py     # Auth · bcrypt · lockout · Fernet · rotación de clave
-├── test_module_registry.py   # ModuleRegistry · carga · fallback silencioso
-└── test_sentinel.py          # Sistema · integración · CommandHandler
-```
-
-### Añadir un módulo
-
-Registra un `ModuleSpec` en `core/ModuleRegistry.py`:
-
-```python
-ModuleSpec(
-    attr="mi_modulo",
-    clase="MiClase",
-    ruta="modules.dominio.MiModulo",
-    display_name="MiModulo",
-    opcional=True,        # no bloquea el arranque si falla
-)
-```
-
-El módulo quedará disponible como `self.mi_modulo` en `ApexSentinel` y en todos los `CommandHandler`.
-
-### Añadir un plugin
-
-Crea un archivo en `plugins/` que herede de `PluginBase`:
-
-```python
-from core.PluginSystem import PluginBase
-
-class MiPlugin(PluginBase):
-    nombre   = "mi_plugin"
-    version  = "1.0"
-    comandos = {"micomando": "Descripción del comando"}
-
-    def ejecutar(self, comando: str, args: list[str]) -> None:
-        self.console.print(f"[green]Ejecutando {comando}[/green]")
-```
-
-Los plugins se cargan en caliente — no hace falta reiniciar Sentinel.
-
-## Roadmap
-
-### Completado
-
-- [x] Autenticación bcrypt con migración desde SHA-256 legacy
-- [x] Lockout persistente entre sesiones
-- [x] Cifrado Fernet con rotación de clave y backups
-- [x] ModuleRegistry — carga declarativa con fallback silencioso
-- [x] Motor RF: FFT · waterfall · demodulación · ADS-B · MockSDR
-- [x] SpectrumAnalyzer — analizador de espectro en tiempo real
-- [x] Decodificador NOAA APT — imágenes de satélite a 137 MHz
-- [x] Decodificador ADS-B completo con pyModeS
-- [x] Módulo Bluetooth — escaneo BLE con bleak · proximidad · evidencias
-- [x] Triangulación Wi-Fi — estimación de posición por RSSI
-- [x] Módulo Geo — GeoPrecise · GeomapSentinel · mapas HTML con folium
-- [x] Sistema de proyectos con evidencias y hallazgos por severidad
-- [x] `pyproject.toml` — dependencias por plataforma (uConsole / Kali / Termux)
-- [x] CI/CD con GitHub Actions — lint + types + tests
-- [x] Suite de tests — Auth, Security, ModuleRegistry, integración
-- [x] Mapa BLE en tiempo real — visualización de dispositivos en terminal Rich TUI
-- [x] Triangulación híbrida Wi-Fi + BLE para estimación de posición de alta precisión
-- [x] Exportación de mapas geo a formatos KML y GeoJSON
-- [x] SDRBroker — broker de acceso único al SDR con time-slicing ponderado
-- [x] PowerManager — gestión térmica, batería y throttling automático del SDR
-
-### En progreso
-
-- [ ] Arranque nativo en uConsole (reemplazar el login shell)
-
----
-
-Construido por [@bernalmariano457-hash](https://github.com/bernalmariano457-hash) — feedback bienvenido, especialmente de alguien corriendo Python en hardware embebido.
+Roadmap
+Completado
+☑ Autenticación bcrypt con migración desde SHA-256 legacy
+☑ Lockout persistente entre sesiones
+☑ ModuleRegistry — carga declarativa con fallback silencioso
+☑ Motor RF: FFT · waterfall · demodulación · ADS-B · MockSDR
+☑ SDRBroker — broker de acceso único al SDR con time-slicing
+☑ PowerManager — gestión térmica, batería y throttling
+☑ Núcleo Forense: Hashing SHA-256 + Firmas Ed25519
+☑ Vault de Evidencia: Cifrado en reposo con Argon2id
+☑ Auto-Lockdown: Monitor de integridad (baseline) con bloqueo automático
+☑ Cadena de Custodia: Log inmutable con hash-chain y firmas
+☑ Tactical SOC (SOAR): Ingesta de Suricata, respuesta autónoma (iptables) y evidencia forense
+☑ AsyncRuntime: Motor asíncrono compartido para CM4
+☑ Empaquetado: Archivos .sae verificables y reportes PDF
+☑ Docker: Despliegue aislado para entornos de prueba
+En progreso
+□ Arranque nativo en uConsole (reemplazar el login shell con la imagen oficial)
+□ Integración de la regla anti-flapping en el firewall del kernel
+Construido por @bernalmariano457-hash — feedback bienvenido, especialmente de alguien corriendo Python en hardware embebido.

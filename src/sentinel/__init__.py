@@ -1,6 +1,6 @@
 """Sentinel-Anubis OS — forensic subsystem."""
 
-__version__ = "0.1.0"
+__version__ = "2.4.0"
 
 
 class SentinelError(Exception):
