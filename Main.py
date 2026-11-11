@@ -1,19 +1,4 @@
 from __future__ import annotations
-from core.vendor_resolver import VendorResolver
-
-from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
-from core.sdr_broker import SDRBroker
-from core.ModuleRegistry import ModuleRegistry
-from core.log_sistema import LogSistema
-from core.forensic_bridge import is_system_locked, start_integrity_monitor
-from core.command_handler import CommandHandler
-from core.async_runtime import AsyncRuntime
-from core.soc_manager import SOCManager
-from rich.rule import Rule
-from rich.prompt import Prompt
-from rich.panel import Panel
-from rich.markup import escape as _esc
-from rich.console import Console
 
 import contextlib
 import json
@@ -28,6 +13,22 @@ from collections.abc import Callable
 from pathlib import Path
 from types import TracebackType
 from typing import Any
+
+from rich.console import Console
+from rich.markup import escape as _esc
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich.rule import Rule
+
+from core.async_runtime import AsyncRuntime
+from core.command_handler import CommandHandler
+from core.forensic_bridge import is_system_locked, start_integrity_monitor
+from core.log_sistema import LogSistema
+from core.ModuleRegistry import ModuleRegistry
+from core.sdr_broker import SDRBroker
+from core.sentinel_ui import animar_barra, mostrar_dashboard_exito
+from core.soc_manager import SOCManager
+from core.vendor_resolver import VendorResolver
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
@@ -168,10 +169,7 @@ class _ShutdownCoordinator:
         self._callback_timeout: float = callback_timeout or self.CALLBACK_TIMEOUT_SECONDS
 
     def register_worker_shutdown(
-        self,
-        callback: Callable[[], None],
-        nombre: str | None = None,
-        prioridad: int = 0,
+        self, callback: Callable[[], None], nombre: str | None = None, prioridad: int = 0,
     ) -> None:
         etiqueta = nombre or getattr(callback, "__name__", "callback")
         with self._lock:
@@ -310,10 +308,7 @@ class ApexSentinel:
         return self
 
     def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None,
     ) -> bool:
         self._apagar()
         return False
@@ -361,10 +356,7 @@ class ApexSentinel:
                 f"Fallo en apagado de '{nombre}': {error}", "ShutdownCoordinator")
 
     def registrar_apagado(
-        self,
-        callback: Callable[[], None],
-        nombre: str | None = None,
-        prioridad: int = 0,
+        self, callback: Callable[[], None], nombre: str | None = None, prioridad: int = 0,
     ) -> None:
         self._coordinator.register_worker_shutdown(callback, nombre, prioridad)
 
@@ -381,6 +373,8 @@ class ApexSentinel:
                                "GestorProyectos", prioridad=60)
         self.registrar_apagado(
             self._registrar_cierre_sesion, "LogSistema", prioridad=0)
+        self.registrar_apagado(
+            self._cleanup_async_runtime, "AsyncRuntime", prioridad=95)
 
     def _cleanup_power(self) -> None:
         power = getattr(self, "power", None)
@@ -398,6 +392,12 @@ class ApexSentinel:
             with contextlib.suppress(Exception):
                 self.log.warning(
                     f"SDRBroker cleanup: {exc}", "ApexSentinel")
+
+    def _cleanup_async_runtime(self) -> None:
+        try:
+            self._async_runtime.detener()
+        except Exception as exc:
+            self._registrar_fallo_apagado("AsyncRuntime", exc)
 
     def _detener_tareas_activas(self) -> None:
         cola = getattr(self, "cola", None)
@@ -439,12 +439,7 @@ class ApexSentinel:
                 cerrador()
 
     def ejecutar_subproceso(
-        self,
-        comando: list[str],
-        timeout: float,
-        cwd: str | Path | None = None,
-        env: dict[str, str] | None = None,
-        capturar_salida: bool = True,
+        self, comando: list[str], timeout: float, cwd: str | Path | None = None, env: dict[str, str] | None = None, capturar_salida: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         if self._coordinator.is_shutdown:
             raise SubprocesoRechazadoError(
@@ -572,7 +567,7 @@ class ApexSentinel:
         def _locate(args: list[str]) -> None:
             (c.locate_p if "-p" in args else c.locate)()
 
-         def _soc(args: list[str]) -> None:
+        def _soc(args: list[str]) -> None:
             sub = args[0] if args else "status"
             if sub in ("start", "iniciar", "on"):
                 simular = "--simulate" in args or "-s" in args
